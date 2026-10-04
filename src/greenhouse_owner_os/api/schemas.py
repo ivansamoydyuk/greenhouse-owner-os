@@ -37,4 +37,4 @@ class PaymentCreateBody(ApiModel):
     amount: Decimal = Field(gt=0)
     currency: str = Field(min_length=3, max_length=3)
     event_date: date
-    allocations: list[AllocationBody] = []
+    allocations: list[AllocationBody] = Field(default_factory=list)
