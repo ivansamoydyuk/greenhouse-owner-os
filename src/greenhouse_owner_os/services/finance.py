@@ -85,7 +85,10 @@ def _serialize_payment(payment: Payment, advance: Advance | None = None) -> dict
 from .cash import CashServiceMixin
 
 
-class FinanceService(CashServiceMixin):
+from .history import HistoryServiceMixin
+
+
+class FinanceService(CashServiceMixin, HistoryServiceMixin):
     def __init__(self, uow_factory: UowFactory) -> None:
         self.uow_factory = uow_factory
 
@@ -134,6 +137,7 @@ class FinanceService(CashServiceMixin):
                 raise ConflictError("obligation version conflict")
             if obligation.status not in {RecordStatus.DRAFT, RecordStatus.REVIEW}:
                 raise ValidationError("only draft/review obligation can be posted")
+            uow.finance.assert_live_date(obligation.entity_id, obligation.event_date)
             uow.finance.assert_ledger_account_scope(obligation.offset_ledger_account_id, obligation.entity_id, obligation.currency)
             control_code = "AP_CONTROL" if obligation.direction == ObligationDirection.PAYABLE else "AR_CONTROL"
             control_id = uow.finance.get_system_ledger_account(obligation.entity_id, obligation.currency, control_code)
@@ -217,6 +221,7 @@ class FinanceService(CashServiceMixin):
                 raise ConflictError("payment version conflict")
             if payment.status not in {RecordStatus.DRAFT, RecordStatus.REVIEW}:
                 raise ValidationError("only draft/review payment can be posted")
+            uow.finance.assert_live_date(payment.entity_id, payment.event_date)
             if payment.allocation_total > payment.amount:
                 raise ValidationError("allocation total cannot exceed payment amount")
 
@@ -360,6 +365,7 @@ class FinanceService(CashServiceMixin):
                 raise ValidationError("only posted records can be reversed")
             if command.event_date < record.event_date:
                 raise ValidationError("reversal date cannot precede original event date")
+            uow.finance.assert_live_date(record.entity_id, command.event_date)
             if kind == "payment":
                 for oid in sorted({a.obligation_id for a in record.allocations}, key=str):
                     uow.finance.get_obligation(oid, for_update=True)
@@ -439,10 +445,10 @@ class FinanceService(CashServiceMixin):
                 raise NotFoundError(kind + " not found")
             return self._linkage(uow, kind, record)
 
-    def reconcile(self):
+    def reconcile(self, *, include_classification=False):
         from .reconciliation import reconcile
         with self.uow_factory() as uow:
-            return reconcile(uow.session)
+            return reconcile(uow.session, include_classification=include_classification)
 
     def get_currency_balances(self, entity_id: UUID):
         with self.uow_factory() as uow:

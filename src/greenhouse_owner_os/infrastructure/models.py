@@ -35,10 +35,12 @@ UTC_NOW = text("now()")
 
 class EntityRow(Base):
     __tablename__ = "entities"
-    __table_args__ = {"schema": "core"}
+    __table_args__ = (CheckConstraint("finance_opening_policy = 'ZERO'", name="ck_entity_opening_policy"), {"schema": "core"})
 
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    finance_cutover_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=text("DATE '2026-10-04'"))
+    finance_opening_policy: Mapped[str] = mapped_column(String(10), nullable=False, server_default='ZERO')
     default_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="TRY")
     active: Mapped[bool] = mapped_column(nullable=False, default=True, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)
@@ -327,3 +329,46 @@ class SettlementRow(CashLifecycleMixin, Base):
     __table_args__ = {'schema': 'finance'}
     receivable_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.obligations.id'), nullable=False)
     payable_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.obligations.id'), nullable=False)
+
+
+class ImportBatchRow(Base):
+    __tablename__ = 'import_batches'
+    __table_args__ = (
+        UniqueConstraint('entity_id', 'source', 'fingerprint', name='uq_import_batch_source'),
+        CheckConstraint("fingerprint ~ '^[a-f0-9]{64}$'", name='ck_import_batch_fingerprint'),
+        CheckConstraint("btrim(source) <> '' AND btrim(source_file) <> ''", name='ck_import_batch_source'),
+        {'schema': 'core'},
+    )
+    id: Mapped[uuid.UUID] = uuid_pk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.entities.id'), nullable=False)
+    source: Mapped[str] = mapped_column(String(200), nullable=False)
+    source_file: Mapped[str] = mapped_column(Text, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.actors.id'), nullable=False)
+
+
+class HistoricalCandidateRow(Base):
+    __tablename__ = 'historical_candidates'
+    __table_args__ = (
+        UniqueConstraint('import_batch_id', 'source_key', name='uq_historical_candidate_source'),
+        CheckConstraint("verification_state IN ('VERIFIED','VERIFY','HISTORY')", name='ck_candidate_verification'),
+        CheckConstraint("source_key ~ '^[a-f0-9]{64}$' AND content_hash ~ '^[a-f0-9]{64}$'", name='ck_candidate_hashes'),
+        CheckConstraint('confidence IS NULL OR (confidence >= 0 AND confidence <= 1)', name='ck_candidate_confidence'),
+        CheckConstraint("(source_row IS NOT NULL AND btrim(source_row) <> '') OR (source_document IS NOT NULL AND btrim(source_document) <> '')", name='ck_candidate_locator'),
+        CheckConstraint("raw_value IS NOT NULL OR (source_reference IS NOT NULL AND btrim(source_reference) <> '')", name='ck_candidate_evidence'),
+        {'schema': 'core'},
+    )
+    id: Mapped[uuid.UUID] = uuid_pk()
+    import_batch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.import_batches.id'), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_row: Mapped[str | None] = mapped_column(Text)
+    source_document: Mapped[str | None] = mapped_column(Text)
+    event_date: Mapped[date | None] = mapped_column(Date)
+    verification_state: Mapped[str] = mapped_column(String(10), nullable=False, server_default='HISTORY')
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(7,6))
+    raw_value: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    source_reference: Mapped[str | None] = mapped_column(Text)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.actors.id'), nullable=False)
