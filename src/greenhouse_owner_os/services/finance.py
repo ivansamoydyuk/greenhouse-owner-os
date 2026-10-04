@@ -1,0 +1,309 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import asdict
+from decimal import Decimal
+from typing import Any, Callable
+from uuid import UUID, uuid4
+
+from greenhouse_owner_os.domain.commands import CreateObligationCommand, CreatePaymentCommand
+from greenhouse_owner_os.domain.errors import IdempotencyConflictError, NotFoundError, ValidationError
+from greenhouse_owner_os.domain.finance import (
+    Advance,
+    AdvanceDirection,
+    AllocationRequest,
+    FinancialPosting,
+    Obligation,
+    ObligationDirection,
+    Payment,
+    PaymentDirection,
+    PostingLine,
+    PostingSide,
+    RecordStatus,
+    money,
+)
+from greenhouse_owner_os.repositories.protocols import UnitOfWork
+
+UowFactory = Callable[[], UnitOfWork]
+
+
+def _hash_request(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _serialize_obligation(obligation: Obligation, remaining: Decimal | None = None) -> dict[str, Any]:
+    data = {
+        "id": str(obligation.id),
+        "entity_id": str(obligation.entity_id),
+        "counterparty_id": str(obligation.counterparty_id),
+        "direction": obligation.direction.value,
+        "original_amount": f"{obligation.original_amount:.2f}",
+        "currency": obligation.currency,
+        "event_date": obligation.event_date.isoformat(),
+        "due_date": obligation.due_date.isoformat() if obligation.due_date else None,
+        "status": obligation.status.value,
+        "version": obligation.version,
+        "posting_id": str(obligation.posting_id) if obligation.posting_id else None,
+    }
+    if remaining is not None:
+        data["remaining_amount"] = f"{money(remaining):.2f}"
+    return data
+
+
+def _serialize_payment(payment: Payment, advance: Advance | None = None) -> dict[str, Any]:
+    return {
+        "id": str(payment.id),
+        "entity_id": str(payment.entity_id),
+        "money_account_id": str(payment.money_account_id),
+        "counterparty_id": str(payment.counterparty_id),
+        "direction": payment.direction.value,
+        "amount": f"{payment.amount:.2f}",
+        "currency": payment.currency,
+        "event_date": payment.event_date.isoformat(),
+        "status": payment.status.value,
+        "version": payment.version,
+        "posting_id": str(payment.posting_id) if payment.posting_id else None,
+        "allocation_total": f"{payment.allocation_total:.2f}",
+        "unallocated_amount": f"{payment.unallocated_amount:.2f}",
+        "advance_id": str(advance.id) if advance else None,
+        "allocations": [
+            {"id": str(row.id), "obligation_id": str(row.obligation_id), "amount": f"{row.amount:.2f}"}
+            for row in payment.allocations
+        ],
+    }
+
+
+class FinanceService:
+    def __init__(self, uow_factory: UowFactory) -> None:
+        self.uow_factory = uow_factory
+
+    def create_obligation(self, *, actor_id: UUID, idempotency_key: str, command: CreateObligationCommand) -> dict[str, Any]:
+        operation = "create_obligation"
+        payload = command.model_dump(mode="json")
+        request_hash = _hash_request(payload)
+        with self.uow_factory() as uow:
+            replay = self._replay_if_exists(uow, actor_id, operation, idempotency_key, request_hash)
+            if replay:
+                return replay
+            obligation = Obligation.draft(
+                entity_id=command.entity_id,
+                counterparty_id=command.counterparty_id,
+                direction=command.direction,
+                original_amount=command.original_amount,
+                currency=command.currency,
+                event_date=command.event_date,
+                due_date=command.due_date,
+                offset_ledger_account_id=command.offset_ledger_account_id,
+            )
+            uow.finance.assert_ledger_account_scope(obligation.offset_ledger_account_id, obligation.entity_id, obligation.currency)
+            uow.finance.add_obligation(obligation, actor_id)
+            response = _serialize_obligation(obligation, obligation.original_amount)
+            uow.audit.append(actor_id=actor_id, action="create", entity_type="obligation", entity_id=obligation.id, before=None, after=response)
+            uow.idempotency.put(actor_id=actor_id, operation=operation, key=idempotency_key, request_hash=request_hash, resource_type="obligation", resource_id=obligation.id, response=response)
+            uow.commit()
+            return response
+
+    def post_obligation(self, *, actor_id: UUID, idempotency_key: str, obligation_id: UUID, expected_version: int) -> dict[str, Any]:
+        operation = "post_obligation"
+        payload = {"obligation_id": str(obligation_id), "expected_version": expected_version}
+        request_hash = _hash_request(payload)
+        with self.uow_factory() as uow:
+            replay = self._replay_if_exists(uow, actor_id, operation, idempotency_key, request_hash)
+            if replay:
+                return replay
+            obligation = uow.finance.get_obligation(obligation_id, for_update=True)
+            if not obligation:
+                raise NotFoundError("obligation not found")
+            if obligation.version != expected_version:
+                raise ValidationError("obligation version conflict")
+            if obligation.status not in {RecordStatus.DRAFT, RecordStatus.REVIEW}:
+                raise ValidationError("only draft/review obligation can be posted")
+            uow.finance.assert_ledger_account_scope(obligation.offset_ledger_account_id, obligation.entity_id, obligation.currency)
+            control_code = "AP_CONTROL" if obligation.direction == ObligationDirection.PAYABLE else "AR_CONTROL"
+            control_id = uow.finance.get_system_ledger_account(obligation.entity_id, obligation.currency, control_code)
+            posting_id = uuid4()
+            if obligation.direction == ObligationDirection.PAYABLE:
+                lines = [
+                    PostingLine(obligation.offset_ledger_account_id, PostingSide.DEBIT, obligation.original_amount),
+                    PostingLine(control_id, PostingSide.CREDIT, obligation.original_amount),
+                ]
+            else:
+                lines = [
+                    PostingLine(control_id, PostingSide.DEBIT, obligation.original_amount),
+                    PostingLine(obligation.offset_ledger_account_id, PostingSide.CREDIT, obligation.original_amount),
+                ]
+            posting = FinancialPosting(
+                id=posting_id,
+                entity_id=obligation.entity_id,
+                currency=obligation.currency,
+                event_date=obligation.event_date,
+                posting_type="obligation_posted",
+                source_type="obligation",
+                source_id=obligation.id,
+                created_by=actor_id,
+                lines=lines,
+            )
+            posting.validate_balanced()
+            before = _serialize_obligation(obligation, obligation.original_amount)
+            uow.finance.add_posting(posting)
+            obligation.post(posting_id)
+            uow.finance.save_obligation(obligation)
+            response = _serialize_obligation(obligation, obligation.original_amount)
+            uow.audit.append(actor_id=actor_id, action="post", entity_type="obligation", entity_id=obligation.id, before=before, after=response)
+            uow.idempotency.put(actor_id=actor_id, operation=operation, key=idempotency_key, request_hash=request_hash, resource_type="obligation", resource_id=obligation.id, response=response)
+            uow.commit()
+            return response
+
+    def create_payment(self, *, actor_id: UUID, idempotency_key: str, command: CreatePaymentCommand) -> dict[str, Any]:
+        operation = "create_payment"
+        payload = command.model_dump(mode="json")
+        request_hash = _hash_request(payload)
+        with self.uow_factory() as uow:
+            replay = self._replay_if_exists(uow, actor_id, operation, idempotency_key, request_hash)
+            if replay:
+                return replay
+            payment = Payment.draft(
+                entity_id=command.entity_id,
+                money_account_id=command.money_account_id,
+                counterparty_id=command.counterparty_id,
+                direction=command.direction,
+                amount=command.amount,
+                currency=command.currency,
+                event_date=command.event_date,
+                allocations=[AllocationRequest(item.obligation_id, item.amount) for item in command.allocations],
+            )
+            uow.finance.get_money_account_ledger(payment.money_account_id, payment.entity_id, payment.currency)
+            uow.finance.add_payment(payment, actor_id)
+            response = _serialize_payment(payment)
+            uow.audit.append(actor_id=actor_id, action="create", entity_type="payment", entity_id=payment.id, before=None, after=response)
+            uow.idempotency.put(actor_id=actor_id, operation=operation, key=idempotency_key, request_hash=request_hash, resource_type="payment", resource_id=payment.id, response=response)
+            uow.commit()
+            return response
+
+    def post_payment(self, *, actor_id: UUID, idempotency_key: str, payment_id: UUID, expected_version: int) -> dict[str, Any]:
+        operation = "post_payment"
+        payload = {"payment_id": str(payment_id), "expected_version": expected_version}
+        request_hash = _hash_request(payload)
+        with self.uow_factory() as uow:
+            replay = self._replay_if_exists(uow, actor_id, operation, idempotency_key, request_hash)
+            if replay:
+                return replay
+            payment = uow.finance.get_payment(payment_id, for_update=True)
+            if not payment:
+                raise NotFoundError("payment not found")
+            if payment.version != expected_version:
+                raise ValidationError("payment version conflict")
+            if payment.status not in {RecordStatus.DRAFT, RecordStatus.REVIEW}:
+                raise ValidationError("only draft/review payment can be posted")
+            if payment.allocation_total > payment.amount:
+                raise ValidationError("allocation total cannot exceed payment amount")
+
+            # Stable lock order is intentional: it prevents deadlock patterns when one payment spans several obligations.
+            obligations: dict[UUID, Obligation] = {}
+            for obligation_id in sorted({row.obligation_id for row in payment.allocations}, key=str):
+                obligation = uow.finance.get_obligation(obligation_id, for_update=True)
+                if not obligation:
+                    raise NotFoundError(f"obligation {obligation_id} not found")
+                obligations[obligation_id] = obligation
+
+            expected_direction = ObligationDirection.PAYABLE if payment.direction == PaymentDirection.OUT else ObligationDirection.RECEIVABLE
+            proposed_by_obligation: dict[UUID, Decimal] = {}
+            for row in payment.allocations:
+                obligation = obligations[row.obligation_id]
+                if obligation.status != RecordStatus.POSTED:
+                    raise ValidationError("payment can allocate only to posted obligations")
+                if obligation.entity_id != payment.entity_id:
+                    raise ValidationError("payment and obligation entity mismatch")
+                if obligation.counterparty_id != payment.counterparty_id:
+                    raise ValidationError("payment and obligation counterparty mismatch")
+                if obligation.currency != payment.currency:
+                    raise ValidationError("payment and obligation currency mismatch")
+                if obligation.direction != expected_direction:
+                    raise ValidationError("payment direction does not match obligation direction")
+                proposed_by_obligation[row.obligation_id] = money(proposed_by_obligation.get(row.obligation_id, Decimal("0.00")) + row.amount)
+
+            for obligation_id, proposed in proposed_by_obligation.items():
+                remaining = uow.finance.obligation_remaining(obligation_id)
+                if proposed > remaining:
+                    raise ValidationError(f"allocation exceeds obligation remaining amount: {obligation_id}")
+
+            cash_ledger_id = uow.finance.get_money_account_ledger(payment.money_account_id, payment.entity_id, payment.currency)
+            allocation_total = payment.allocation_total
+            remainder = payment.unallocated_amount
+            posting_lines: list[PostingLine] = []
+            advance: Advance | None = None
+
+            if payment.direction == PaymentDirection.OUT:
+                ap_id = uow.finance.get_system_ledger_account(payment.entity_id, payment.currency, "AP_CONTROL")
+                if allocation_total:
+                    posting_lines.append(PostingLine(ap_id, PostingSide.DEBIT, allocation_total))
+                if remainder:
+                    advance_account = uow.finance.get_system_ledger_account(payment.entity_id, payment.currency, "SUPPLIER_ADVANCE")
+                    posting_lines.append(PostingLine(advance_account, PostingSide.DEBIT, remainder))
+                    advance = Advance(
+                        id=uuid4(), entity_id=payment.entity_id, counterparty_id=payment.counterparty_id,
+                        source_payment_id=payment.id, direction=AdvanceDirection.PAID,
+                        original_amount=remainder, currency=payment.currency, event_date=payment.event_date,
+                    )
+                posting_lines.append(PostingLine(cash_ledger_id, PostingSide.CREDIT, payment.amount))
+            else:
+                ar_id = uow.finance.get_system_ledger_account(payment.entity_id, payment.currency, "AR_CONTROL")
+                posting_lines.append(PostingLine(cash_ledger_id, PostingSide.DEBIT, payment.amount))
+                if allocation_total:
+                    posting_lines.append(PostingLine(ar_id, PostingSide.CREDIT, allocation_total))
+                if remainder:
+                    advance_account = uow.finance.get_system_ledger_account(payment.entity_id, payment.currency, "CUSTOMER_ADVANCE")
+                    posting_lines.append(PostingLine(advance_account, PostingSide.CREDIT, remainder))
+                    advance = Advance(
+                        id=uuid4(), entity_id=payment.entity_id, counterparty_id=payment.counterparty_id,
+                        source_payment_id=payment.id, direction=AdvanceDirection.RECEIVED,
+                        original_amount=remainder, currency=payment.currency, event_date=payment.event_date,
+                    )
+
+            posting = FinancialPosting(
+                id=uuid4(),
+                entity_id=payment.entity_id,
+                currency=payment.currency,
+                event_date=payment.event_date,
+                posting_type="payment_posted",
+                source_type="payment",
+                source_id=payment.id,
+                created_by=actor_id,
+                lines=posting_lines,
+            )
+            posting.validate_balanced()
+            before = _serialize_payment(payment)
+            uow.finance.add_posting(posting)
+            if advance:
+                uow.finance.add_advance(advance)
+            payment.post(posting.id)
+            uow.finance.save_payment(payment)
+            response = _serialize_payment(payment, advance)
+            response["obligation_balances"] = {
+                str(obligation_id): f"{uow.finance.obligation_remaining(obligation_id):.2f}"
+                for obligation_id in obligations
+            }
+            uow.audit.append(actor_id=actor_id, action="post", entity_type="payment", entity_id=payment.id, before=before, after=response)
+            uow.idempotency.put(actor_id=actor_id, operation=operation, key=idempotency_key, request_hash=request_hash, resource_type="payment", resource_id=payment.id, response=response)
+            uow.commit()
+            return response
+
+    def get_obligation(self, obligation_id: UUID) -> dict[str, Any]:
+        with self.uow_factory() as uow:
+            obligation = uow.finance.get_obligation(obligation_id)
+            if not obligation:
+                raise NotFoundError("obligation not found")
+            return _serialize_obligation(obligation, uow.finance.obligation_remaining(obligation.id))
+
+    @staticmethod
+    def _replay_if_exists(uow: UnitOfWork, actor_id: UUID, operation: str, key: str, request_hash: str) -> dict[str, Any] | None:
+        if not key or len(key) > 200:
+            raise ValidationError("Idempotency-Key is required and must be <= 200 characters")
+        existing = uow.idempotency.get(actor_id, operation, key)
+        if not existing:
+            return None
+        if existing["request_hash"] != request_hash:
+            raise IdempotencyConflictError("idempotency key was already used with a different request")
+        return existing["response"]

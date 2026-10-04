@@ -1,0 +1,24 @@
+-- Greenhouse Owner OS Architecture v2 — schema snapshot for implemented Module 01 slice.
+-- Alembic migrations are authoritative for executable schema changes.
+-- This file intentionally mirrors the first two migrations at the logical level.
+
+-- PostgreSQL schemas: core, finance, audit.
+-- core.entities
+-- core.actors
+-- core.counterparties
+-- finance.ledger_accounts
+-- finance.money_accounts
+-- finance.postings (immutable balanced managerial posting header)
+-- finance.posting_entries (immutable debit/credit entries)
+-- finance.obligations (draft/review/posted/reversed)
+-- finance.payments (draft/review/posted/reversed)
+-- finance.payment_allocations (many-to-many payment <-> obligation)
+-- finance.advances (explicit remainder/prepayment; never negative obligation)
+-- audit.idempotency_keys
+-- audit.events (append-only)
+-- finance.obligation_balances view
+-- finance.payment_balances view
+-- finance.money_account_balances view
+
+-- Future R1 schema namespaces already reserved by Architecture v2 but intentionally not migrated
+-- until their vertical slices are implemented: harvest, docs, ai, legacy.

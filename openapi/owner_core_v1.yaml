@@ -1,0 +1,177 @@
+openapi: 3.1.0
+info:
+  title: Greenhouse Owner OS — Owner Core API
+  version: 0.1.0
+  description: API contract for the first finance vertical slice. Financial amounts are JSON strings in responses and decimals in requests; clients must not use binary floating point for calculations.
+servers:
+  - url: /v1
+paths:
+  /obligations:
+    post:
+      operationId: createObligationDraft
+      summary: Create obligation draft; no financial effect
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ObligationCreate' }
+      responses:
+        '201':
+          description: Draft created
+          content: { application/json: { schema: { $ref: '#/components/schemas/Obligation' } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /obligations/{id}:
+    get:
+      operationId: getObligation
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Obligation with derived remaining amount
+          content: { application/json: { schema: { $ref: '#/components/schemas/Obligation' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /obligations/{id}/post:
+    post:
+      operationId: postObligation
+      summary: Post obligation and immutable balanced posting atomically
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: expected_version
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Posted
+          content: { application/json: { schema: { $ref: '#/components/schemas/Obligation' } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /payments:
+    post:
+      operationId: createPaymentDraft
+      summary: Create settlement payment draft and proposed allocations; no financial effect
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentCreate' }
+      responses:
+        '201':
+          description: Draft created
+          content: { application/json: { schema: { $ref: '#/components/schemas/Payment' } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+  /payments/{id}/post:
+    post:
+      operationId: postPayment
+      summary: Lock referenced obligations; validate and post payment, allocations, advance remainder and balanced posting in one transaction
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: expected_version
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Posted
+          content: { application/json: { schema: { $ref: '#/components/schemas/Payment' } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Validation' }
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 200 }
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    Money:
+      type: string
+      pattern: '^-?[0-9]+\\.[0-9]{2}$'
+      examples: ['10000.00']
+    ObligationCreate:
+      type: object
+      additionalProperties: false
+      required: [entity_id, counterparty_id, direction, original_amount, currency, event_date, offset_ledger_account_id]
+      properties:
+        entity_id: { type: string, format: uuid }
+        counterparty_id: { type: string, format: uuid }
+        direction: { type: string, enum: [payable, receivable] }
+        original_amount: { type: number, exclusiveMinimum: 0 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        event_date: { type: string, format: date }
+        due_date: { type: [string, 'null'], format: date }
+        offset_ledger_account_id: { type: string, format: uuid }
+    Obligation:
+      type: object
+      required: [id, direction, original_amount, remaining_amount, currency, status, version]
+      properties:
+        id: { type: string, format: uuid }
+        direction: { type: string, enum: [payable, receivable] }
+        original_amount: { $ref: '#/components/schemas/Money' }
+        remaining_amount: { $ref: '#/components/schemas/Money' }
+        currency: { type: string }
+        status: { type: string, enum: [draft, review, posted, reversed] }
+        version: { type: integer }
+        posting_id: { type: [string, 'null'], format: uuid }
+    Allocation:
+      type: object
+      additionalProperties: false
+      required: [obligation_id, amount]
+      properties:
+        obligation_id: { type: string, format: uuid }
+        amount: { type: number, exclusiveMinimum: 0 }
+    PaymentCreate:
+      type: object
+      additionalProperties: false
+      required: [entity_id, money_account_id, counterparty_id, direction, amount, currency, event_date]
+      properties:
+        entity_id: { type: string, format: uuid }
+        money_account_id: { type: string, format: uuid }
+        counterparty_id: { type: string, format: uuid }
+        direction: { type: string, enum: [in, out] }
+        amount: { type: number, exclusiveMinimum: 0 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        event_date: { type: string, format: date }
+        allocations:
+          type: array
+          items: { $ref: '#/components/schemas/Allocation' }
+    Payment:
+      type: object
+      required: [id, direction, amount, currency, status, version, allocation_total, unallocated_amount, allocations]
+      properties:
+        id: { type: string, format: uuid }
+        direction: { type: string, enum: [in, out] }
+        amount: { $ref: '#/components/schemas/Money' }
+        currency: { type: string }
+        status: { type: string, enum: [draft, review, posted, reversed] }
+        version: { type: integer }
+        allocation_total: { $ref: '#/components/schemas/Money' }
+        unallocated_amount: { $ref: '#/components/schemas/Money' }
+        advance_id: { type: [string, 'null'], format: uuid }
+        allocations:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Allocation'
+              - type: object
+                properties: { id: { type: string, format: uuid } }
+  responses:
+    Conflict:
+      description: Version or idempotency conflict
+    Validation:
+      description: Business validation failed; no partial effect committed
+    NotFound:
+      description: Resource not found

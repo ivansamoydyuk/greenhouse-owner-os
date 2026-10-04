@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Any, Protocol
+from uuid import UUID
+
+from greenhouse_owner_os.domain.finance import Advance, FinancialPosting, Obligation, Payment
+
+
+class FinanceRepository(Protocol):
+    def add_obligation(self, obligation: Obligation, actor_id: UUID) -> None: ...
+    def get_obligation(self, obligation_id: UUID, *, for_update: bool = False) -> Obligation | None: ...
+    def save_obligation(self, obligation: Obligation) -> None: ...
+    def obligation_remaining(self, obligation_id: UUID) -> Decimal: ...
+
+    def add_payment(self, payment: Payment, actor_id: UUID) -> None: ...
+    def get_payment(self, payment_id: UUID, *, for_update: bool = False) -> Payment | None: ...
+    def save_payment(self, payment: Payment) -> None: ...
+
+    def add_advance(self, advance: Advance) -> None: ...
+    def get_advance_by_payment(self, payment_id: UUID) -> Advance | None: ...
+
+    def add_posting(self, posting: FinancialPosting) -> None: ...
+    def get_system_ledger_account(self, entity_id: UUID, currency: str, system_code: str) -> UUID: ...
+    def get_money_account_ledger(self, money_account_id: UUID, entity_id: UUID, currency: str) -> UUID: ...
+    def assert_ledger_account_scope(self, account_id: UUID, entity_id: UUID, currency: str) -> None: ...
+
+
+class IdempotencyRepository(Protocol):
+    def get(self, actor_id: UUID, operation: str, key: str) -> dict[str, Any] | None: ...
+    def put(
+        self,
+        *,
+        actor_id: UUID,
+        operation: str,
+        key: str,
+        request_hash: str,
+        resource_type: str,
+        resource_id: UUID,
+        response: dict[str, Any],
+    ) -> None: ...
+
+
+class AuditRepository(Protocol):
+    def append(
+        self,
+        *,
+        actor_id: UUID,
+        action: str,
+        entity_type: str,
+        entity_id: UUID,
+        before: dict[str, Any] | None,
+        after: dict[str, Any] | None,
+        reason: str | None = None,
+    ) -> None: ...
+
+
+class UnitOfWork(Protocol):
+    finance: FinanceRepository
+    idempotency: IdempotencyRepository
+    audit: AuditRepository
+
+    def __enter__(self) -> "UnitOfWork": ...
+    def __exit__(self, exc_type, exc, tb) -> None: ...
+    def commit(self) -> None: ...
+    def rollback(self) -> None: ...
