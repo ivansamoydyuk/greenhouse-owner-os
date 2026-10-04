@@ -120,6 +120,8 @@ class SqlAlchemyFinanceRepository:
             version=payment.version,
             created_by=actor_id,
         ))
+        # No ORM relationship orders these inserts; persist the FK parent first.
+        self.session.flush()
         for allocation in payment.allocations:
             self.session.add(PaymentAllocationRow(
                 id=allocation.id,
@@ -206,6 +208,8 @@ class SqlAlchemyFinanceRepository:
             reversal_of_id=posting.reversal_of_id,
             created_by=posting.created_by,
         ))
+        # Balance validation is deferred, so the header may flush before its lines.
+        self.session.flush()
         for line in posting.lines:
             self.session.add(PostingEntryRow(
                 posting_id=posting.id,
