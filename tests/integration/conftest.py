@@ -24,8 +24,11 @@ if not DATABASE_URL:
         allow_module_level=True,
     )
 
-if "test" not in DATABASE_URL.lower():
-    pytest.fail("TEST_DATABASE_URL must visibly identify a disposable test database; refusing destructive schema reset")
+from greenhouse_owner_os.infrastructure.test_safety import require_disposable_database
+try:
+    require_disposable_database(DATABASE_URL, os.getenv('APP_ENV'))
+except ValueError as exc:
+    pytest.fail(str(exc))
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,7 @@ class PgFixture:
 
 
 def _reset_and_migrate(database_url: str) -> None:
+    require_disposable_database(database_url, os.getenv('APP_ENV'))
     engine = create_engine(database_url, future=True)
     with engine.begin() as conn:
         conn.execute(text("DROP SCHEMA IF EXISTS audit CASCADE"))

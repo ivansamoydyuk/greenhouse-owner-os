@@ -9,10 +9,11 @@ from greenhouse_owner_os.infrastructure.models import (
 )
 
 
-def reconcile(session, *, include_classification=False):
+def reconcile(session, *, include_classification=False, snapshot_established=False):
     # A consistent snapshot is necessary: independent READ COMMITTED selects could
     # otherwise report a valid concurrent transaction as a false inconsistency.
-    session.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY'))
+    if not snapshot_established:
+        session.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY'))
     models = [ObligationRow, PaymentRow, PaymentAllocationRow, AdvanceRow, ApplicationRow,
               PostingRow, PostingEntryRow, LedgerAccountRow, MoneyAccountRow, CounterpartyRow,
               TransferRow, FundingRow, SettlementRow, EntityRow, ImportBatchRow, HistoricalCandidateRow]

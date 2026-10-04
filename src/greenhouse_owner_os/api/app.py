@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from greenhouse_owner_os.domain.references import EntitySetup, MoneyAccountSetup, CounterpartySetup, BootstrapCommand, SUPPORTED_CURRENCIES
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -12,7 +13,7 @@ from greenhouse_owner_os.domain.errors import ConflictError, DomainError, NotFou
 from greenhouse_owner_os.services.finance import FinanceService
 
 
-def create_app(*, finance_service: FinanceService, actor_provider) -> FastAPI:
+def create_app(*, finance_service: FinanceService, actor_provider, reference_service=None) -> FastAPI:
     app = FastAPI(title="Greenhouse Owner OS Owner Core", version="0.1.0")
 
     @app.exception_handler(NotFoundError)
@@ -26,6 +27,53 @@ def create_app(*, finance_service: FinanceService, actor_provider) -> FastAPI:
     @app.exception_handler(ValidationError)
     async def validation_handler(_, exc: ValidationError):
         return _json_error(422, "business_validation", str(exc))
+
+    if reference_service is not None:
+
+        @app.get('/v1/reference-currencies')
+        def reference_currencies(actor_id: UUID = Depends(actor_provider)):
+            return {'currencies': SUPPORTED_CURRENCIES, 'fx_supported': False}
+
+        @app.post('/v1/entities', status_code=201)
+        def setup_entity(body: EntitySetup, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+            return reference_service.setup(kind='entity',command=body,actor_id=actor_id,idempotency_key=idempotency_key)
+
+        @app.post('/v1/entities/{entity_id}/money-accounts', status_code=201)
+        def setup_money_account(entity_id: UUID, body: MoneyAccountSetup, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+            return reference_service.setup(kind='money_account',entity_id=entity_id,command=body,actor_id=actor_id,idempotency_key=idempotency_key)
+
+        @app.post('/v1/entities/{entity_id}/counterparties', status_code=201)
+        def setup_counterparty(entity_id: UUID, body: CounterpartySetup, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+            return reference_service.setup(kind='counterparty',entity_id=entity_id,command=body,actor_id=actor_id,idempotency_key=idempotency_key)
+
+        @app.post('/v1/entities/{entity_id}/reference-bootstrap')
+        def reference_bootstrap(entity_id: UUID, body: BootstrapCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+            return reference_service.bootstrap(entity_id=entity_id,currency=body.currency,actor_id=actor_id,idempotency_key=idempotency_key)
+
+        @app.get('/v1/entities/{entity_id}/references')
+        def references(entity_id: UUID, actor_id: UUID = Depends(actor_provider)):
+            return reference_service.read(entity_id)
+
+        @app.get('/v1/entities/{entity_id}/readiness')
+        def readiness(entity_id: UUID, actor_id: UUID = Depends(actor_provider)):
+            return reference_service.readiness(entity_id)
+
+        @app.get('/v1/entities/{entity_id}/resources/{resource_id}/audit')
+        def audit(entity_id: UUID, resource_id: UUID, actor_id: UUID = Depends(actor_provider)):
+            return reference_service.audit(entity_id,resource_id)
+
+    @app.get('/v1/payments/{payment_id}')
+    def get_payment(payment_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        from greenhouse_owner_os.services.finance import _serialize_payment
+        with finance_service.uow_factory() as uow:
+            payment = uow.finance.get_payment(payment_id)
+            if not payment:
+                raise NotFoundError('payment not found')
+            return _serialize_payment(payment,uow.finance.get_advance_by_payment(payment_id))
+
+    @app.get('/v1/finance/reconciliation')
+    def reconciliation(actor_id: UUID = Depends(actor_provider)):
+        return finance_service.reconcile(include_classification=True)
 
     @app.get('/v1/entities/{entity_id}/cutover')
     def cutover(entity_id: UUID, actor_id: UUID = Depends(actor_provider)):
@@ -191,6 +239,19 @@ def create_app(*, finance_service: FinanceService, actor_provider) -> FastAPI:
     @app.get('/v1/entities/{entity_id}/counterparties/{counterparty_id}/financial-position')
     def financial_position(entity_id: UUID,counterparty_id: UUID,currency: str,actor_id: UUID = Depends(actor_provider)):
         return finance_service.get_counterparty_position(entity_id,counterparty_id,currency)
+
+    def cash_reader(kind):
+        def read_cash(resource_id: UUID, actor_id: UUID = Depends(actor_provider)):
+            from greenhouse_owner_os.domain.cash import serialize_cash
+            with finance_service.uow_factory() as uow:
+                record = uow.finance.get_cash_record(kind,resource_id)
+                if not record:
+                    raise NotFoundError(kind+' not found')
+                return serialize_cash(record)
+        return read_cash
+
+    for path, kind in (('transfers','transfer'),('owner-fundings','owner_funding'),('direct-settlements','direct_settlement'),('advance-applications','advance_application')):
+        app.add_api_route('/v1/'+path+'/{resource_id}',cash_reader(kind),methods=['GET'],name='read_'+kind)
 
     return app
 

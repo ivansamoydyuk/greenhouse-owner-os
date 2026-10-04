@@ -2,7 +2,7 @@ name: PostgreSQL verification
 
 on:
   push:
-    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation]
+    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness]
   workflow_dispatch:
 
 permissions:
@@ -27,6 +27,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     env:
+      APP_ENV: test
       DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
       TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
     steps:
@@ -63,9 +64,11 @@ jobs:
           from sqlalchemy import create_engine, text
           with create_engine(os.environ['DATABASE_URL']).connect() as conn:
               revisions = conn.execute(text('SELECT version_num FROM public.alembic_version')).scalars().all()
-          assert revisions == ['20261004_0006'], 'Unexpected Alembic revision'
-          print('Alembic head: 20261004_0006')
+          assert revisions == ['20261004_0007'], 'Unexpected Alembic revision'
+          print('Alembic head: 20261004_0007')
           PY
+      - name: Operational API smoke and reference safety
+        run: pytest tests/integration/test_postgres_readiness.py -v
       - name: PostgreSQL integration and concurrency tests
         run: |
           pytest tests/integration -v --junitxml="$RUNNER_TEMP/integration.xml"

@@ -41,6 +41,7 @@ class EntityRow(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     finance_cutover_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=text("DATE '2026-10-04'"))
     finance_opening_policy: Mapped[str] = mapped_column(String(10), nullable=False, server_default='ZERO')
+    reference_class: Mapped[str] = mapped_column(String(20), nullable=False, server_default='OWNER_VERIFIED')
     default_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="TRY")
     active: Mapped[bool] = mapped_column(nullable=False, default=True, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)
@@ -372,3 +373,18 @@ class HistoricalCandidateRow(Base):
     source_reference: Mapped[str | None] = mapped_column(Text)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.actors.id'), nullable=False)
+
+
+class ReferenceRecordRow(Base):
+    __tablename__ = 'reference_records'
+    __table_args__ = (UniqueConstraint('entity_id', 'kind', 'canonical_key', name='uq_reference_identity'), {'schema': 'core'})
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.entities.id'), nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    canonical_key: Mapped[str] = mapped_column(Text, nullable=False)
+    reference_class: Mapped[str] = mapped_column(String(20), nullable=False)
+    original_name: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    definition: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.actors.id'), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)
