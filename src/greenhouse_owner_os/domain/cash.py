@@ -23,6 +23,11 @@ class CashCommand(StrictModel):
             raise ValueError('use an exact decimal string, not float')
         return value
 
+    @field_validator('amount')
+    @classmethod
+    def canonical_amount(cls, value):
+        return value.quantize(Decimal('0.01'))
+
     @field_validator('currency')
     @classmethod
     def currency_code(cls, value):
@@ -39,6 +44,11 @@ class TransferCommand(CashCommand):
     @classmethod
     def exact_fee(cls, value):
         return cls.exact_amount(value)
+
+    @field_validator('fee')
+    @classmethod
+    def canonical_fee(cls, value):
+        return value.quantize(Decimal('0.01'))
 
     @model_validator(mode='after')
     def valid_transfer(self):

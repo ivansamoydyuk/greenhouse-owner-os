@@ -79,6 +79,7 @@ def transfer_and_fee(fx):
 def transfer_no_pnl_retry(fx):
     cmd=transfer(fx)
     d=create(fx,'transfer',cmd,key='create-transfer');assert create(fx,'transfer',cmd,key='create-transfer')==d
+    assert create(fx,'transfer',transfer(fx,'20000.00'),key='create-transfer')==d
     with pytest.raises(IdempotencyConflictError): create(fx,'transfer',transfer(fx,'1'),key='create-transfer')
     r=post(fx,'transfer',d,key='post-transfer');assert post(fx,'transfer',d,key='post-transfer')==r
     assert balance(fx,fx.money_account_id)==Decimal('-20000')
