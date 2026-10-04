@@ -193,7 +193,7 @@ def test_environment_separation_and_database_guards(preview):
         s.delete(cp)
     result=refs.readiness(UUID(eid))
     assert not result['ok'] and any(f['code']=='orphan_reference' for f in result['findings'])
-    assert len(refs.read(UUID(eid))['references'])==12
+    assert len(refs.read(UUID(eid))['references'])==13
     # Restore deliberately removed fixture resource, outside validation tooling.
     with sf.begin() as s:
         s.add(CounterpartyRow(id=cp.id,entity_id=cp.entity_id,name=cp.name,counterparty_type=cp.counterparty_type))

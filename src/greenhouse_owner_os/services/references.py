@@ -128,7 +128,7 @@ class ReferenceService:
     def bootstrap(self, *, entity_id, currency, actor_id, idempotency_key):
         if currency not in SUPPORTED_CURRENCIES:
             raise ValidationError('unsupported setup currency')
-        operation = 'reference_bootstrap'
+        operation = 'reference_bootstrap_v2'
         request_hash = _hash_request({'entity_id':str(entity_id),'currency':currency})
         with self.uow_factory() as uow:
             self._entity(uow.session, entity_id)
@@ -151,7 +151,7 @@ class ReferenceService:
                         name=code, currency=currency, account_class=account_class,
                         normal_side=side, system_code=code))
                 refs.append(self._ensure(uow, entity_id=entity_id, kind='ledger_account',
-                    key=currency+'/'+code, name=code, source='system:finance-r1-bootstrap:v1',
+                    key=currency+'/'+code, name=code, source='system:finance-r1-bootstrap:v2',
                     definition=definition, classification='SYSTEM', actor_id=actor_id, build=build))
             response = {'entity_id':str(entity_id),'currency':currency,'references':refs,'financial_effect':'NONE'}
             uow.idempotency.put(actor_id=actor_id, operation=operation, key=idempotency_key,
@@ -178,7 +178,7 @@ class ReferenceService:
             ledgers = {r.id:r for r in s.scalars(select(LedgerAccountRow).where(LedgerAccountRow.entity_id==entity_id))}
             accounts = list(s.scalars(select(MoneyAccountRow).where(MoneyAccountRow.entity_id==entity_id)))
             cps = list(s.scalars(select(CounterpartyRow).where(CounterpartyRow.entity_id==entity_id)))
-            if str(entity.finance_cutover_date) != '2026-10-04' or entity.finance_opening_policy != 'ZERO':
+            if str(entity.finance_cutover_date) != '2026-10-04' or entity.finance_opening_policy not in ('ZERO','EXPLICIT_AP'):
                 fail('cutover_configuration', entity_id)
             currencies = {entity.default_currency} | {a.currency for a in accounts if a.active}
             for currency in sorted(currencies):
@@ -231,8 +231,10 @@ class ReferenceService:
             if not reconciliation['ok']:
                 findings.extend(reconciliation['findings'])
             return dict(ok=not findings, findings=sorted(findings,key=lambda f:(f['code'],str(f))),
-                entity_id=str(entity_id), environment=self.environment, opening_policy='ZERO',
-                opening_explanation='No opening journal; current balances derive only from live operations.',
+                entity_id=str(entity_id), environment=self.environment, opening_policy=entity.finance_opening_policy,
+                opening_explanation=('No opening journal; current balances derive only from live operations.'
+                    if entity.finance_opening_policy=='ZERO' else
+                    'Zero cash/AR/advances; explicit owner-verified AP at cut-over uses opening offset, not expense/revenue. Original dates preserved.'),
                 reconciliation=reconciliation)
 
     def audit(self, entity_id, resource_id):

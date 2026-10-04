@@ -1610,6 +1610,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/opening-payables:
+    post:
+      summary: Recognize Opening Payable
+      operationId: recognize_opening_payable_v1_entities__entity_id__opening_payables_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpeningPayableCommand'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -2588,6 +2624,57 @@ components:
       - currency
       - account_type
       title: MoneyAccountSetup
+    OpeningPayableCommand:
+      properties:
+        counterparty_id:
+          type: string
+          format: uuid
+          title: Counterparty Id
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Amount
+        currency:
+          type: string
+          enum:
+          - TRY
+          - USD
+          - EUR
+          - UAH
+          title: Currency
+        original_event_date:
+          type: string
+          format: date
+          title: Original Event Date
+        description:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Description
+        source:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Source
+        approval_reference:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Approval Reference
+      additionalProperties: false
+      type: object
+      required:
+      - counterparty_id
+      - amount
+      - currency
+      - original_event_date
+      - description
+      - source
+      - approval_reference
+      title: OpeningPayableCommand
   responses:
     Conflict:
       description: Version or idempotency conflict

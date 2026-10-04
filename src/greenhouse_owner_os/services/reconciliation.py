@@ -6,6 +6,7 @@ from greenhouse_owner_os.infrastructure.models import (
     ObligationRow, PaymentRow, PaymentAllocationRow, AdvanceRow, ApplicationRow,
     PostingRow, PostingEntryRow, LedgerAccountRow, MoneyAccountRow, CounterpartyRow,
     TransferRow, FundingRow, SettlementRow, EntityRow, ImportBatchRow, HistoricalCandidateRow,
+    OpeningPayableRow,
 )
 
 
@@ -18,10 +19,11 @@ def reconcile(session, *, include_classification=False, snapshot_established=Fal
               PostingRow, PostingEntryRow, LedgerAccountRow, MoneyAccountRow, CounterpartyRow,
               TransferRow, FundingRow, SettlementRow, EntityRow, ImportBatchRow, HistoricalCandidateRow]
     rows = {m: {r.id:r for r in session.scalars(select(m).order_by(m.id)).all()} for m in models}
+    rows[OpeningPayableRow] = {r.obligation_id:r for r in session.scalars(select(OpeningPayableRow).order_by(OpeningPayableRow.obligation_id))}
     if entity_id is not None:
         for model in (ObligationRow, PaymentRow, AdvanceRow, ApplicationRow, PostingRow,
                       LedgerAccountRow, MoneyAccountRow, CounterpartyRow, TransferRow,
-                      FundingRow, SettlementRow, ImportBatchRow):
+                      FundingRow, SettlementRow, ImportBatchRow, OpeningPayableRow):
             rows[model] = {rid:r for rid,r in rows[model].items() if r.entity_id==entity_id}
         rows[EntityRow] = {rid:r for rid,r in rows[EntityRow].items() if rid==entity_id}
         for child, parent, key in ((PostingEntryRow,PostingRow,'posting_id'),
@@ -37,6 +39,32 @@ def check_snapshot(rows, *, include_classification=False):
     obs,pays,allocs,advs,apps,posts,entries,ledgers,accounts,cps,transfers,fundings,settlements = (
         rows[m] for m in [ObligationRow, PaymentRow, PaymentAllocationRow, AdvanceRow, ApplicationRow,
         PostingRow, PostingEntryRow, LedgerAccountRow, MoneyAccountRow, CounterpartyRow, TransferRow, FundingRow, SettlementRow])
+    openings = rows.get(OpeningPayableRow, {})
+    entities = rows.get(EntityRow, {})
+    def valid_opening(r):
+        a = openings.get(r.id)
+        e = entities.get(r.entity_id)
+        l = ledgers.get(r.offset_ledger_account_id)
+        return bool(a and e and l and r.direction=='payable' and
+            (a.entity_id,a.counterparty_id,a.currency,a.amount,a.original_event_date)==
+            (r.entity_id,r.counterparty_id,r.currency,r.original_amount,r.event_date) and
+            a.opening_date==e.finance_cutover_date and a.original_event_date<a.opening_date and
+            e.finance_opening_policy=='EXPLICIT_AP' and a.verification_state=='OWNER_VERIFIED' and
+            (l.entity_id,l.currency,l.system_code,l.account_class,l.normal_side)==
+            (r.entity_id,r.currency,'OPENING_PAYABLE_OFFSET','opening_equity','debit') and
+            a.verified_by==r.created_by and a.source.strip() and a.approval_reference.strip() and
+            a.description.strip() and a.verified_at)
+    for oid, a in openings.items():
+        r = obs.get(oid)
+        if not r or not valid_opening(r) or r.status not in ('posted','reversed'):
+            fail('invalid_opening_payable',oid)
+        p = posts.get(r.posting_id) if r else None
+        if not p or p.posting_type!='opening_payable' or p.event_date!=a.opening_date or p.created_by!=a.verified_by:
+            fail('opening_posting_provenance',oid)
+    for e in entities.values():
+        has_openings = any(a.entity_id==e.id for a in openings.values())
+        if (e.finance_opening_policy=='EXPLICIT_AP') != has_openings:
+            fail('opening_policy_linkage',e.id)
     journals = defaultdict(Counter)
     for e in entries.values():
         p,l = posts.get(e.posting_id),ledgers.get(e.ledger_account_id)
@@ -104,7 +132,8 @@ def check_snapshot(rows, *, include_classification=False):
                 if not old or old.status!='reversed' or (old.entity_id,old.currency,old.counterparty_id,old.direction)!=(r.entity_id,r.currency,r.counterparty_id,r.direction): fail('orphan_replacement',r.id)
             if r.status not in ('posted','reversed'): continue
             p=posts.get(r.posting_id)
-            if not p or (p.entity_id,p.currency,p.source_type,p.source_id,p.event_date,p.reversal_of_id)!=(r.entity_id,r.currency,kind,r.id,r.event_date,None): fail('domain_posting_linkage',r.id);continue
+            recognition_date = openings[r.id].opening_date if kind=='obligation' and valid_opening(r) else r.event_date
+            if not p or (p.entity_id,p.currency,p.source_type,p.source_id,p.event_date,p.reversal_of_id)!=(r.entity_id,r.currency,kind,r.id,recognition_date,None): fail('domain_posting_linkage',r.id);continue
             if r.status=='reversed':
                 rev=posts.get(r.reversal_posting_id)
                 if not rev or rev.reversal_of_id!=p.id or rev.created_by!=r.reversed_by or rev.reason!=r.reversal_reason: fail('domain_reversal_linkage',r.id)
@@ -158,7 +187,7 @@ def check_snapshot(rows, *, include_classification=False):
             if r.status not in ('posted', 'reversed') and (r.posting_id or r.reversal_posting_id): fail('nonposting_domain_linkage', r.id)
             if EntityRow in rows and r.status in ('posted', 'reversed'):
                 entity = entities.get(r.entity_id)
-                if not entity or r.event_date < entity.finance_cutover_date: fail('pre_cutover_live_domain', r.id)
+                if not entity or (r.event_date < entity.finance_cutover_date and not (kind=='obligation' and valid_opening(r))): fail('pre_cutover_live_domain', r.id)
     for batch in batches.values():
         if batch.entity_id not in entities: fail('import_batch_entity', batch.id)
     for candidate in candidates.values():

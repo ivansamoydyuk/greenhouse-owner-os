@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from greenhouse_owner_os.domain.references import EntitySetup, MoneyAccountSetup, CounterpartySetup, BootstrapCommand, SUPPORTED_CURRENCIES
+from greenhouse_owner_os.domain.opening import OpeningPayableCommand
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -78,6 +79,11 @@ def create_app(*, finance_service: FinanceService, actor_provider, reference_ser
     @app.get('/v1/entities/{entity_id}/cutover')
     def cutover(entity_id: UUID, actor_id: UUID = Depends(actor_provider)):
         return finance_service.get_cutover_status(entity_id)
+
+    @app.post('/v1/entities/{entity_id}/opening-payables', status_code=201)
+    def recognize_opening_payable(entity_id: UUID, body: OpeningPayableCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.recognize_opening_payable(entity_id=entity_id,actor_id=actor_id,
+            idempotency_key=idempotency_key,command=body)
 
     @app.post('/v1/import-batches', status_code=201)
     def import_batch(body: ImportBatchCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
@@ -220,42 +226,58 @@ def create_app(*, finance_service: FinanceService, actor_provider, reference_ser
         return finance_service.apply_advance(actor_id=actor_id,idempotency_key=idempotency_key,command=body)
 
     @app.post('/v1/customer-advance-applications', status_code=201)
-    def apply_customer(body: AdvanceApplicationCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
-        if body.direction != 'received': raise ValidationError('customer application requires received advance')
-        return finance_service.apply_advance(actor_id=actor_id,idempotency_key=idempotency_key,command=body)
+    def apply_customer(body: AdvanceApplicationCom…25405 tokens truncated…al(row['amount'])
+                result['opening_balances']['payable'] = {currency:f'{amount:.2f}' for currency,amount in sorted(by_currency.items())}
+                result['opening_postings_generated'] = True
+                result['opening_payables'] = openings
+                result['opening_balance_policy'] = 'ZERO_OTHER_POSITIONS_WITH_EXPLICIT_VERIFIED_PAYABLES'
+            return result
 
-    @app.post('/v1/advance-applications/{resource_id}/reverse')
-    def reverse_application(resource_id: UUID, body: ReverseCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
-        return finance_service.reverse_cash(kind='advance_application',resource_id=resource_id,actor_id=actor_id,idempotency_key=idempotency_key,command=body)
+    def create_import_batch(self, *, actor_id, idempotency_key, command):
+        return self._import_evidence('import_batch', actor_id, idempotency_key, command)
 
-    @app.get('/v1/advance-applications/{resource_id}/linkage')
-    def application_linkage(resource_id: UUID, actor_id: UUID = Depends(actor_provider)):
-        return finance_service.get_linkage('advance_application',resource_id)
+    def import_historical_candidate(self, *, actor_id, idempotency_key, batch_id, command):
+        return self._import_evidence('historical_candidate', actor_id, idempotency_key, command, batch_id)
 
-    @app.get('/v1/advances/{advance_id}')
-    def advance_linkage(advance_id: UUID, actor_id: UUID = Depends(actor_provider)):
-        return finance_service.get_advance(advance_id)
+    def _import_evidence(self, kind, actor_id, key, command, batch_id=None):
+        from .finance import _hash_request
+        operation = 'import_' + kind
+        payload = command.model_dump(mode='json')
+        if kind == 'historical_candidate' and command.confidence is not None:
+            payload['confidence'] = str(command.confidence.normalize())
+        if batch_id is not None: payload['import_batch_id'] = str(batch_id)
+        request_hash = _hash_request(payload)
+        with self.uow_factory() as uow:
+            uow.idempotency.lock(actor_id, operation, key)
+            replay = self._replay_if_exists(uow, actor_id, operation, key, request_hash)
+            if replay: return replay
+            values = command.model_dump(mode='json' if kind == 'historical_candidate' else 'python')
+            if kind == 'import_batch':
+                uow.finance.get_cutover(command.entity_id)
+                response, created = uow.finance.ensure_import_batch({**values, 'created_by':actor_id})
+            else:
+                values = command.model_dump()
+                # Locator identity uses both original components; never amount/date
+                # or import timestamp. Same source locator with changed content conflicts.
+                source_key = _hash_request({'source_row':command.source_row, 'source_document':command.source_document})
+                evidence = command.model_dump(mode='json')
+                # Decimal representation must not create false retry/content collisions.
+                if command.confidence is not None: evidence['confidence'] = str(command.confidence.normalize())
+                response, created = uow.finance.ensure_historical_candidate({**values, 'import_batch_id':batch_id,
+                    'source_key':source_key, 'content_hash':_hash_request(evidence), 'created_by':actor_id})
+            if created:
+                uow.audit.append(actor_id=actor_id, action='import', entity_type=kind,
+                    entity_id=UUID(response['id']), before=None, after=response)
+            uow.idempotency.put(actor_id=actor_id, operation=operation, key=key, request_hash=request_hash,
+                resource_type=kind, resource_id=UUID(response['id']), response=response)
+            uow.commit()
+            return response
 
-    @app.get('/v1/entities/{entity_id}/counterparties/{counterparty_id}/financial-position')
-    def financial_position(entity_id: UUID,counterparty_id: UUID,currency: str,actor_id: UUID = Depends(actor_provider)):
-        return finance_service.get_counterparty_position(entity_id,counterparty_id,currency)
+    def get_import_batch(self, batch_id):
+        with self.uow_factory() as uow:
+            return {**uow.finance.get_import_batch(batch_id), 'posting_policy':'NON_POSTING',
+                    'candidates':uow.finance.historical_candidates(batch_id)}
 
-    def cash_reader(kind):
-        def read_cash(resource_id: UUID, actor_id: UUID = Depends(actor_provider)):
-            from greenhouse_owner_os.domain.cash import serialize_cash
-            with finance_service.uow_factory() as uow:
-                record = uow.finance.get_cash_record(kind,resource_id)
-                if not record:
-                    raise NotFoundError(kind+' not found')
-                return serialize_cash(record)
-        return read_cash
-
-    for path, kind in (('transfers','transfer'),('owner-fundings','owner_funding'),('direct-settlements','direct_settlement'),('advance-applications','advance_application')):
-        app.add_api_route('/v1/'+path+'/{resource_id}',cash_reader(kind),methods=['GET'],name='read_'+kind)
-
-    return app
-
-
-def _json_error(status: int, code: str, message: str):
-    from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
+    def get_historical_candidate(self, candidate_id):
+        with self.uow_factory() as uow:
+            return uow.finance.get_historical_candidate(candidate_id)

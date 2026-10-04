@@ -66,6 +66,7 @@ adoption needs a separately reviewed workflow.
 Setup supports TRY, USD, EUR and UAH independently; no exchange/conversion is
 performed. Bootstrap includes AP/AR, both advance controls, owner funding,
 transfer fee, general expense and general revenue. UUIDv5 identities and canonical
+Opening payable bootstrap additionally includes a reserved opening-equity offset.
 NFC/casefold duplicate keys are stable; original names are preserved exactly.
 Requests with changed original name/definition conflict. Repeated imports retain
 the first creator/source; each successful request key uses existing idempotency.
@@ -87,3 +88,23 @@ payment/undo/correction draft, funding, transfer, supplier advance application a
 undo, direct settlement, audit/linkage, counterparty position and reconciliation.
 `/v1/finance/reconciliation?entity_id={id}` scopes findings to one entity; omitting
 it checks all entities. Existing cut-over/historical guards stay in force.
+
+Owner-authorized opening payable correction is a separate explicit workflow:
+`POST /v1/entities/{id}/opening-payables` requires an authenticated owner,
+owner-confirmed entity/supplier references, a unique evidence source and approval
+reference. Original event date remains on the obligation; recognition occurs on
+the immutable cut-over date against reserved opening equity, never cash or P&L.
+The approval, obligation, journal and audit are atomic and immutable; ordinary
+payments/allocation and reversal remain supported. Other historical replay is
+still forbidden. The opening snapshot is initial recognition, not current debt.
+
+`config/owner_finance_opening.json` is explicit owner-confirmed input, NOT an
+automatic seed or production migration. It records the five zero money accounts
+and the approved TRY 2,600 payable to Серкан Ремонт насосов (original event
+2026-10-02, opening recognition 2026-10-04). No real operation is replayed.
+`python scripts/validate_owner_opening.py` validates these exact references and
+opening via the API only in the guarded disposable database. It is not a
+production setup command and creates no factual payment. Tests exercising later
+payments label them synthetic and reverse them. No remaining owner-reference
+data gate applies to this confirmed profile; production deployment remains out
+of scope.
