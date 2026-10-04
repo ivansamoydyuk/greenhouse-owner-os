@@ -204,6 +204,16 @@ def upgrade():
     END; $$;
     CREATE TRIGGER trg_ledger_scope BEFORE UPDATE ON finance.ledger_accounts
       FOR EACH ROW EXECUTE FUNCTION finance.protect_account_scope();
+    CREATE OR REPLACE FUNCTION finance.assert_money_account_scope() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM finance.ledger_accounts WHERE id=NEW.ledger_account_id
+        AND entity_id=NEW.entity_id AND currency=NEW.currency) THEN
+        RAISE EXCEPTION 'money account ledger entity/currency mismatch' USING ERRCODE='23514';
+      END IF;
+      RETURN NEW;
+    END; $$;
+    CREATE TRIGGER trg_money_scope_insert BEFORE INSERT ON finance.money_accounts
+      FOR EACH ROW EXECUTE FUNCTION finance.assert_money_account_scope();
     CREATE TRIGGER trg_money_scope BEFORE UPDATE ON finance.money_accounts
       FOR EACH ROW EXECUTE FUNCTION finance.protect_account_scope();
 

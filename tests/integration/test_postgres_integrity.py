@@ -159,3 +159,60 @@ def test_postgres_balanced_but_inexact_reversal_rolls_back(pgfx):
         s.rollback()
     assert counts(pgfx)==before
     assert pgfx.service.get_linkage("payment",UUID(pay["id"]))["status"]=="posted"
+
+
+def test_postgres_money_account_currency_cannot_mislabel_ledger(pgfx):
+    with pgfx.session_factory() as s:
+        bank=s.get(MoneyAccountRow,pgfx.money_account_id)
+        s.add(MoneyAccountRow(entity_id=pgfx.entity_id,ledger_account_id=bank.ledger_account_id,account_type="bank",name="Bad USD label",currency="USD"))
+        with pytest.raises(DBAPIError,match="ledger entity/currency mismatch"): s.commit()
+        s.rollback()
+
+
+def test_postgres_obligation_reversal_racing_payment_stays_consistent(pgfx):
+    ob=obligation(pgfx)
+    draft=payment(pgfx,[(ob["id"],"4000")],post=False)
+    def cancel():
+        try: return ("reversed",reverse(pgfx,"obligation",ob))
+        except ValidationError: return ("blocked",None)
+    def post():
+        try:
+            return ("posted",pgfx.service.post_payment(actor_id=pgfx.actor_id,idempotency_key="race-post",payment_id=UUID(draft["id"]),expected_version=1))
+        except ValidationError: return ("blocked",None)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        a=pool.submit(cancel);b=pool.submit(post)
+        outcomes=[a.result()[0],b.result()[0]]
+    assert outcomes in [["reversed","blocked"],["blocked","posted"]]
+    current=pgfx.service.get_obligation(UUID(ob["id"]))
+    assert (current["status"],current["remaining_amount"]) in [("reversed","0.00"),("posted","6000.00")]
+
+
+def test_postgres_replacement_link_database_validation(pgfx):
+    pay=payment(pgfx,(),"100")
+    draft=payment(pgfx,(),"50",post=False)
+    with pgfx.session_factory() as s:
+        with pytest.raises(DBAPIError):
+            s.execute(text("UPDATE finance.payments SET replacement_of_id=:original WHERE id=:replacement"),{"original":UUID(pay["id"]),"replacement":UUID(draft["id"])});s.commit()
+        s.rollback()
+    reverse(pgfx,"payment",pay)
+    payment(pgfx,(),"50",replacement=UUID(pay["id"]))
+    with pgfx.session_factory() as s:
+        duplicate=PaymentRow(entity_id=pgfx.entity_id,money_account_id=pgfx.money_account_id,counterparty_id=pgfx.counterparty_id,direction="out",amount=50,currency="TRY",event_date=DAY,status="draft",created_by=pgfx.actor_id,replacement_of_id=UUID(pay["id"]))
+        s.add(duplicate)
+        with pytest.raises(DBAPIError): s.commit()
+        s.rollback()
+
+
+def test_postgres_raw_obligation_reversal_rejects_active_allocation(pgfx):
+    ob=obligation(pgfx);pay=payment(pgfx,[(ob["id"],"4000")])
+    before=counts(pgfx)
+    with pgfx.session_factory() as s:
+        lines=s.scalars(select(PostingEntryRow).where(PostingEntryRow.posting_id==UUID(ob["posting_id"]))).all()
+        p=PostingRow(entity_id=pgfx.entity_id,currency="TRY",event_date=DAY,posting_type="obligation_reversed",source_type="obligation",source_id=UUID(ob["id"]),created_by=pgfx.actor_id,reversal_of_id=UUID(ob["posting_id"]),reason="unsafe")
+        s.add(p);s.flush()
+        for line in lines: s.add(PostingEntryRow(posting_id=p.id,ledger_account_id=line.ledger_account_id,side="credit" if line.side=="debit" else "debit",amount=line.amount))
+        s.flush()
+        with pytest.raises(DBAPIError,match="active allocated"):
+            s.execute(text("UPDATE finance.obligations SET status='reversed',version=version+1,reversal_posting_id=:pid,reversed_by=:actor,reversed_at=now(),reversal_reason='unsafe' WHERE id=:id"),{"pid":p.id,"actor":pgfx.actor_id,"id":UUID(ob["id"])});s.commit()
+        s.rollback()
+    assert counts(pgfx)==before
