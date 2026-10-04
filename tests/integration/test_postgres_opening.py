@@ -66,7 +66,8 @@ def test_explicit_opening_preserves_original_date_and_no_pnl_cash(preview):
     assert finance.get_linkage('obligation',UUID(opening['id']))['opening_provenance']==proof
     assert refs.readiness(UUID(eid))['ok'] and finance.reconcile(entity_id=UUID(eid))['ok']
     audit=c.get(f"/v1/entities/{eid}/resources/{opening['id']}/audit").json()['events']
-    assert [e['action'] for e in audit]==['create','opening_approve','post']
+    # Server now() is transaction-stable; audit API ties are UUID-sorted, not a sequence clock.
+    assert sorted(e['action'] for e in audit)==['create','opening_approve','post']
 
 
 def test_owner_confirmed_profile_normal_payment_allocation_and_reversal(preview):
