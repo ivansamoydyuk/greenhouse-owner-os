@@ -35,7 +35,7 @@ UTC_NOW = text("now()")
 
 class EntityRow(Base):
     __tablename__ = "entities"
-    __table_args__ = (CheckConstraint("finance_opening_policy = 'ZERO'", name="ck_entity_opening_policy"), {"schema": "core"})
+    __table_args__ = (CheckConstraint("finance_opening_policy IN ('ZERO','EXPLICIT_AP')", name="ck_entity_opening_policy"), {"schema": "core"})
 
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -388,3 +388,23 @@ class ReferenceRecordRow(Base):
     definition: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.actors.id'), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)
+
+
+class OpeningPayableRow(Base):
+    __tablename__ = 'opening_payables'
+    __table_args__ = (UniqueConstraint('entity_id', 'approval_reference', name='uq_opening_payable_approval'),
+                     UniqueConstraint('entity_id', 'source', name='uq_opening_payable_source'), {'schema': 'finance'})
+    obligation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.obligations.id'), primary_key=True)
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.entities.id'), nullable=False)
+    counterparty_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.counterparties.id'), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    original_event_date: Mapped[date] = mapped_column(Date, nullable=False)
+    opening_date: Mapped[date] = mapped_column(Date, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    approval_reference: Mapped[str] = mapped_column(Text, nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    verification_state: Mapped[str] = mapped_column(String(20), nullable=False, server_default='OWNER_VERIFIED')
+    verified_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.actors.id'), nullable=False)
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)

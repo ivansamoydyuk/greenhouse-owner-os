@@ -44,9 +44,10 @@ from greenhouse_owner_os.infrastructure.models import (
 
 
 from .history import SqlHistoryRepositoryMixin
+from .opening import SqlOpeningRepositoryMixin
 
 
-class SqlAlchemyFinanceRepository(SqlHistoryRepositoryMixin):
+class SqlAlchemyFinanceRepository(SqlHistoryRepositoryMixin, SqlOpeningRepositoryMixin):
     def __init__(self, session: Session) -> None:
         self.session = session
 

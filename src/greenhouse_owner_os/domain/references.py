@@ -14,6 +14,7 @@ SYSTEM_ACCOUNTS = {
     'TRANSFER_FEE': ('expense', 'debit'),
     'GENERAL_EXPENSE': ('expense', 'debit'),
     'GENERAL_REVENUE': ('revenue', 'credit'),
+    'OPENING_PAYABLE_OFFSET': ('opening_equity', 'debit'),
 }
 
 
