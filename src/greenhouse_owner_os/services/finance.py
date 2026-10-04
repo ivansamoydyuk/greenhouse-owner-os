@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Callable
 from uuid import UUID, uuid4
 
-from greenhouse_owner_os.domain.commands import CreateObligationCommand, CreatePaymentCommand
+from greenhouse_owner_os.domain.commands import CreateObligationCommand, CreatePaymentCommand, ReverseCommand
 from greenhouse_owner_os.domain.errors import ConflictError, IdempotencyConflictError, NotFoundError, ValidationError
 from greenhouse_owner_os.domain.finance import (
     Advance,
@@ -45,6 +45,8 @@ def _serialize_obligation(obligation: Obligation, remaining: Decimal | None = No
         "due_date": obligation.due_date.isoformat() if obligation.due_date else None,
         "status": obligation.status.value,
         "version": obligation.version,
+        "reversal_posting_id": str(obligation.reversal_posting_id) if obligation.reversal_posting_id else None,
+        "replacement_of_id": str(obligation.replacement_of_id) if obligation.replacement_of_id else None,
         "posting_id": str(obligation.posting_id) if obligation.posting_id else None,
     }
     if remaining is not None:
@@ -65,6 +67,8 @@ def _serialize_payment(payment: Payment, advance: Advance | None = None) -> dict
         "status": payment.status.value,
         "version": payment.version,
         "posting_id": str(payment.posting_id) if payment.posting_id else None,
+        "reversal_posting_id": str(payment.reversal_posting_id) if payment.reversal_posting_id else None,
+        "replacement_of_id": str(payment.replacement_of_id) if payment.replacement_of_id else None,
         "allocation_total": f"{payment.allocation_total:.2f}",
         "unallocated_amount": f"{payment.unallocated_amount:.2f}",
         "advance_id": str(advance.id) if advance else None,
@@ -99,6 +103,8 @@ class FinanceService:
                 offset_ledger_account_id=command.offset_ledger_account_id,
             )
             uow.finance.assert_ledger_account_scope(obligation.offset_ledger_account_id, obligation.entity_id, obligation.currency)
+            self._validate_replacement(uow, "obligation", command.replacement_of_id, obligation)
+            obligation.replacement_of_id = command.replacement_of_id
             uow.finance.add_obligation(obligation, actor_id)
             response = _serialize_obligation(obligation, obligation.original_amount)
             uow.audit.append(actor_id=actor_id, action="create", entity_type="obligation", entity_id=obligation.id, before=None, after=response)
@@ -178,6 +184,8 @@ class FinanceService:
                 allocations=[AllocationRequest(item.obligation_id, item.amount) for item in command.allocations],
             )
             uow.finance.get_money_account_ledger(payment.money_account_id, payment.entity_id, payment.currency)
+            self._validate_replacement(uow, "payment", command.replacement_of_id, payment)
+            payment.replacement_of_id = command.replacement_of_id
             uow.finance.add_payment(payment, actor_id)
             response = _serialize_payment(payment)
             uow.audit.append(actor_id=actor_id, action="create", entity_type="payment", entity_id=payment.id, before=None, after=response)
@@ -300,6 +308,114 @@ class FinanceService:
             if not obligation:
                 raise NotFoundError("obligation not found")
             return _serialize_obligation(obligation, uow.finance.obligation_remaining(obligation.id))
+
+    @staticmethod
+    def _validate_replacement(uow, kind, original_id, replacement):
+        if original_id is None:
+            return
+        getter = uow.finance.get_payment if kind == "payment" else uow.finance.get_obligation
+        original = getter(original_id, for_update=True)
+        if not original:
+            raise NotFoundError("replacement original not found")
+        if original.status != RecordStatus.REVERSED:
+            raise ValidationError("replacement requires a reversed original")
+        if (original.entity_id, original.counterparty_id, original.currency, original.direction) != (replacement.entity_id, replacement.counterparty_id, replacement.currency, replacement.direction):
+            raise ValidationError("replacement scope/currency/direction must match original")
+        if uow.finance.replacement_id(kind, original_id):
+            raise ConflictError("original already has a replacement")
+
+    def reverse_payment(self, *, actor_id: UUID, idempotency_key: str, payment_id: UUID, command: ReverseCommand):
+        return self._reverse("payment", payment_id, actor_id, idempotency_key, command)
+
+    def reverse_obligation(self, *, actor_id: UUID, idempotency_key: str, obligation_id: UUID, command: ReverseCommand):
+        return self._reverse("obligation", obligation_id, actor_id, idempotency_key, command)
+
+    def _reverse(self, kind, resource_id, actor_id, key, command):
+        operation = "reverse_" + kind
+        request_hash = _hash_request({"id": str(resource_id), **command.model_dump(mode="json")})
+        with self.uow_factory() as uow:
+            uow.idempotency.lock(actor_id, operation, key)
+            replay = self._replay_if_exists(uow, actor_id, operation, key, request_hash)
+            if replay:
+                return replay
+            getter = uow.finance.get_payment if kind == "payment" else uow.finance.get_obligation
+            record = getter(resource_id, for_update=True)
+            if not record:
+                raise NotFoundError(kind + " not found")
+            if record.status == RecordStatus.REVERSED:
+                raise ConflictError(kind + " already reversed")
+            if record.version != command.expected_version:
+                raise ConflictError(kind + " version conflict")
+            if record.status != RecordStatus.POSTED:
+                raise ValidationError("only posted records can be reversed")
+            if command.event_date < record.event_date:
+                raise ValidationError("reversal date cannot precede original event date")
+            if kind == "payment":
+                for oid in sorted({a.obligation_id for a in record.allocations}, key=str):
+                    uow.finance.get_obligation(oid, for_update=True)
+            elif uow.finance.obligation_remaining(resource_id) != record.original_amount:
+                raise ValidationError("reverse active allocated payments before reversing obligation")
+            original = uow.finance.get_posting(record.posting_id)
+            if not original or original.reversal_of_id:
+                raise ValidationError("original posting missing or itself a reversal")
+            reversal = FinancialPosting(id=uuid4(), entity_id=original.entity_id,
+                currency=original.currency, event_date=command.event_date,
+                posting_type=kind + "_reversed", source_type=kind, source_id=resource_id,
+                created_by=actor_id, reversal_of_id=original.id, reason=command.reason,
+                lines=[PostingLine(line.ledger_account_id,
+                    PostingSide.CREDIT if line.side == PostingSide.DEBIT else PostingSide.DEBIT,
+                    line.amount) for line in original.lines])
+            before = _serialize_payment(record) if kind == "payment" else _serialize_obligation(record)
+            uow.finance.add_posting(reversal)
+            record.status = RecordStatus.REVERSED
+            record.version += 1
+            record.reversal_posting_id = reversal.id
+            record.reversed_by = actor_id
+            record.reversed_at = datetime.now(timezone.utc)
+            record.reversal_reason = command.reason
+            if kind == "payment":
+                uow.finance.reverse_advance(resource_id)
+                uow.finance.save_payment(record)
+            else:
+                uow.finance.save_obligation(record)
+            response = self._linkage(uow, kind, record)
+            if kind == "payment":
+                response["obligation_balances"] = {str(a.obligation_id): f"{uow.finance.obligation_remaining(a.obligation_id):.2f}" for a in record.allocations}
+            uow.audit.append(actor_id=actor_id, action="reverse", entity_type=kind,
+                entity_id=resource_id, before=before, after=response, reason=command.reason)
+            uow.idempotency.put(actor_id=actor_id, operation=operation, key=key,
+                request_hash=request_hash, resource_type=kind, resource_id=resource_id, response=response)
+            uow.commit()
+            return response
+
+    @staticmethod
+    def _linkage(uow, kind, record):
+        replacement = uow.finance.replacement_id(kind, record.id)
+        return {"id": str(record.id), "type": kind, "status": record.status.value,
+            "version": record.version, "currency": record.currency,
+            "original_posting_id": str(record.posting_id) if record.posting_id else None,
+            "reversal_posting_id": str(record.reversal_posting_id) if record.reversal_posting_id else None,
+            "reversed_by": str(record.reversed_by) if record.reversed_by else None,
+            "reversed_at": record.reversed_at.isoformat() if record.reversed_at else None,
+            "reason": record.reversal_reason,
+            "replacement_of_id": str(record.replacement_of_id) if record.replacement_of_id else None,
+            "replacement_id": str(replacement) if replacement else None}
+
+    def get_linkage(self, kind: str, resource_id: UUID):
+        if kind not in {"payment", "obligation"}:
+            raise ValidationError("unknown transaction type")
+        with self.uow_factory() as uow:
+            getter = uow.finance.get_payment if kind == "payment" else uow.finance.get_obligation
+            record = getter(resource_id)
+            if not record:
+                raise NotFoundError(kind + " not found")
+            return self._linkage(uow, kind, record)
+
+    def get_currency_balances(self, entity_id: UUID):
+        with self.uow_factory() as uow:
+            return {"entity_id": str(entity_id), "balances": {
+                currency: {category: f"{amount:.2f}" for category, amount in values.items()}
+                for currency, values in sorted(uow.finance.currency_balances(entity_id).items())}}
 
     @staticmethod
     def _replay_if_exists(uow: UnitOfWork, actor_id: UUID, operation: str, key: str, request_hash: str) -> dict[str, Any] | None:

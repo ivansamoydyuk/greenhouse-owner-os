@@ -21,6 +21,7 @@ from greenhouse_owner_os.domain.finance import (
     PaymentAllocation,
     PaymentDirection,
     PostingSide,
+    PostingLine,
     RecordStatus,
     money,
 )
@@ -56,6 +57,7 @@ class SqlAlchemyFinanceRepository:
             status=obligation.status.value,
             version=obligation.version,
             created_by=actor_id,
+            replacement_of_id=obligation.replacement_of_id,
         ))
 
     def _obligation_from_row(self, row: ObligationRow) -> Obligation:
@@ -73,6 +75,11 @@ class SqlAlchemyFinanceRepository:
             version=row.version,
             posting_id=row.posting_id,
             posted_at=row.posted_at,
+            reversal_posting_id=row.reversal_posting_id,
+            reversed_at=row.reversed_at,
+            reversed_by=row.reversed_by,
+            reversal_reason=row.reversal_reason,
+            replacement_of_id=row.replacement_of_id,
         )
 
     def get_obligation(self, obligation_id: UUID, *, for_update: bool = False) -> Obligation | None:
@@ -90,11 +97,17 @@ class SqlAlchemyFinanceRepository:
         row.posting_id = obligation.posting_id
         row.posted_at = obligation.posted_at
         row.version = obligation.version
+        row.reversal_posting_id = obligation.reversal_posting_id
+        row.reversed_at = obligation.reversed_at
+        row.reversed_by = obligation.reversed_by
+        row.reversal_reason = obligation.reversal_reason
 
     def obligation_remaining(self, obligation_id: UUID) -> Decimal:
         obligation = self.session.get(ObligationRow, obligation_id)
         if not obligation:
             raise NotFoundError("obligation not found")
+        if obligation.status == "reversed":
+            return Decimal("0.00")
         allocated_stmt = (
             select(func.coalesce(func.sum(PaymentAllocationRow.amount), 0))
             .join(PaymentRow, PaymentRow.id == PaymentAllocationRow.payment_id)
@@ -119,6 +132,7 @@ class SqlAlchemyFinanceRepository:
             status=payment.status.value,
             version=payment.version,
             created_by=actor_id,
+            replacement_of_id=payment.replacement_of_id,
         ))
         # No ORM relationship orders these inserts; persist the FK parent first.
         self.session.flush()
@@ -147,6 +161,11 @@ class SqlAlchemyFinanceRepository:
             version=row.version,
             posting_id=row.posting_id,
             posted_at=row.posted_at,
+            reversal_posting_id=row.reversal_posting_id,
+            reversed_at=row.reversed_at,
+            reversed_by=row.reversed_by,
+            reversal_reason=row.reversal_reason,
+            replacement_of_id=row.replacement_of_id,
             allocations=[PaymentAllocation(id=a.id, payment_id=a.payment_id, obligation_id=a.obligation_id, amount=money(a.amount)) for a in allocation_rows],
         )
 
@@ -165,6 +184,10 @@ class SqlAlchemyFinanceRepository:
         row.posting_id = payment.posting_id
         row.posted_at = payment.posted_at
         row.version = payment.version
+        row.reversal_posting_id = payment.reversal_posting_id
+        row.reversed_at = payment.reversed_at
+        row.reversed_by = payment.reversed_by
+        row.reversal_reason = payment.reversal_reason
 
     def add_advance(self, advance: Advance) -> None:
         self.session.add(AdvanceRow(
@@ -195,6 +218,47 @@ class SqlAlchemyFinanceRepository:
             status=row.status,
         )
 
+    def get_posting(self, posting_id: UUID) -> FinancialPosting | None:
+        row = self.session.get(PostingRow, posting_id)
+        if not row:
+            return None
+        lines = self.session.scalars(select(PostingEntryRow).where(PostingEntryRow.posting_id == posting_id).order_by(PostingEntryRow.id)).all()
+        return FinancialPosting(id=row.id, entity_id=row.entity_id, currency=row.currency,
+            event_date=row.event_date, posting_type=row.posting_type, source_type=row.source_type,
+            source_id=row.source_id, created_by=row.created_by, reversal_of_id=row.reversal_of_id,
+            reason=row.reason,
+            lines=[PostingLine(i.ledger_account_id, PostingSide(i.side), i.amount) for i in lines])
+
+    def reverse_advance(self, payment_id: UUID) -> None:
+        row = self.session.scalar(select(AdvanceRow).where(AdvanceRow.source_payment_id == payment_id).with_for_update())
+        if row:
+            if row.status != "open":
+                raise ValidationError("only untouched open advance can be reversed")
+            row.status = "reversed"
+
+    def replacement_id(self, resource_type: str, original_id: UUID) -> UUID | None:
+        model = PaymentRow if resource_type == "payment" else ObligationRow
+        return self.session.scalar(select(model.id).where(model.replacement_of_id == original_id))
+
+    def currency_balances(self, entity_id: UUID) -> dict[str, dict[str, Decimal]]:
+        # Every branch groups by currency; there is deliberately no combined total.
+        rows = self.session.execute(text("""
+            SELECT currency, category, sum(amount) AS amount FROM (
+                SELECT currency, 'cash' AS category, balance AS amount
+                  FROM finance.money_account_balances WHERE entity_id=:entity
+                UNION ALL
+                SELECT currency, direction, remaining_amount FROM finance.obligation_balances
+                  WHERE entity_id=:entity AND settlement_status IN ('open','partial','settled')
+                UNION ALL
+                SELECT currency, 'advance_' || direction, original_amount FROM finance.advances
+                  WHERE entity_id=:entity AND status='open'
+            ) positions GROUP BY currency, category ORDER BY currency, category
+        """), {"entity": entity_id}).all()
+        result = {}
+        for currency, category, amount in rows:
+            result.setdefault(currency, dict.fromkeys(["cash", "payable", "receivable", "advance_paid", "advance_received"], Decimal("0.00")))[category] = money(amount)
+        return result
+
     def add_posting(self, posting: FinancialPosting) -> None:
         posting.validate_balanced()
         self.session.add(PostingRow(
@@ -207,6 +271,7 @@ class SqlAlchemyFinanceRepository:
             source_id=posting.source_id,
             reversal_of_id=posting.reversal_of_id,
             created_by=posting.created_by,
+            reason=posting.reason,
         ))
         # Balance validation is deferred, so the header may flush before its lines.
         self.session.flush()

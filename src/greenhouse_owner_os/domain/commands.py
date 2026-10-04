@@ -31,6 +31,7 @@ class CreateObligationCommand(StrictModel):
     currency: str = Field(min_length=3, max_length=3)
     event_date: date
     due_date: date | None = None
+    replacement_of_id: UUID | None = None
     offset_ledger_account_id: UUID
 
     @field_validator("original_amount")
@@ -46,6 +47,7 @@ class CreateObligationCommand(StrictModel):
 
 class CreatePaymentCommand(StrictModel):
     entity_id: UUID
+    replacement_of_id: UUID | None = None
     money_account_id: UUID
     counterparty_id: UUID
     direction: PaymentDirection
@@ -63,3 +65,17 @@ class CreatePaymentCommand(StrictModel):
     @classmethod
     def normalize_currency(cls, value: str) -> str:
         return value.upper()
+
+
+class ReverseCommand(StrictModel):
+    expected_version: int = Field(gt=0)
+    event_date: date
+    reason: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("reason")
+    @classmethod
+    def nonempty_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reversal reason cannot be blank")
+        return value

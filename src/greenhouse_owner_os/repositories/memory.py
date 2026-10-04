@@ -54,6 +54,8 @@ class MemoryFinanceRepository:
         obligation = self.store.obligations.get(obligation_id)
         if not obligation:
             raise NotFoundError("obligation not found")
+        if obligation.status == RecordStatus.REVERSED:
+            return Decimal("0.00")
         allocated = Decimal("0.00")
         for payment in self.store.payments.values():
             if payment.status != RecordStatus.POSTED:
@@ -83,8 +85,43 @@ class MemoryFinanceRepository:
                 return copy.deepcopy(item)
         return None
 
+    def get_posting(self, posting_id: UUID) -> FinancialPosting | None:
+        return copy.deepcopy(self.store.postings.get(posting_id))
+
+    def reverse_advance(self, payment_id: UUID) -> None:
+        for advance in self.store.advances.values():
+            if advance.source_payment_id == payment_id:
+                if advance.status != "open":
+                    raise ValidationError("only untouched open advance can be reversed")
+                advance.status = "reversed"
+
+    def replacement_id(self, resource_type: str, original_id: UUID) -> UUID | None:
+        items = self.store.payments if resource_type == "payment" else self.store.obligations
+        return next((i.id for i in items.values() if i.replacement_of_id == original_id), None)
+
+    def currency_balances(self, entity_id: UUID) -> dict[str, dict[str, Decimal]]:
+        result = {}
+        def add(currency, category, amount):
+            row = result.setdefault(currency, dict.fromkeys(["cash", "payable", "receivable", "advance_paid", "advance_received"], Decimal("0.00")))
+            row[category] += amount
+        cash_ids = {v[0] for v in self.store.money_account_ledgers.values() if v[1] == entity_id}
+        for posting in self.store.postings.values():
+            if posting.entity_id == entity_id:
+                for line in posting.lines:
+                    if line.ledger_account_id in cash_ids:
+                        add(posting.currency, "cash", line.amount if line.side.value == "debit" else -line.amount)
+        for ob in self.store.obligations.values():
+            if ob.entity_id == entity_id and ob.status == RecordStatus.POSTED:
+                add(ob.currency, ob.direction.value, self.obligation_remaining(ob.id))
+        for adv in self.store.advances.values():
+            if adv.entity_id == entity_id and adv.status == "open":
+                add(adv.currency, "advance_" + adv.direction.value, adv.original_amount)
+        return result
+
     def add_posting(self, posting: FinancialPosting) -> None:
         posting.validate_balanced()
+        for line in posting.lines:
+            self.assert_ledger_account_scope(line.ledger_account_id, posting.entity_id, posting.currency)
         self.store.postings[posting.id] = copy.deepcopy(posting)
 
     def get_system_ledger_account(self, entity_id: UUID, currency: str, system_code: str) -> UUID:

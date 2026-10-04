@@ -26,11 +26,13 @@ class ObligationCreateBody(ApiModel):
     currency: str = Field(min_length=3, max_length=3)
     event_date: date
     due_date: date | None = None
+    replacement_of_id: UUID | None = None
     offset_ledger_account_id: UUID
 
 
 class PaymentCreateBody(ApiModel):
     entity_id: UUID
+    replacement_of_id: UUID | None = None
     money_account_id: UUID
     counterparty_id: UUID
     direction: PaymentDirection

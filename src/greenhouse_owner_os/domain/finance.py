@@ -77,6 +77,11 @@ class Obligation:
     version: int = 1
     posting_id: UUID | None = None
     posted_at: datetime | None = None
+    reversal_posting_id: UUID | None = None
+    reversed_at: datetime | None = None
+    reversed_by: UUID | None = None
+    reversal_reason: str | None = None
+    replacement_of_id: UUID | None = None
 
     @classmethod
     def draft(
@@ -134,6 +139,11 @@ class Payment:
     version: int = 1
     posting_id: UUID | None = None
     posted_at: datetime | None = None
+    reversal_posting_id: UUID | None = None
+    reversed_at: datetime | None = None
+    reversed_by: UUID | None = None
+    reversal_reason: str | None = None
+    replacement_of_id: UUID | None = None
     allocations: list[PaymentAllocation] = field(default_factory=list)
 
     @classmethod
@@ -227,6 +237,7 @@ class FinancialPosting:
     created_by: UUID
     lines: list[PostingLine]
     reversal_of_id: UUID | None = None
+    reason: str | None = None
 
     def validate_balanced(self) -> None:
         debit = sum((line.amount for line in self.lines if line.side == PostingSide.DEBIT), Decimal("0.00"))
