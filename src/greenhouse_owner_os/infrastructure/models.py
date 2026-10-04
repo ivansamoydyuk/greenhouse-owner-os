@@ -198,6 +198,7 @@ class PaymentAllocationRow(Base):
     __tablename__ = "payment_allocations"
     __table_args__ = (
         CheckConstraint("amount > 0", name="ck_payment_allocation_amount_positive"),
+        UniqueConstraint("payment_id", "obligation_id", name="uq_payment_allocation_pair"),
         Index("ix_payment_allocation_obligation", "obligation_id"),
         {"schema": "finance"},
     )

@@ -74,6 +74,7 @@ def upgrade() -> None:
         sa.Column("amount", sa.Numeric(20,2), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.CheckConstraint("amount > 0", name="ck_payment_allocation_amount_positive"),
+        sa.UniqueConstraint("payment_id", "obligation_id", name="uq_payment_allocation_pair"),
         schema="finance",
     )
     op.create_index("ix_payment_allocation_obligation", "payment_allocations", ["obligation_id"], schema="finance")
@@ -148,6 +149,12 @@ def upgrade() -> None:
     CREATE OR REPLACE FUNCTION finance.protect_posted_obligation() RETURNS trigger
     LANGUAGE plpgsql AS $$
     BEGIN
+      IF OLD.status='posted' AND NEW.status NOT IN ('posted','reversed') THEN
+        RAISE EXCEPTION 'posted obligation may only remain posted or transition to reversed' USING ERRCODE='55000';
+      END IF;
+      IF OLD.status='reversed' AND NEW.status <> 'reversed' THEN
+        RAISE EXCEPTION 'reversed obligation status is immutable' USING ERRCODE='55000';
+      END IF;
       IF OLD.status IN ('posted','reversed') AND (
         NEW.entity_id IS DISTINCT FROM OLD.entity_id OR
         NEW.counterparty_id IS DISTINCT FROM OLD.counterparty_id OR
@@ -184,6 +191,12 @@ def upgrade() -> None:
     CREATE OR REPLACE FUNCTION finance.protect_posted_payment() RETURNS trigger
     LANGUAGE plpgsql AS $$
     BEGIN
+      IF OLD.status='posted' AND NEW.status NOT IN ('posted','reversed') THEN
+        RAISE EXCEPTION 'posted payment may only remain posted or transition to reversed' USING ERRCODE='55000';
+      END IF;
+      IF OLD.status='reversed' AND NEW.status <> 'reversed' THEN
+        RAISE EXCEPTION 'reversed payment status is immutable' USING ERRCODE='55000';
+      END IF;
       IF OLD.status IN ('posted','reversed') AND (
         NEW.entity_id IS DISTINCT FROM OLD.entity_id OR
         NEW.money_account_id IS DISTINCT FROM OLD.money_account_id OR
@@ -204,21 +217,74 @@ def upgrade() -> None:
 
     CREATE OR REPLACE FUNCTION finance.protect_payment_allocation() RETURNS trigger
     LANGUAGE plpgsql AS $$
-    DECLARE v_status text;
+    DECLARE v_payment_id uuid; v_status text;
     BEGIN
-      SELECT status INTO v_status FROM finance.payments WHERE id=(CASE WHEN TG_OP='DELETE' THEN OLD.payment_id ELSE NEW.payment_id END);
+      v_payment_id := CASE WHEN TG_OP='DELETE' THEN OLD.payment_id ELSE NEW.payment_id END;
+      SELECT status INTO v_status FROM finance.payments WHERE id=v_payment_id;
       IF v_status IN ('posted','reversed') THEN
         RAISE EXCEPTION 'allocations of posted/reversed payment are immutable' USING ERRCODE='55000';
       END IF;
-      RETURN COALESCE(NEW, OLD);
+      IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
     END;
     $$;
-    CREATE TRIGGER trg_payment_allocation_protect BEFORE UPDATE OR DELETE ON finance.payment_allocations
+    CREATE TRIGGER trg_payment_allocation_protect BEFORE INSERT OR UPDATE OR DELETE ON finance.payment_allocations
       FOR EACH ROW EXECUTE FUNCTION finance.protect_payment_allocation();
+
+    CREATE OR REPLACE FUNCTION finance.assert_payment_postable() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    DECLARE
+      v_total numeric(20,2);
+      v_bad integer;
+    BEGIN
+      IF NEW.status='posted' AND OLD.status <> 'posted' THEN
+        SELECT COALESCE(sum(amount),0)::numeric(20,2) INTO v_total
+          FROM finance.payment_allocations WHERE payment_id=NEW.id;
+        IF v_total > NEW.amount THEN
+          RAISE EXCEPTION 'allocation total % exceeds payment amount %', v_total, NEW.amount USING ERRCODE='23514';
+        END IF;
+
+        SELECT count(*) INTO v_bad
+          FROM finance.payment_allocations pa
+          JOIN finance.obligations o ON o.id=pa.obligation_id
+         WHERE pa.payment_id=NEW.id
+           AND (o.status <> 'posted'
+             OR o.entity_id <> NEW.entity_id
+             OR o.counterparty_id <> NEW.counterparty_id
+             OR o.currency <> NEW.currency
+             OR (NEW.direction='out' AND o.direction <> 'payable')
+             OR (NEW.direction='in' AND o.direction <> 'receivable'));
+        IF v_bad <> 0 THEN
+          RAISE EXCEPTION 'payment allocations violate entity/counterparty/currency/direction/status rules' USING ERRCODE='23514';
+        END IF;
+
+        SELECT count(*) INTO v_bad FROM (
+          SELECT o.id
+            FROM finance.payment_allocations current_pa
+            JOIN finance.obligations o ON o.id=current_pa.obligation_id
+           WHERE current_pa.payment_id=NEW.id
+           GROUP BY o.id, o.original_amount
+          HAVING (
+            SELECT COALESCE(sum(pa2.amount),0)
+              FROM finance.payment_allocations pa2
+              JOIN finance.payments p2 ON p2.id=pa2.payment_id
+             WHERE pa2.obligation_id=o.id AND (p2.status='posted' OR p2.id=NEW.id)
+          ) > o.original_amount
+        ) overallocated;
+        IF v_bad <> 0 THEN
+          RAISE EXCEPTION 'payment would over-allocate an obligation' USING ERRCODE='23514';
+        END IF;
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
+    CREATE TRIGGER trg_payment_assert_postable BEFORE UPDATE OF status ON finance.payments
+      FOR EACH ROW EXECUTE FUNCTION finance.assert_payment_postable();
     """)
 
 
 def downgrade() -> None:
+    op.execute("DROP TRIGGER IF EXISTS trg_payment_assert_postable ON finance.payments")
+    op.execute("DROP FUNCTION IF EXISTS finance.assert_payment_postable()")
     op.execute("DROP TRIGGER IF EXISTS trg_payment_allocation_protect ON finance.payment_allocations")
     op.execute("DROP FUNCTION IF EXISTS finance.protect_payment_allocation()")
     op.execute("DROP TRIGGER IF EXISTS trg_payment_protect_posted ON finance.payments")
