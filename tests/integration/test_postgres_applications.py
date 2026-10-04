@@ -6,6 +6,7 @@ import copy
 import pytest
 from sqlalchemy import select,func,text
 from sqlalchemy.exc import DBAPIError
+from greenhouse_owner_os.domain.commands import ReverseCommand
 from greenhouse_owner_os.domain.errors import ValidationError,ConflictError
 from greenhouse_owner_os.infrastructure.models import ApplicationRow,PostingRow,PostingEntryRow,AdvanceRow,ObligationRow,PaymentRow,AuditEventRow,IdempotencyRow,LedgerAccountRow,MoneyAccountRow,CounterpartyRow
 from greenhouse_owner_os.repositories.sqlalchemy import SqlAlchemyFinanceRepository,SqlAlchemyAuditRepository
@@ -147,3 +148,41 @@ def test_reconciliation_detects_invalid_snapshot_without_repair(pgfx,corruption)
     assert not result['ok'] and result['findings']
     assert result==check_snapshot(data)
     assert pgfx.service.reconcile()=={'ok':True,'findings':[]}
+
+@pytest.mark.parametrize('kind',['payment','obligation'])
+def test_active_application_blocks_valid_source_reversal_at_database(pgfx,monkeypatch,kind):
+    pay,ob=setup(pgfx,'paid','100','100');r=apply(pgfx,command(pgfx,pay,ob,'60'))
+    with monkeypatch.context() as m:
+        # Bypass only service dependency checks; still construct the correct
+        # exact compensating journal and full reversal lifecycle metadata.
+        m.setattr(SqlAlchemyFinanceRepository,'application_total',lambda *a,**k:Decimal('0'))
+        with pytest.raises(DBAPIError,match='reverse active advance applications first'):
+            reverse(pgfx,kind,pay if kind=='payment' else ob)
+    assert remaining(pgfx,pay,ob)==('40.00','40.00')
+    assert pgfx.service.reconcile()['ok']
+    undo(pgfx,r);reverse(pgfx,kind,pay if kind=='payment' else ob)
+
+@pytest.mark.parametrize('direction',['paid','received'])
+def test_application_combines_with_payment_allocation(pgfx,direction):
+    pay,ob=setup(pgfx,direction,'100','100');r=apply(pgfx,command(pgfx,pay,ob,'60',direction))
+    bad=payment(pgfx,[(ob['id'],'50')],'50',direction='out' if direction=='paid' else 'in',post=False)
+    with pytest.raises(ValidationError):pgfx.service.post_payment(actor_id=pgfx.actor_id,idempotency_key='bad',payment_id=UUID(bad['id']),expected_version=1)
+    p2=payment(pgfx,[(ob['id'],'40')],'40',direction='out' if direction=='paid' else 'in')
+    assert remaining(pgfx,pay,ob)==('40.00','0.00')
+    reverse(pgfx,'payment',p2);undo(pgfx,r)
+    assert remaining(pgfx,pay,ob)==('100.00','100.00')
+    assert pgfx.service.reconcile()['ok']
+
+
+def test_application_combines_with_direct_settlement(pgfx):
+    from greenhouse_owner_os.domain.cash import SettlementCommand
+    from tests.finance_integrity_cases import DAY
+    pay,ob=setup(pgfx,'paid','100','100');apply(pgfx,command(pgfx,pay,ob,'60'))
+    receivable=obligation(pgfx,'100',direction='receivable',counterparty=pgfx.other_counterparty_id)
+    draft=pgfx.service.create_cash(kind='direct_settlement',actor_id=pgfx.actor_id,idempotency_key='direct',
+        command=SettlementCommand(entity_id=pgfx.entity_id,receivable_id=UUID(receivable['id']),payable_id=UUID(ob['id']),amount='40',currency='TRY',event_date=DAY))
+    result=pgfx.service.post_cash(kind='direct_settlement',resource_id=UUID(draft['id']),actor_id=pgfx.actor_id,idempotency_key='direct-post',expected_version=1)
+    assert remaining(pgfx,pay,ob)==('40.00','0.00')
+    assert pgfx.service.reconcile()['ok']
+    pgfx.service.reverse_cash(kind='direct_settlement',resource_id=UUID(result['id']),actor_id=pgfx.actor_id,idempotency_key='direct-reverse',command=ReverseCommand(expected_version=2,event_date=DAY,reason='restore'))
+    assert remaining(pgfx,pay,ob)==('40.00','40.00')

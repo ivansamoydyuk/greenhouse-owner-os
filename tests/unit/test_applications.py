@@ -48,3 +48,12 @@ def test_application_openapi_matches_runtime():
         if 'advance-applications' in path or '/advances/' in path or 'financial-position' in path:
             assert spec['paths'][path.removeprefix('/v1')]==runtime['paths'][path]
     assert spec['components']['schemas']['AdvanceApplicationCommand']==runtime['components']['schemas']['AdvanceApplicationCommand']
+
+def test_application_linkage_has_source_ids(appfx):
+    from tests.application_cases import apply
+    from uuid import UUID
+    pay,ob=setup(appfx)
+    r=apply(appfx,command(appfx,pay,ob,'100'))
+    link=appfx.service.get_linkage('advance_application',UUID(r['id']))
+    assert link['advance_id']==pay['advance_id'] and link['obligation_id']==ob['id']
+    assert link['counterparty_id']==str(appfx.counterparty_id) and link['amount']=='100.00'
