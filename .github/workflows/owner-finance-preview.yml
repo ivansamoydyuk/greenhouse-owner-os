@@ -1,0 +1,87 @@
+name: Owner Finance isolated review preview
+
+on:
+  pull_request:
+    types: [opened, reopened]
+    branches: [01-architecture-database]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: owner-finance-isolated-review
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    if: github.head_ref == '06-owner-finance-mvp' || github.ref_name == '06-owner-finance-mvp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: greenhouse_owner_os_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d greenhouse_owner_os_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -e ".[dev]"
+      - run: alembic upgrade head
+      - name: Start isolated authenticated HTTPS preview
+        run: |
+          mkdir -p artifacts
+          curl --fail --location --retry 2 -o "$RUNNER_TEMP/cloudflared" https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-linux-amd64
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          "$RUNNER_TEMP/cloudflared" tunnel --no-autoupdate --protocol http2 --url http://127.0.0.1:4173 > artifacts/tunnel.log 2>&1 &
+          echo $! > "$RUNNER_TEMP/tunnel.pid"
+          for i in $(seq 1 60); do
+            preview_url=$(sed -n 's/.*\(https:\/\/[a-z0-9-]*\.trycloudflare\.com\).*/\1/p' artifacts/tunnel.log | head -1)
+            if [ -n "$preview_url" ]; then break; fi
+            sleep 1
+          done
+          test -n "$preview_url"
+          export PREVIEW_PUBLIC_ORIGIN="$preview_url"
+          export PREVIEW_SECRET=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
+          echo "::add-mask::$PREVIEW_SECRET"
+          export PREVIEW_PORT=4173
+          python -m greenhouse_owner_os.preview > artifacts/preview.log 2>&1 &
+          echo $! > "$RUNNER_TEMP/server.pid"
+          for i in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:4173/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --retry 8 --retry-delay 2 "$preview_url/health"
+          printf 'URL: %s\nAccess key: %s\nTEST PREVIEW ONLY. Opening Serkan AP 2600 TRY remains unpaid.\nExpires after 35 minutes of review time; runner database is then destroyed.\n' "$preview_url" "$PREVIEW_SECRET" > artifacts/preview-access.txt
+          printf '### Isolated Owner Finance preview\n\n%s\n\nAccess key: download the private **owner-finance-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owner-finance-review-access
+          path: artifacts/preview-access.txt
+          retention-days: 1
+      - name: Owner review window (35 minutes, ephemeral data)
+        run: |
+          for i in $(seq 1 35); do
+            curl --silent --fail http://127.0.0.1:4173/health > /dev/null
+            sleep 60
+          done
+      - name: Stop preview
+        if: always()
+        run: |
+          for process_file in "$RUNNER_TEMP/server.pid" "$RUNNER_TEMP/tunnel.pid"; do
+            if [ -f "$process_file" ]; then kill "$(cat "$process_file")" || true; fi
+          done

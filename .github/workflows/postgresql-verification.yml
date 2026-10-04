@@ -2,7 +2,7 @@ name: PostgreSQL verification
 
 on:
   push:
-    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness]
+    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp]
   workflow_dispatch:
 
 permissions:
@@ -94,3 +94,19 @@ jobs:
         run: python scripts/verify_artifacts.py
       - name: Validate owner-confirmed opening in disposable database only
         run: python scripts/validate_owner_opening.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Owner UI tests and real browser installation
+        run: |
+          npm ci
+          npm run test:ui
+          npx playwright install --with-deps chromium
+      - name: Owner mobile critical E2E with synthetic reversal cleanup
+        run: python scripts/run_owner_e2e.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-finance-preview-verification
+          path: artifacts/
