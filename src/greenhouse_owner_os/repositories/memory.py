@@ -13,7 +13,7 @@ from greenhouse_owner_os.domain.finance import Advance, FinancialPosting, Obliga
 class MemoryStore:
     def __init__(self) -> None:
         self.obligations: dict[UUID, Obligation] = {}
-        self.cash_records = {k: {} for k in ("transfer", "owner_funding", "direct_settlement")}
+        self.cash_records = {k: {} for k in ("transfer", "owner_funding", "direct_settlement", "advance_application")}
         self.payments: dict[UUID, Payment] = {}
         self.advances: dict[UUID, Advance] = {}
         self.postings: dict[UUID, FinancialPosting] = {}
@@ -67,7 +67,7 @@ class MemoryFinanceRepository:
             )
         allocated += sum((r.amount for r in self.store.cash_records['direct_settlement'].values()
             if r.status == RecordStatus.POSTED and obligation_id in (r.receivable_id, r.payable_id)), Decimal('0.00'))
-        return money(obligation.original_amount - allocated)
+        return money(obligation.original_amount - allocated - self.application_total(obligation_id=obligation_id))
 
     def add_payment(self, payment: Payment, actor_id: UUID) -> None:
         self.store.payments[payment.id] = copy.deepcopy(payment)
@@ -91,9 +91,37 @@ class MemoryFinanceRepository:
     def get_posting(self, posting_id: UUID) -> FinancialPosting | None:
         return copy.deepcopy(self.store.postings.get(posting_id))
 
+    def get_advance(self, advance_id, *, for_update=False):
+        return copy.deepcopy(self.store.advances.get(advance_id))
+
+    def application_total(self, *, advance_id=None, obligation_id=None):
+        return sum((r.amount for r in self.store.cash_records['advance_application'].values()
+                    if r.status == RecordStatus.POSTED and (r.advance_id == advance_id if advance_id else r.obligation_id == obligation_id)), Decimal('0.00'))
+
+    def advance_application_links(self, advance_id):
+        from greenhouse_owner_os.domain.cash import serialize_cash
+        return [serialize_cash(r) for r in sorted(self.store.cash_records['advance_application'].values(),key=lambda r:str(r.id)) if r.advance_id==advance_id]
+
+    def advance_remaining(self, advance_id):
+        a = self.get_advance(advance_id)
+        if not a: raise NotFoundError('advance not found')
+        return Decimal('0.00') if a.status == 'reversed' else a.original_amount - self.application_total(advance_id=advance_id)
+
+    def counterparty_position(self, entity_id, counterparty_id, currency):
+        result = dict.fromkeys(['open_payable','open_receivable','supplier_advance_remaining','customer_advance_remaining'], Decimal('0.00'))
+        for ob in self.store.obligations.values():
+            if (ob.entity_id,ob.counterparty_id,ob.currency,ob.status) == (entity_id,counterparty_id,currency,RecordStatus.POSTED):
+                result['open_'+ob.direction.value] += self.obligation_remaining(ob.id)
+        for a in self.store.advances.values():
+            if (a.entity_id,a.counterparty_id,a.currency) == (entity_id,counterparty_id,currency):
+                result[('supplier' if a.direction.value == 'paid' else 'customer')+'_advance_remaining'] += self.advance_remaining(a.id)
+        return result
+
     def reverse_advance(self, payment_id: UUID) -> None:
         for advance in self.store.advances.values():
             if advance.source_payment_id == payment_id:
+                if self.application_total(advance_id=advance.id):
+                    raise ValidationError("reverse active advance applications first")
                 if advance.status != "open":
                     raise ValidationError("only untouched open advance can be reversed")
                 advance.status = "reversed"
@@ -118,7 +146,7 @@ class MemoryFinanceRepository:
                 add(ob.currency, ob.direction.value, self.obligation_remaining(ob.id))
         for adv in self.store.advances.values():
             if adv.entity_id == entity_id and adv.status == "open":
-                add(adv.currency, "advance_" + adv.direction.value, adv.original_amount)
+                add(adv.currency, "advance_" + adv.direction.value, self.advance_remaining(adv.id))
         return result
 
     def add_posting(self, posting: FinancialPosting) -> None:

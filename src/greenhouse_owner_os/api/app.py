@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
-from greenhouse_owner_os.domain.cash import TransferCommand, FundingCommand, SettlementCommand, SupplierAdvanceCommand
+from greenhouse_owner_os.domain.cash import TransferCommand, FundingCommand, SettlementCommand, SupplierAdvanceCommand, AdvanceApplicationCommand
 from greenhouse_owner_os.api.schemas import ObligationCreateBody, PaymentCreateBody
 from greenhouse_owner_os.domain.commands import AllocationInput, CreateObligationCommand, CreatePaymentCommand, ReverseCommand
 from greenhouse_owner_os.domain.errors import ConflictError, DomainError, NotFoundError, ValidationError
@@ -144,6 +144,32 @@ def create_app(*, finance_service: FinanceService, actor_provider) -> FastAPI:
     @app.post('/v1/supplier-advances/{payment_id}/reverse')
     def reverse_supplier_advance(payment_id: UUID, body: ReverseCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
         return finance_service.reverse_payment(payment_id=payment_id, actor_id=actor_id, idempotency_key=idempotency_key, command=body)
+
+    @app.post('/v1/supplier-advance-applications', status_code=201)
+    def apply_supplier(body: AdvanceApplicationCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        if body.direction != 'paid': raise ValidationError('supplier application requires paid advance')
+        return finance_service.apply_advance(actor_id=actor_id,idempotency_key=idempotency_key,command=body)
+
+    @app.post('/v1/customer-advance-applications', status_code=201)
+    def apply_customer(body: AdvanceApplicationCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        if body.direction != 'received': raise ValidationError('customer application requires received advance')
+        return finance_service.apply_advance(actor_id=actor_id,idempotency_key=idempotency_key,command=body)
+
+    @app.post('/v1/advance-applications/{resource_id}/reverse')
+    def reverse_application(resource_id: UUID, body: ReverseCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.reverse_cash(kind='advance_application',resource_id=resource_id,actor_id=actor_id,idempotency_key=idempotency_key,command=body)
+
+    @app.get('/v1/advance-applications/{resource_id}/linkage')
+    def application_linkage(resource_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_linkage('advance_application',resource_id)
+
+    @app.get('/v1/advances/{advance_id}')
+    def advance_linkage(advance_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_advance(advance_id)
+
+    @app.get('/v1/entities/{entity_id}/counterparties/{counterparty_id}/financial-position')
+    def financial_position(entity_id: UUID,counterparty_id: UUID,currency: str,actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_counterparty_position(entity_id,counterparty_id,currency)
 
     return app
 

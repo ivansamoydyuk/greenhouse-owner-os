@@ -706,6 +706,185 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /supplier-advance-applications:
+    post:
+      summary: Apply Supplier
+      operationId: apply_supplier_v1_supplier_advance_applications_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvanceApplicationCommand'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /customer-advance-applications:
+    post:
+      summary: Apply Customer
+      operationId: apply_customer_v1_customer_advance_applications_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvanceApplicationCommand'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /advance-applications/{resource_id}/reverse:
+    post:
+      summary: Reverse Application
+      operationId: reverse_application_v1_advance_applications__resource_id__reverse_post
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReverseCommand'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /advance-applications/{resource_id}/linkage:
+    get:
+      summary: Application Linkage
+      operationId: application_linkage_v1_advance_applications__resource_id__linkage_get
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /advances/{advance_id}:
+    get:
+      summary: Advance Linkage
+      operationId: advance_linkage_v1_advances__advance_id__get
+      parameters:
+      - name: advance_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Advance Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/counterparties/{counterparty_id}/financial-position:
+    get:
+      summary: Financial Position
+      operationId: financial_position_v1_entities__entity_id__counterparties__counterparty_id__financial_position_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: counterparty_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Counterparty Id
+      - name: currency
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Currency
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -1434,6 +1613,68 @@ components:
       - msg
       - type
       title: ValidationError
+    AdvanceApplicationCommand:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Amount
+        currency:
+          type: string
+          maxLength: 3
+          minLength: 3
+          title: Currency
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        source:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Source
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+        advance_id:
+          type: string
+          format: uuid
+          title: Advance Id
+        obligation_id:
+          type: string
+          format: uuid
+          title: Obligation Id
+        counterparty_id:
+          type: string
+          format: uuid
+          title: Counterparty Id
+        direction:
+          type: string
+          pattern: ^(paid|received)$
+          title: Direction
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - amount
+      - currency
+      - event_date
+      - advance_id
+      - obligation_id
+      - counterparty_id
+      - direction
+      title: AdvanceApplicationCommand
   responses:
     Conflict:
       description: Version or idempotency conflict

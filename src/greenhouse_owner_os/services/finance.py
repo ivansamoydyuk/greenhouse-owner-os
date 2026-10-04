@@ -364,6 +364,8 @@ class FinanceService(CashServiceMixin):
                 for oid in sorted({a.obligation_id for a in record.allocations}, key=str):
                     uow.finance.get_obligation(oid, for_update=True)
                 uow.finance.lock_money_accounts([record.money_account_id])
+            elif kind == 'advance_application':
+                self._application_sources(uow.finance, record, lock=True)
             elif kind == 'direct_settlement':
                 for oid in sorted({record.receivable_id, record.payable_id}, key=str):
                     uow.finance.get_obligation(oid, for_update=True)
@@ -411,7 +413,7 @@ class FinanceService(CashServiceMixin):
     @staticmethod
     def _linkage(uow, kind, record):
         replacement = uow.finance.replacement_id(kind, record.id)
-        return {"id": str(record.id), "type": kind, "status": record.status.value,
+        result = {"id": str(record.id), "type": kind, "status": record.status.value,
             "version": record.version, "currency": record.currency,
             "original_posting_id": str(record.posting_id) if record.posting_id else None,
             "reversal_posting_id": str(record.reversal_posting_id) if record.reversal_posting_id else None,
@@ -420,6 +422,12 @@ class FinanceService(CashServiceMixin):
             "reason": record.reversal_reason,
             "replacement_of_id": str(record.replacement_of_id) if record.replacement_of_id else None,
             "replacement_id": str(replacement) if replacement else None}
+        if kind == 'advance_application':
+            result.update(advance_id=str(record.advance_id),obligation_id=str(record.obligation_id),
+                          counterparty_id=str(record.counterparty_id),entity_id=str(record.entity_id),
+                          amount=f'{record.amount:.2f}',direction=record.direction,source=record.source,
+                          event_date=record.event_date.isoformat())
+        return result
 
     def get_linkage(self, kind: str, resource_id: UUID):
         if kind not in {"payment", "obligation", *CASH_TYPES}:
@@ -430,6 +438,11 @@ class FinanceService(CashServiceMixin):
             if not record:
                 raise NotFoundError(kind + " not found")
             return self._linkage(uow, kind, record)
+
+    def reconcile(self):
+        from .reconciliation import reconcile
+        with self.uow_factory() as uow:
+            return reconcile(uow.session)
 
     def get_currency_balances(self, entity_id: UUID):
         with self.uow_factory() as uow:

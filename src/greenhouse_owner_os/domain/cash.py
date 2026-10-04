@@ -112,7 +112,22 @@ class DirectSettlement(CashLifecycle):
     payable_id: UUID
 
 
-CASH_TYPES = {'transfer': OwnAccountTransfer, 'owner_funding': OwnerFunding, 'direct_settlement': DirectSettlement}
+class AdvanceApplicationCommand(CashCommand):
+    advance_id: UUID
+    obligation_id: UUID
+    counterparty_id: UUID
+    direction: str = Field(pattern='^(paid|received)$')
+
+
+@dataclass(kw_only=True)
+class AdvanceApplication(CashLifecycle):
+    advance_id: UUID
+    obligation_id: UUID
+    counterparty_id: UUID
+    direction: str
+
+
+CASH_TYPES = {'advance_application': AdvanceApplication, 'transfer': OwnAccountTransfer, 'owner_funding': OwnerFunding, 'direct_settlement': DirectSettlement}
 
 
 def serialize_cash(record):
