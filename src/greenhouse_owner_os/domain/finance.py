@@ -144,6 +144,8 @@ class Payment:
     reversed_by: UUID | None = None
     reversal_reason: str | None = None
     replacement_of_id: UUID | None = None
+    source: str | None = None
+    reason: str | None = None
     allocations: list[PaymentAllocation] = field(default_factory=list)
 
     @classmethod

@@ -47,6 +47,8 @@ class CreateObligationCommand(StrictModel):
 
 class CreatePaymentCommand(StrictModel):
     entity_id: UUID
+    source: str | None = Field(default=None, max_length=2000)
+    reason: str | None = Field(default=None, max_length=2000)
     replacement_of_id: UUID | None = None
     money_account_id: UUID
     counterparty_id: UUID

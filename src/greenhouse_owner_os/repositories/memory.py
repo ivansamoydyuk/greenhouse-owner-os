@@ -13,6 +13,7 @@ from greenhouse_owner_os.domain.finance import Advance, FinancialPosting, Obliga
 class MemoryStore:
     def __init__(self) -> None:
         self.obligations: dict[UUID, Obligation] = {}
+        self.cash_records = {k: {} for k in ("transfer", "owner_funding", "direct_settlement")}
         self.payments: dict[UUID, Payment] = {}
         self.advances: dict[UUID, Advance] = {}
         self.postings: dict[UUID, FinancialPosting] = {}
@@ -64,6 +65,8 @@ class MemoryFinanceRepository:
                 (row.amount for row in payment.allocations if row.obligation_id == obligation_id),
                 Decimal("0.00"),
             )
+        allocated += sum((r.amount for r in self.store.cash_records['direct_settlement'].values()
+            if r.status == RecordStatus.POSTED and obligation_id in (r.receivable_id, r.payable_id)), Decimal('0.00'))
         return money(obligation.original_amount - allocated)
 
     def add_payment(self, payment: Payment, actor_id: UUID) -> None:
@@ -96,7 +99,7 @@ class MemoryFinanceRepository:
                 advance.status = "reversed"
 
     def replacement_id(self, resource_type: str, original_id: UUID) -> UUID | None:
-        items = self.store.payments if resource_type == "payment" else self.store.obligations
+        items = self.store.cash_records[resource_type] if resource_type in self.store.cash_records else (self.store.payments if resource_type == "payment" else self.store.obligations)
         return next((i.id for i in items.values() if i.replacement_of_id == original_id), None)
 
     def currency_balances(self, entity_id: UUID) -> dict[str, dict[str, Decimal]]:
@@ -146,6 +149,24 @@ class MemoryFinanceRepository:
             raise NotFoundError("ledger account not found") from exc
         if actual != (entity_id, currency):
             raise ValidationError("ledger account entity/currency mismatch")
+
+    def add_cash_record(self, kind, record, actor_id):
+        self.store.cash_records[kind][record.id] = copy.deepcopy(record)
+
+    def get_cash_record(self, kind, resource_id, *, for_update=False):
+        return copy.deepcopy(self.store.cash_records[kind].get(resource_id))
+
+    def save_cash_record(self, kind, record):
+        self.store.cash_records[kind][record.id] = copy.deepcopy(record)
+
+    def lock_money_accounts(self, account_ids):
+        pass  # Sequential test double; PostgreSQL tests verify actual locking.
+
+    def assert_counterparty_scope(self, counterparty_id, entity_id):
+        pass  # References are provisioned by fixtures; production validates in PostgreSQL.
+
+    def assert_account_class(self, account_id, entity_id, currency, account_class):
+        self.assert_ledger_account_scope(account_id, entity_id, currency)
 
 
 class MemoryIdempotencyRepository:

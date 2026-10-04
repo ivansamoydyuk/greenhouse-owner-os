@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any, Callable
 from uuid import UUID, uuid4
 
+from greenhouse_owner_os.domain.cash import CASH_TYPES, serialize_cash
 from greenhouse_owner_os.domain.commands import CreateObligationCommand, CreatePaymentCommand, ReverseCommand
 from greenhouse_owner_os.domain.errors import ConflictError, IdempotencyConflictError, NotFoundError, ValidationError
 from greenhouse_owner_os.domain.finance import (
@@ -69,6 +70,8 @@ def _serialize_payment(payment: Payment, advance: Advance | None = None) -> dict
         "posting_id": str(payment.posting_id) if payment.posting_id else None,
         "reversal_posting_id": str(payment.reversal_posting_id) if payment.reversal_posting_id else None,
         "replacement_of_id": str(payment.replacement_of_id) if payment.replacement_of_id else None,
+        "source": payment.source,
+        "reason": payment.reason,
         "allocation_total": f"{payment.allocation_total:.2f}",
         "unallocated_amount": f"{payment.unallocated_amount:.2f}",
         "advance_id": str(advance.id) if advance else None,
@@ -79,7 +82,10 @@ def _serialize_payment(payment: Payment, advance: Advance | None = None) -> dict
     }
 
 
-class FinanceService:
+from .cash import CashServiceMixin
+
+
+class FinanceService(CashServiceMixin):
     def __init__(self, uow_factory: UowFactory) -> None:
         self.uow_factory = uow_factory
 
@@ -186,6 +192,8 @@ class FinanceService:
             uow.finance.get_money_account_ledger(payment.money_account_id, payment.entity_id, payment.currency)
             self._validate_replacement(uow, "payment", command.replacement_of_id, payment)
             payment.replacement_of_id = command.replacement_of_id
+            payment.source = command.source
+            payment.reason = command.reason
             uow.finance.add_payment(payment, actor_id)
             response = _serialize_payment(payment)
             uow.audit.append(actor_id=actor_id, action="create", entity_type="payment", entity_id=payment.id, before=None, after=response)
@@ -241,6 +249,8 @@ class FinanceService:
                 if proposed > remaining:
                     raise ValidationError(f"allocation exceeds obligation remaining amount: {obligation_id}")
 
+            uow.finance.lock_money_accounts([payment.money_account_id])
+            uow.finance.assert_counterparty_scope(payment.counterparty_id, payment.entity_id)
             cash_ledger_id = uow.finance.get_money_account_ledger(payment.money_account_id, payment.entity_id, payment.currency)
             allocation_total = payment.allocation_total
             remainder = payment.unallocated_amount
@@ -313,7 +323,7 @@ class FinanceService:
     def _validate_replacement(uow, kind, original_id, replacement):
         if original_id is None:
             return
-        getter = uow.finance.get_payment if kind == "payment" else uow.finance.get_obligation
+        getter = (lambda rid, **kw: uow.finance.get_cash_record(kind, rid, **kw)) if kind in CASH_TYPES else (uow.finance.get_payment if kind == "payment" else uow.finance.get_obligation)
         original = getter(original_id, for_update=True)
         if not original:
             raise NotFoundError("replacement original not found")
@@ -338,7 +348,7 @@ class FinanceService:
             replay = self._replay_if_exists(uow, actor_id, operation, key, request_hash)
             if replay:
                 return replay
-            getter = uow.finance.get_payment if kind == "payment" else uow.finance.get_obligation
+            getter = (lambda rid, **kw: uow.finance.get_cash_record(kind, rid, **kw)) if kind in CASH_TYPES else (uow.finance.get_payment if kind == "payment" else uow.finance.get_obligation)
             record = getter(resource_id, for_update=True)
             if not record:
                 raise NotFoundError(kind + " not found")
@@ -353,6 +363,14 @@ class FinanceService:
             if kind == "payment":
                 for oid in sorted({a.obligation_id for a in record.allocations}, key=str):
                     uow.finance.get_obligation(oid, for_update=True)
+                uow.finance.lock_money_accounts([record.money_account_id])
+            elif kind == 'direct_settlement':
+                for oid in sorted({record.receivable_id, record.payable_id}, key=str):
+                    uow.finance.get_obligation(oid, for_update=True)
+            elif kind == 'transfer':
+                uow.finance.lock_money_accounts([record.source_account_id, record.destination_account_id])
+            elif kind == 'owner_funding':
+                uow.finance.lock_money_accounts([record.money_account_id])
             elif uow.finance.obligation_remaining(resource_id) != record.original_amount:
                 raise ValidationError("reverse active allocated payments before reversing obligation")
             original = uow.finance.get_posting(record.posting_id)
@@ -365,7 +383,7 @@ class FinanceService:
                 lines=[PostingLine(line.ledger_account_id,
                     PostingSide.CREDIT if line.side == PostingSide.DEBIT else PostingSide.DEBIT,
                     line.amount) for line in original.lines])
-            before = _serialize_payment(record) if kind == "payment" else _serialize_obligation(record)
+            before = serialize_cash(record) if kind in CASH_TYPES else (_serialize_payment(record) if kind == "payment" else _serialize_obligation(record))
             uow.finance.add_posting(reversal)
             record.status = RecordStatus.REVERSED
             record.version += 1
@@ -376,6 +394,8 @@ class FinanceService:
             if kind == "payment":
                 uow.finance.reverse_advance(resource_id)
                 uow.finance.save_payment(record)
+            elif kind in CASH_TYPES:
+                uow.finance.save_cash_record(kind, record)
             else:
                 uow.finance.save_obligation(record)
             response = self._linkage(uow, kind, record)
@@ -402,10 +422,10 @@ class FinanceService:
             "replacement_id": str(replacement) if replacement else None}
 
     def get_linkage(self, kind: str, resource_id: UUID):
-        if kind not in {"payment", "obligation"}:
+        if kind not in {"payment", "obligation", *CASH_TYPES}:
             raise ValidationError("unknown transaction type")
         with self.uow_factory() as uow:
-            getter = uow.finance.get_payment if kind == "payment" else uow.finance.get_obligation
+            getter = (lambda rid, **kw: uow.finance.get_cash_record(kind, rid, **kw)) if kind in CASH_TYPES else (uow.finance.get_payment if kind == "payment" else uow.finance.get_obligation)
             record = getter(resource_id)
             if not record:
                 raise NotFoundError(kind + " not found")

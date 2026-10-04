@@ -173,6 +173,8 @@ class ObligationRow(Base):
 
 
 class PaymentRow(Base):
+    source: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
     __tablename__ = "payments"
     __table_args__ = (
         CheckConstraint("direction in ('in','out')", name="ck_payment_direction"),
@@ -272,3 +274,47 @@ class AuditEventRow(Base):
     reason: Mapped[str | None] = mapped_column(Text)
     before_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     after_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
+class CashLifecycleMixin:
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.entities.id'), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    event_date: Mapped[date] = mapped_column(Date, nullable=False)
+    source: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default='draft')
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.actors.id'), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=UTC_NOW, nullable=False)
+    posting_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.postings.id'), unique=True)
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reversal_posting_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.postings.id'), unique=True)
+    reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reversed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey('core.actors.id'))
+    reversal_reason: Mapped[str | None] = mapped_column(Text)
+    # Reserved lifecycle field lets these records use the common integrity guard.
+    replacement_of_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
+class TransferRow(CashLifecycleMixin, Base):
+    __tablename__ = 'own_account_transfers'
+    __table_args__ = {'schema': 'finance'}
+    source_account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.money_accounts.id'), nullable=False)
+    destination_account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.money_accounts.id'), nullable=False)
+    fee: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False, default=Decimal('0.00'))
+    fee_account_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.ledger_accounts.id'))
+
+
+class FundingRow(CashLifecycleMixin, Base):
+    __tablename__ = 'owner_fundings'
+    __table_args__ = {'schema': 'finance'}
+    money_account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.money_accounts.id'), nullable=False)
+
+
+class SettlementRow(CashLifecycleMixin, Base):
+    __tablename__ = 'direct_settlements'
+    __table_args__ = {'schema': 'finance'}
+    receivable_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.obligations.id'), nullable=False)
+    payable_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.obligations.id'), nullable=False)
