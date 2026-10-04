@@ -78,6 +78,23 @@ class CashServiceMixin:
             funding = system('OWNER_FUNDING')
             repo.assert_account_class(funding, r.entity_id, r.currency, 'owner_funding')
             return [PostingLine(cash(r.money_account_id), debit, r.amount), PostingLine(funding, credit, r.amount)]
+        if kind == 'advance_application':
+            advance, ob = CashServiceMixin._application_sources(repo, r, lock=posting)
+            expected = 'payable' if r.direction == 'paid' else 'receivable'
+            if (advance.entity_id, advance.counterparty_id, advance.currency, advance.direction.value) != (r.entity_id,r.counterparty_id,r.currency,r.direction):
+                raise ValidationError('advance entity/counterparty/currency/direction mismatch')
+            if (ob.entity_id,ob.counterparty_id,ob.currency,ob.direction.value) != (r.entity_id,r.counterparty_id,r.currency,expected):
+                raise ValidationError('obligation entity/counterparty/currency/direction mismatch')
+            repo.assert_counterparty_scope(r.counterparty_id, r.entity_id)
+            if advance.status != 'open' or ob.status != RecordStatus.POSTED:
+                raise ValidationError('application requires active advance and posted obligation')
+            if r.event_date < max(advance.event_date, ob.event_date):
+                raise ValidationError('application date precedes source')
+            if posting and (r.amount > repo.advance_remaining(advance.id) or r.amount > repo.obligation_remaining(ob.id)):
+                raise ValidationError('application exceeds remaining advance/obligation')
+            if r.direction == 'paid':
+                return [PostingLine(system('AP_CONTROL'),debit,r.amount),PostingLine(system('SUPPLIER_ADVANCE'),credit,r.amount)]
+            return [PostingLine(system('CUSTOMER_ADVANCE'),debit,r.amount),PostingLine(system('AR_CONTROL'),credit,r.amount)]
         obs = {}
         for oid in sorted({r.receivable_id, r.payable_id}, key=str):
             obs[oid] = repo.get_obligation(oid, for_update=posting)
@@ -95,6 +112,62 @@ class CashServiceMixin:
     def reverse_cash(self, *, kind, resource_id, actor_id, idempotency_key, command):
         if kind not in CASH_TYPES: raise ValidationError('unknown cash operation')
         return self._reverse(kind, resource_id, actor_id, idempotency_key, command)
+
+    @staticmethod
+    def _application_sources(repo, record, *, lock):
+        advance = repo.get_advance(record.advance_id)
+        if not advance: raise NotFoundError('advance not found')
+        # All application writes take source payment -> advance -> obligation.
+        # Payment reversal takes that same source payment first; obligation reversal
+        # never acquires an upstream payment/advance lock.
+        payment = repo.get_payment(advance.source_payment_id, for_update=lock)
+        advance = repo.get_advance(record.advance_id, for_update=lock)
+        ob = repo.get_obligation(record.obligation_id, for_update=lock)
+        if not payment or not ob: raise NotFoundError('application source not found')
+        if payment.status != RecordStatus.POSTED: raise ValidationError('advance source payment inactive')
+        return advance, ob
+
+    def apply_advance(self, *, actor_id, idempotency_key, command):
+        from .finance import _hash_request
+        operation = 'apply_advance'
+        request_hash = _hash_request(command.model_dump(mode='json'))
+        with self.uow_factory() as uow:
+            uow.idempotency.lock(actor_id, operation, idempotency_key)
+            replay = self._replay_if_exists(uow, actor_id, operation, idempotency_key, request_hash)
+            if replay: return replay
+            record = CASH_TYPES['advance_application'](id=uuid4(), **command.model_dump())
+            lines = self._cash_lines(uow, 'advance_application', record, posting=True)
+            uow.finance.add_cash_record('advance_application', record, actor_id)
+            posting = FinancialPosting(id=uuid4(),entity_id=record.entity_id,currency=record.currency,event_date=record.event_date,
+                posting_type='advance_application_posted',source_type='advance_application',source_id=record.id,created_by=actor_id,lines=lines)
+            uow.finance.add_posting(posting)
+            record.status = RecordStatus.POSTED
+            record.version = 2
+            record.posting_id = posting.id
+            record.posted_at = datetime.now(timezone.utc)
+            uow.finance.save_cash_record('advance_application', record)
+            response = serialize_cash(record)
+            uow.audit.append(actor_id=actor_id,action='apply',entity_type='advance_application',entity_id=record.id,before=None,after=response)
+            uow.idempotency.put(actor_id=actor_id,operation=operation,key=idempotency_key,request_hash=request_hash,resource_type='advance_application',resource_id=record.id,response=response)
+            uow.commit()
+            return response
+
+    def get_advance(self, advance_id):
+        with self.uow_factory() as uow:
+            advance = uow.finance.get_advance(advance_id)
+            if not advance: raise NotFoundError('advance not found')
+            applications = uow.finance.advance_application_links(advance_id)
+            return {'id':str(advance.id),'entity_id':str(advance.entity_id),'counterparty_id':str(advance.counterparty_id),
+                'source_payment_id':str(advance.source_payment_id),'direction':advance.direction.value,'currency':advance.currency,
+                'original_amount':f'{advance.original_amount:.2f}','remaining_amount':f'{uow.finance.advance_remaining(advance_id):.2f}',
+                'status':advance.status,'applications':applications}
+
+    def get_counterparty_position(self, entity_id, counterparty_id, currency):
+        from greenhouse_owner_os.domain.finance import validate_currency
+        currency = validate_currency(currency)
+        with self.uow_factory() as uow:
+            return {'entity_id':str(entity_id),'counterparty_id':str(counterparty_id),'currency':currency,
+                    **{k:f'{v:.2f}' for k,v in uow.finance.counterparty_position(entity_id,counterparty_id,currency).items()}}
 
     def create_supplier_advance(self, *, actor_id, idempotency_key, command):
         # Same persisted payment/advance model and same idempotency scope as payments.

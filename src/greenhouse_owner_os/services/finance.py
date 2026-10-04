@@ -364,6 +364,8 @@ class FinanceService(CashServiceMixin):
                 for oid in sorted({a.obligation_id for a in record.allocations}, key=str):
                     uow.finance.get_obligation(oid, for_update=True)
                 uow.finance.lock_money_accounts([record.money_account_id])
+            elif kind == 'advance_application':
+                self._application_sources(uow.finance, record, lock=True)
             elif kind == 'direct_settlement':
                 for oid in sorted({record.receivable_id, record.payable_id}, key=str):
                     uow.finance.get_obligation(oid, for_update=True)
@@ -430,6 +432,11 @@ class FinanceService(CashServiceMixin):
             if not record:
                 raise NotFoundError(kind + " not found")
             return self._linkage(uow, kind, record)
+
+    def reconcile(self):
+        from .reconciliation import reconcile
+        with self.uow_factory() as uow:
+            return reconcile(uow.session)
 
     def get_currency_balances(self, entity_id: UUID):
         with self.uow_factory() as uow:

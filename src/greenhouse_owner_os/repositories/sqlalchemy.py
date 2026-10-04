@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from dataclasses import asdict, fields
 from greenhouse_owner_os.domain.cash import CASH_TYPES
-from greenhouse_owner_os.infrastructure.models import TransferRow, FundingRow, SettlementRow, CounterpartyRow
+from greenhouse_owner_os.infrastructure.models import TransferRow, FundingRow, SettlementRow, CounterpartyRow, ApplicationRow
 
 from greenhouse_owner_os.domain.errors import IdempotencyConflictError, NotFoundError, ValidationError
 from greenhouse_owner_os.domain.finance import (
@@ -90,7 +90,7 @@ class SqlAlchemyFinanceRepository:
         stmt = select(ObligationRow).where(ObligationRow.id == obligation_id)
         if for_update:
             stmt = stmt.with_for_update()
-        row = self.session.scalar(stmt)
+        row = self.session.scalar(stmt.execution_options(populate_existing=True))
         return self._obligation_from_row(row) if row else None
 
     def save_obligation(self, obligation: Obligation) -> None:
@@ -123,7 +123,7 @@ class SqlAlchemyFinanceRepository:
         allocated = Decimal(self.session.scalar(allocated_stmt) or 0)
         settled = self.session.scalar(select(func.coalesce(func.sum(SettlementRow.amount), 0)).where(
             (SettlementRow.receivable_id == obligation_id) | (SettlementRow.payable_id == obligation_id), SettlementRow.status == 'posted'))
-        return money(Decimal(obligation.original_amount) - allocated - Decimal(settled or 0))
+        return money(Decimal(obligation.original_amount) - allocated - Decimal(settled or 0) - self.application_total(obligation_id=obligation_id))
 
     def add_payment(self, payment: Payment, actor_id: UUID) -> None:
         self.session.add(PaymentRow(
@@ -183,7 +183,7 @@ class SqlAlchemyFinanceRepository:
         stmt = select(PaymentRow).where(PaymentRow.id == payment_id)
         if for_update:
             stmt = stmt.with_for_update()
-        row = self.session.scalar(stmt)
+        row = self.session.scalar(stmt.execution_options(populate_existing=True))
         return self._payment_from_row(row) if row else None
 
     def save_payment(self, payment: Payment) -> None:
@@ -239,9 +239,43 @@ class SqlAlchemyFinanceRepository:
             reason=row.reason,
             lines=[PostingLine(i.ledger_account_id, PostingSide(i.side), i.amount) for i in lines])
 
+    def get_advance(self, advance_id, *, for_update=False):
+        stmt = select(AdvanceRow).where(AdvanceRow.id == advance_id)
+        if for_update: stmt = stmt.with_for_update()
+        row = self.session.scalar(stmt.execution_options(populate_existing=True))
+        return self.get_advance_by_payment(row.source_payment_id) if row else None
+
+    def application_total(self, *, advance_id=None, obligation_id=None):
+        stmt = select(func.coalesce(func.sum(ApplicationRow.amount), 0)).where(ApplicationRow.status == 'posted')
+        stmt = stmt.where(ApplicationRow.advance_id == advance_id) if advance_id else stmt.where(ApplicationRow.obligation_id == obligation_id)
+        return money(self.session.scalar(stmt))
+
+    def advance_application_links(self, advance_id):
+        from greenhouse_owner_os.domain.cash import serialize_cash
+        rows = self.session.scalars(select(ApplicationRow.id).where(ApplicationRow.advance_id==advance_id).order_by(ApplicationRow.id)).all()
+        return [serialize_cash(self.get_cash_record('advance_application', rid)) for rid in rows]
+
+    def advance_remaining(self, advance_id):
+        a = self.get_advance(advance_id)
+        if not a: raise NotFoundError('advance not found')
+        return Decimal('0.00') if a.status == 'reversed' else money(a.original_amount - self.application_total(advance_id=advance_id))
+
+    def counterparty_position(self, entity_id, counterparty_id, currency):
+        self.assert_counterparty_scope(counterparty_id, entity_id)
+        row = self.session.execute(text("""
+          SELECT
+           coalesce((SELECT sum(remaining_amount) FROM finance.obligation_balances WHERE entity_id=:e AND counterparty_id=:c AND currency=:x AND direction='payable' AND settlement_status IN ('open','partial','settled')),0) AS open_payable,
+           coalesce((SELECT sum(remaining_amount) FROM finance.obligation_balances WHERE entity_id=:e AND counterparty_id=:c AND currency=:x AND direction='receivable' AND settlement_status IN ('open','partial','settled')),0) AS open_receivable,
+           coalesce((SELECT sum(remaining_amount) FROM finance.advance_balances WHERE entity_id=:e AND counterparty_id=:c AND currency=:x AND direction='paid'),0) AS supplier_advance_remaining,
+           coalesce((SELECT sum(remaining_amount) FROM finance.advance_balances WHERE entity_id=:e AND counterparty_id=:c AND currency=:x AND direction='received'),0) AS customer_advance_remaining
+        """), {'e':entity_id,'c':counterparty_id,'x':currency}).mappings().one()
+        return {k:money(v) for k,v in row.items()}
+
     def reverse_advance(self, payment_id: UUID) -> None:
         row = self.session.scalar(select(AdvanceRow).where(AdvanceRow.source_payment_id == payment_id).with_for_update())
         if row:
+            if self.application_total(advance_id=row.id):
+                raise ValidationError("reverse active advance applications first")
             if row.status != "open":
                 raise ValidationError("only untouched open advance can be reversed")
             row.status = "reversed"
@@ -260,8 +294,8 @@ class SqlAlchemyFinanceRepository:
                 SELECT currency, direction, remaining_amount FROM finance.obligation_balances
                   WHERE entity_id=:entity AND settlement_status IN ('open','partial','settled')
                 UNION ALL
-                SELECT currency, 'advance_' || direction, original_amount FROM finance.advances
-                  WHERE entity_id=:entity AND status='open'
+                SELECT currency, 'advance_' || direction, remaining_amount FROM finance.advance_balances
+                  WHERE entity_id=:entity
             ) positions GROUP BY currency, category ORDER BY currency, category
         """), {"entity": entity_id}).all()
         result = {}
@@ -320,7 +354,7 @@ class SqlAlchemyFinanceRepository:
         if account.entity_id != entity_id or account.currency != currency or not account.active:
             raise ValidationError("ledger account entity/currency mismatch or inactive")
 
-    CASH_MODELS = {'transfer': TransferRow, 'owner_funding': FundingRow, 'direct_settlement': SettlementRow}
+    CASH_MODELS = {'advance_application': ApplicationRow, 'transfer': TransferRow, 'owner_funding': FundingRow, 'direct_settlement': SettlementRow}
 
     def add_cash_record(self, kind, record, actor_id):
         self.session.add(self.CASH_MODELS[kind](**asdict(record), created_by=actor_id))
@@ -330,7 +364,7 @@ class SqlAlchemyFinanceRepository:
         model = self.CASH_MODELS[kind]
         stmt = select(model).where(model.id == resource_id)
         if for_update: stmt = stmt.with_for_update()
-        row = self.session.scalar(stmt)
+        row = self.session.scalar(stmt.execution_options(populate_existing=True))
         if not row: return None
         data = {f.name: getattr(row, f.name) for f in fields(CASH_TYPES[kind])}
         data['status'] = RecordStatus(data['status'])

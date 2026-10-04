@@ -313,6 +313,15 @@ class FundingRow(CashLifecycleMixin, Base):
     money_account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.money_accounts.id'), nullable=False)
 
 
+class ApplicationRow(CashLifecycleMixin, Base):
+    __tablename__ = 'advance_applications'
+    __table_args__ = {'schema': 'finance'}
+    advance_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.advances.id'), nullable=False)
+    obligation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('finance.obligations.id'), nullable=False)
+    counterparty_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey('core.counterparties.id'), nullable=False)
+    direction: Mapped[str] = mapped_column(String(10), nullable=False)
+
+
 class SettlementRow(CashLifecycleMixin, Base):
     __tablename__ = 'direct_settlements'
     __table_args__ = {'schema': 'finance'}
