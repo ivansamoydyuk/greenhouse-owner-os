@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
+from greenhouse_owner_os.domain.history import ImportBatchCommand, HistoricalCandidateCommand
 from greenhouse_owner_os.domain.cash import TransferCommand, FundingCommand, SettlementCommand, SupplierAdvanceCommand, AdvanceApplicationCommand
 from greenhouse_owner_os.api.schemas import ObligationCreateBody, PaymentCreateBody
 from greenhouse_owner_os.domain.commands import AllocationInput, CreateObligationCommand, CreatePaymentCommand, ReverseCommand
@@ -25,6 +26,26 @@ def create_app(*, finance_service: FinanceService, actor_provider) -> FastAPI:
     @app.exception_handler(ValidationError)
     async def validation_handler(_, exc: ValidationError):
         return _json_error(422, "business_validation", str(exc))
+
+    @app.get('/v1/entities/{entity_id}/cutover')
+    def cutover(entity_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_cutover_status(entity_id)
+
+    @app.post('/v1/import-batches', status_code=201)
+    def import_batch(body: ImportBatchCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.create_import_batch(actor_id=actor_id, idempotency_key=idempotency_key, command=body)
+
+    @app.get('/v1/import-batches/{batch_id}')
+    def batch_provenance(batch_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_import_batch(batch_id)
+
+    @app.post('/v1/import-batches/{batch_id}/candidates', status_code=201)
+    def candidate(batch_id: UUID, body: HistoricalCandidateCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.import_historical_candidate(actor_id=actor_id, idempotency_key=idempotency_key, batch_id=batch_id, command=body)
+
+    @app.get('/v1/historical-candidates/{candidate_id}')
+    def candidate_provenance(candidate_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_historical_candidate(candidate_id)
 
     @app.post("/v1/obligations", status_code=201)
     def create_obligation(body: ObligationCreateBody, idempotency_key: str = Header(alias="Idempotency-Key"), actor_id: UUID = Depends(actor_provider)):

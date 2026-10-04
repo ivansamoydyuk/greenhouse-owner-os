@@ -39,6 +39,7 @@ class CashServiceMixin:
             if not record: raise NotFoundError(kind + ' not found')
             if record.version != expected_version: raise ConflictError('version conflict')
             if record.status != RecordStatus.DRAFT: raise ValidationError('only draft can be posted')
+            uow.finance.assert_live_date(record.entity_id, record.event_date)
             lines = self._cash_lines(uow, kind, record, posting=True)
             posting = FinancialPosting(id=uuid4(), entity_id=record.entity_id, currency=record.currency,
                 event_date=record.event_date, posting_type=kind+'_posted', source_type=kind,
@@ -137,6 +138,7 @@ class CashServiceMixin:
             if replay: return replay
             record = CASH_TYPES['advance_application'](id=uuid4(), **command.model_dump())
             lines = self._cash_lines(uow, 'advance_application', record, posting=True)
+            uow.finance.assert_live_date(record.entity_id, record.event_date)
             uow.finance.add_cash_record('advance_application', record, actor_id)
             posting = FinancialPosting(id=uuid4(),entity_id=record.entity_id,currency=record.currency,event_date=record.event_date,
                 posting_type='advance_application_posted',source_type='advance_application',source_id=record.id,created_by=actor_id,lines=lines)

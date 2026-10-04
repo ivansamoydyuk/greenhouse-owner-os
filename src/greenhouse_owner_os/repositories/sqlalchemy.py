@@ -43,7 +43,10 @@ from greenhouse_owner_os.infrastructure.models import (
 )
 
 
-class SqlAlchemyFinanceRepository:
+from .history import SqlHistoryRepositoryMixin
+
+
+class SqlAlchemyFinanceRepository(SqlHistoryRepositoryMixin):
     def __init__(self, session: Session) -> None:
         self.session = session
 
@@ -304,6 +307,7 @@ class SqlAlchemyFinanceRepository:
         return result
 
     def add_posting(self, posting: FinancialPosting) -> None:
+        self.assert_live_date(posting.entity_id, posting.event_date)
         posting.validate_balanced()
         self.session.add(PostingRow(
             id=posting.id,

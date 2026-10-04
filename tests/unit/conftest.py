@@ -26,6 +26,8 @@ def fx() -> FinanceFixture:
     store = MemoryStore()
     actor_id = uuid4()
     entity_id = uuid4()
+    from datetime import date
+    store.cutovers[entity_id] = date(2026, 10, 4)
     counterparty_id = uuid4()
     other_counterparty_id = uuid4()
     for system_code in ["AP_CONTROL", "AR_CONTROL", "SUPPLIER_ADVANCE", "CUSTOMER_ADVANCE"]:

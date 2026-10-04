@@ -5,22 +5,22 @@ from sqlalchemy import select, text
 from greenhouse_owner_os.infrastructure.models import (
     ObligationRow, PaymentRow, PaymentAllocationRow, AdvanceRow, ApplicationRow,
     PostingRow, PostingEntryRow, LedgerAccountRow, MoneyAccountRow, CounterpartyRow,
-    TransferRow, FundingRow, SettlementRow,
+    TransferRow, FundingRow, SettlementRow, EntityRow, ImportBatchRow, HistoricalCandidateRow,
 )
 
 
-def reconcile(session):
+def reconcile(session, *, include_classification=False):
     # A consistent snapshot is necessary: independent READ COMMITTED selects could
     # otherwise report a valid concurrent transaction as a false inconsistency.
     session.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY'))
     models = [ObligationRow, PaymentRow, PaymentAllocationRow, AdvanceRow, ApplicationRow,
               PostingRow, PostingEntryRow, LedgerAccountRow, MoneyAccountRow, CounterpartyRow,
-              TransferRow, FundingRow, SettlementRow]
+              TransferRow, FundingRow, SettlementRow, EntityRow, ImportBatchRow, HistoricalCandidateRow]
     rows = {m: {r.id:r for r in session.scalars(select(m).order_by(m.id)).all()} for m in models}
-    return check_snapshot(rows)
+    return check_snapshot(rows, include_classification=include_classification)
 
 
-def check_snapshot(rows):
+def check_snapshot(rows, *, include_classification=False):
     findings = []
     def fail(code, rid): findings.append({'code':code,'id':str(rid)})
     obs,pays,allocs,advs,apps,posts,entries,ledgers,accounts,cps,transfers,fundings,settlements = (
@@ -136,4 +136,31 @@ def check_snapshot(rows):
             actual[(l.entity_id,l.currency,l.system_code)]+=sign*e.amount
     for key in sorted(set(expected_balances)|set(actual),key=str):
         if expected_balances[key]!=actual[key]: fail('control_balance_mismatch',':'.join(map(str,key)))
-    return {'ok':not findings,'findings':sorted(findings,key=lambda f:(f['code'],f['id']))}
+    entities, batches, candidates = (rows.get(m, {}) for m in (EntityRow, ImportBatchRow, HistoricalCandidateRow))
+    for p in posts.values():
+        if EntityRow in rows:
+            entity = entities.get(p.entity_id)
+            if not entity or p.event_date < entity.finance_cutover_date: fail('pre_cutover_live_posting', p.id)
+        if p.source_id in candidates: fail('historical_ledger_effect', p.id)
+    for kind, records in domains.items():
+        for r in records.values():
+            if r.status not in ('posted', 'reversed') and (r.posting_id or r.reversal_posting_id): fail('nonposting_domain_linkage', r.id)
+            if EntityRow in rows and r.status in ('posted', 'reversed'):
+                entity = entities.get(r.entity_id)
+                if not entity or r.event_date < entity.finance_cutover_date: fail('pre_cutover_live_domain', r.id)
+    for batch in batches.values():
+        if batch.entity_id not in entities: fail('import_batch_entity', batch.id)
+    for candidate in candidates.values():
+        if candidate.import_batch_id not in batches: fail('import_provenance_missing', candidate.id)
+        if candidate.verification_state not in ('HISTORY', 'VERIFY', 'VERIFIED'): fail('import_verification_invalid', candidate.id)
+    result = {'ok':not findings,'findings':sorted(findings,key=lambda f:(f['code'],f['id']))}
+    if include_classification:
+        result['classification'] = {
+            'live_posted':sum(r.status == 'posted' for records in domains.values() for r in records.values()),
+            'live_reversed':sum(r.status == 'reversed' for records in domains.values() for r in records.values()),
+            'draft':sum(r.status in ('draft', 'review') for records in domains.values() for r in records.values()),
+            'imported_VERIFY':sum(r.verification_state == 'VERIFY' for r in candidates.values()),
+            'imported_HISTORY':sum(r.verification_state == 'HISTORY' for r in candidates.values()),
+            'imported_VERIFIED_nonposting':sum(r.verification_state == 'VERIFIED' for r in candidates.values()),
+        }
+    return result

@@ -12,6 +12,9 @@ from greenhouse_owner_os.domain.finance import Advance, FinancialPosting, Obliga
 
 class MemoryStore:
     def __init__(self) -> None:
+        self.cutovers = {}
+        self.import_batches = {}
+        self.historical_candidates = {}
         self.obligations: dict[UUID, Obligation] = {}
         self.cash_records = {k: {} for k in ("transfer", "owner_funding", "direct_settlement", "advance_application")}
         self.payments: dict[UUID, Payment] = {}
@@ -37,7 +40,10 @@ class MemoryStore:
         return money_account_id, ledger_id
 
 
-class MemoryFinanceRepository:
+from .history import MemoryHistoryRepositoryMixin
+
+
+class MemoryFinanceRepository(MemoryHistoryRepositoryMixin):
     def __init__(self, store: MemoryStore) -> None:
         self.store = store
 
@@ -150,6 +156,9 @@ class MemoryFinanceRepository:
         return result
 
     def add_posting(self, posting: FinancialPosting) -> None:
+        self.assert_live_date(posting.entity_id, posting.event_date)
+        if str(posting.source_id) in self.store.historical_candidates:
+            raise ValidationError("import candidates are non-posting evidence")
         posting.validate_balanced()
         for line in posting.lines:
             self.assert_ledger_account_scope(line.ledger_account_id, posting.entity_id, posting.currency)

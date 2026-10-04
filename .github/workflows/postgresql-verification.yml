@@ -2,7 +2,7 @@ name: PostgreSQL verification
 
 on:
   push:
-    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion]
+    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation]
   workflow_dispatch:
 
 permissions:
@@ -63,8 +63,8 @@ jobs:
           from sqlalchemy import create_engine, text
           with create_engine(os.environ['DATABASE_URL']).connect() as conn:
               revisions = conn.execute(text('SELECT version_num FROM public.alembic_version')).scalars().all()
-          assert revisions == ['20261004_0005'], 'Unexpected Alembic revision'
-          print('Alembic head: 20261004_0005')
+          assert revisions == ['20261004_0006'], 'Unexpected Alembic revision'
+          print('Alembic head: 20261004_0006')
           PY
       - name: PostgreSQL integration and concurrency tests
         run: |

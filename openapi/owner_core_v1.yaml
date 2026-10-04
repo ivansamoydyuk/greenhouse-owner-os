@@ -885,6 +885,143 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/cutover:
+    get:
+      summary: Cutover
+      operationId: cutover_v1_entities__entity_id__cutover_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /import-batches:
+    post:
+      summary: Import Batch
+      operationId: import_batch_v1_import_batches_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportBatchCommand'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /import-batches/{batch_id}:
+    get:
+      summary: Batch Provenance
+      operationId: batch_provenance_v1_import_batches__batch_id__get
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Batch Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /import-batches/{batch_id}/candidates:
+    post:
+      summary: Candidate
+      operationId: candidate_v1_import_batches__batch_id__candidates_post
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Batch Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HistoricalCandidateCommand'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /historical-candidates/{candidate_id}:
+    get:
+      summary: Candidate Provenance
+      operationId: candidate_provenance_v1_historical_candidates__candidate_id__get
+      parameters:
+      - name: candidate_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Candidate Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -1675,6 +1812,91 @@ components:
       - counterparty_id
       - direction
       title: AdvanceApplicationCommand
+    ImportBatchCommand:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        source:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Source
+        source_file:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Source File
+        fingerprint:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          title: Fingerprint
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - source
+      - source_file
+      - fingerprint
+      title: ImportBatchCommand
+    HistoricalCandidateCommand:
+      properties:
+        source_row:
+          anyOf:
+          - type: string
+            maxLength: 2000
+            minLength: 1
+          - type: 'null'
+          title: Source Row
+        source_document:
+          anyOf:
+          - type: string
+            maxLength: 2000
+            minLength: 1
+          - type: 'null'
+          title: Source Document
+        event_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Event Date
+        verification_state:
+          $ref: '#/components/schemas/VerificationState'
+          default: HISTORY
+        confidence:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d{0,6}0*$
+          - type: 'null'
+          title: Confidence
+        raw_value:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Raw Value
+        source_reference:
+          anyOf:
+          - type: string
+            maxLength: 2000
+            minLength: 1
+          - type: 'null'
+          title: Source Reference
+      additionalProperties: false
+      type: object
+      title: HistoricalCandidateCommand
+    VerificationState:
+      type: string
+      enum:
+      - VERIFIED
+      - VERIFY
+      - HISTORY
+      title: VerificationState
   responses:
     Conflict:
       description: Version or idempotency conflict
