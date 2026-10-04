@@ -310,6 +310,7 @@ class SqlAlchemyFinanceRepository:
             raise NotFoundError("money account not found")
         if account.entity_id != entity_id or account.currency != currency or not account.active:
             raise ValidationError("money account entity/currency mismatch or inactive")
+        self.assert_account_class(account.ledger_account_id, entity_id, currency, 'cash')
         return account.ledger_account_id
 
     def assert_ledger_account_scope(self, account_id: UUID, entity_id: UUID, currency: str) -> None:

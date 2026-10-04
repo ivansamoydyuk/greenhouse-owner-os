@@ -15,6 +15,27 @@ depends_on = None
 def upgrade():
     for name in ('source', 'reason'):
         op.add_column('payments', sa.Column(name, sa.Text()), schema='finance')
+    op.execute("""
+    CREATE OR REPLACE FUNCTION finance.protect_account_scope() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF (NEW.entity_id,NEW.currency) IS DISTINCT FROM (OLD.entity_id,OLD.currency) OR
+        (TG_TABLE_NAME='money_accounts' AND to_jsonb(NEW)->>'ledger_account_id' IS DISTINCT FROM to_jsonb(OLD)->>'ledger_account_id') OR
+        (TG_TABLE_NAME='ledger_accounts' AND
+          (to_jsonb(NEW)->>'account_class',to_jsonb(NEW)->>'normal_side',to_jsonb(NEW)->>'system_code') IS DISTINCT FROM
+          (to_jsonb(OLD)->>'account_class',to_jsonb(OLD)->>'normal_side',to_jsonb(OLD)->>'system_code')) THEN
+        RAISE EXCEPTION 'account financial identity is immutable' USING ERRCODE='55000';
+      END IF;
+      RETURN NEW;
+    END; $$;
+    CREATE OR REPLACE FUNCTION finance.assert_money_account_scope() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NOT EXISTS(SELECT 1 FROM finance.ledger_accounts WHERE id=NEW.ledger_account_id
+        AND entity_id=NEW.entity_id AND currency=NEW.currency AND account_class='cash') THEN
+        RAISE EXCEPTION 'money account needs matching cash-class ledger' USING ERRCODE='23514';
+      END IF;
+      RETURN NEW;
+    END; $$;
+    """)
     op.execute(CASH_FUNCTIONS)
     for kind, table in [('transfer','own_account_transfers'), ('owner_funding','owner_fundings'), ('direct_settlement','direct_settlements')]:
         cols = [
@@ -173,8 +194,8 @@ BEGIN
    RAISE EXCEPTION 'cash domain/posting mismatch' USING ERRCODE='23514';
  END IF;
  IF TG_ARGV[0]='transfer' THEN
-   SELECT ledger_account_id INTO source_ledger FROM finance.money_accounts WHERE id=(r->>'source_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND (active OR r->>'status'='reversed');
-   SELECT ledger_account_id INTO destination_ledger FROM finance.money_accounts WHERE id=(r->>'destination_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND (active OR r->>'status'='reversed');
+   SELECT ledger_account_id INTO source_ledger FROM finance.money_accounts WHERE ledger_account_id IN (SELECT id FROM finance.ledger_accounts WHERE account_class='cash') AND id=(r->>'source_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND (active OR r->>'status'='reversed');
+   SELECT ledger_account_id INTO destination_ledger FROM finance.money_accounts WHERE ledger_account_id IN (SELECT id FROM finance.ledger_accounts WHERE account_class='cash') AND id=(r->>'destination_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND (active OR r->>'status'='reversed');
    IF source_ledger IS NULL OR destination_ledger IS NULL OR source_ledger=destination_ledger THEN RAISE EXCEPTION 'invalid transfer accounts' USING ERRCODE='23514'; END IF;
    expected=jsonb_build_array(jsonb_build_object('account',source_ledger,'side','credit','amount',(r->>'amount')::numeric), jsonb_build_object('account',destination_ledger,'side','debit','amount',(r->>'amount')::numeric));
    IF (r->>'fee')::numeric>0 THEN
@@ -182,7 +203,7 @@ BEGIN
      expected=expected||jsonb_build_array(jsonb_build_object('account',source_ledger,'side','credit','amount',(r->>'fee')::numeric),jsonb_build_object('account',r->>'fee_account_id','side','debit','amount',(r->>'fee')::numeric));
    END IF;
  ELSIF TG_ARGV[0]='owner_funding' THEN
-   SELECT ledger_account_id INTO destination_ledger FROM finance.money_accounts WHERE id=(r->>'money_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND (active OR r->>'status'='reversed');
+   SELECT ledger_account_id INTO destination_ledger FROM finance.money_accounts WHERE ledger_account_id IN (SELECT id FROM finance.ledger_accounts WHERE account_class='cash') AND id=(r->>'money_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND (active OR r->>'status'='reversed');
    SELECT id INTO control FROM finance.ledger_accounts WHERE entity_id=p.entity_id AND currency=p.currency AND system_code='OWNER_FUNDING' AND account_class='owner_funding' AND (active OR r->>'status'='reversed');
    IF destination_ledger IS NULL OR control IS NULL THEN RAISE EXCEPTION 'invalid funding accounts' USING ERRCODE='23514'; END IF;
    expected=jsonb_build_array(jsonb_build_object('account',destination_ledger,'side','debit','amount',(r->>'amount')::numeric),jsonb_build_object('account',control,'side','credit','amount',(r->>'amount')::numeric));

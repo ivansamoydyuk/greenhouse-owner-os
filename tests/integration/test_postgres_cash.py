@@ -255,3 +255,18 @@ def test_database_prevents_over_settlement_when_service_check_bypassed(cashpg,mo
             else:fx.service.post_payment(actor_id=fx.actor_id,idempotency_key='db-over',payment_id=UUID(r['id']),expected_version=1)
     assert counts(fx)==before
     assert fx.service.get_obligation(cmd.payable_id)['remaining_amount']=='5000.00'
+
+
+def test_money_account_cannot_use_pnl_ledger(cashpg):
+    fx=cashpg
+    with pytest.raises(DBAPIError):
+        with fx.session_factory.begin() as s:
+            s.add(MoneyAccountRow(id=uuid4(),entity_id=fx.entity_id,ledger_account_id=fx.offset_account_id,account_type='bank',name='Invalid expense bank',currency='TRY'))
+
+
+@pytest.mark.parametrize('field,value',[('account_class',"'revenue'"),('normal_side',"'credit'"),('system_code',"'REVENUE'")])
+def test_ledger_taxonomy_cannot_relabel_financial_history(cashpg,field,value):
+    fx=cashpg;post(fx,'transfer',create(fx,'transfer',transfer(fx)))
+    with pytest.raises(DBAPIError):
+        with fx.session_factory.begin() as s:
+            s.execute(text(f'UPDATE finance.ledger_accounts SET {field}={value} WHERE id=(SELECT ledger_account_id FROM finance.money_accounts WHERE id=:id)'),{'id':fx.money_account_id})
