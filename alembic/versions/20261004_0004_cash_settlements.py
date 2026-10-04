@@ -173,22 +173,22 @@ BEGIN
    RAISE EXCEPTION 'cash domain/posting mismatch' USING ERRCODE='23514';
  END IF;
  IF TG_ARGV[0]='transfer' THEN
-   SELECT ledger_account_id INTO source_ledger FROM finance.money_accounts WHERE id=(r->>'source_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND active;
-   SELECT ledger_account_id INTO destination_ledger FROM finance.money_accounts WHERE id=(r->>'destination_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND active;
+   SELECT ledger_account_id INTO source_ledger FROM finance.money_accounts WHERE id=(r->>'source_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND (active OR r->>'status'='reversed');
+   SELECT ledger_account_id INTO destination_ledger FROM finance.money_accounts WHERE id=(r->>'destination_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND (active OR r->>'status'='reversed');
    IF source_ledger IS NULL OR destination_ledger IS NULL OR source_ledger=destination_ledger THEN RAISE EXCEPTION 'invalid transfer accounts' USING ERRCODE='23514'; END IF;
    expected=jsonb_build_array(jsonb_build_object('account',source_ledger,'side','credit','amount',(r->>'amount')::numeric), jsonb_build_object('account',destination_ledger,'side','debit','amount',(r->>'amount')::numeric));
    IF (r->>'fee')::numeric>0 THEN
-     IF NOT EXISTS(SELECT 1 FROM finance.ledger_accounts WHERE id=(r->>'fee_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND account_class='expense' AND active) THEN RAISE EXCEPTION 'fee needs expense account' USING ERRCODE='23514'; END IF;
+     IF NOT EXISTS(SELECT 1 FROM finance.ledger_accounts WHERE id=(r->>'fee_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND account_class='expense' AND (active OR r->>'status'='reversed')) THEN RAISE EXCEPTION 'fee needs expense account' USING ERRCODE='23514'; END IF;
      expected=expected||jsonb_build_array(jsonb_build_object('account',source_ledger,'side','credit','amount',(r->>'fee')::numeric),jsonb_build_object('account',r->>'fee_account_id','side','debit','amount',(r->>'fee')::numeric));
    END IF;
  ELSIF TG_ARGV[0]='owner_funding' THEN
-   SELECT ledger_account_id INTO destination_ledger FROM finance.money_accounts WHERE id=(r->>'money_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND active;
-   SELECT id INTO control FROM finance.ledger_accounts WHERE entity_id=p.entity_id AND currency=p.currency AND system_code='OWNER_FUNDING' AND account_class='owner_funding' AND active;
+   SELECT ledger_account_id INTO destination_ledger FROM finance.money_accounts WHERE id=(r->>'money_account_id')::uuid AND entity_id=p.entity_id AND currency=p.currency AND (active OR r->>'status'='reversed');
+   SELECT id INTO control FROM finance.ledger_accounts WHERE entity_id=p.entity_id AND currency=p.currency AND system_code='OWNER_FUNDING' AND account_class='owner_funding' AND (active OR r->>'status'='reversed');
    IF destination_ledger IS NULL OR control IS NULL THEN RAISE EXCEPTION 'invalid funding accounts' USING ERRCODE='23514'; END IF;
    expected=jsonb_build_array(jsonb_build_object('account',destination_ledger,'side','debit','amount',(r->>'amount')::numeric),jsonb_build_object('account',control,'side','credit','amount',(r->>'amount')::numeric));
  ELSE
-   SELECT id INTO source_ledger FROM finance.ledger_accounts WHERE entity_id=p.entity_id AND currency=p.currency AND system_code='AR_CONTROL' AND active;
-   SELECT id INTO destination_ledger FROM finance.ledger_accounts WHERE entity_id=p.entity_id AND currency=p.currency AND system_code='AP_CONTROL' AND active;
+   SELECT id INTO source_ledger FROM finance.ledger_accounts WHERE entity_id=p.entity_id AND currency=p.currency AND system_code='AR_CONTROL' AND (active OR r->>'status'='reversed');
+   SELECT id INTO destination_ledger FROM finance.ledger_accounts WHERE entity_id=p.entity_id AND currency=p.currency AND system_code='AP_CONTROL' AND (active OR r->>'status'='reversed');
    IF source_ledger IS NULL OR destination_ledger IS NULL THEN RAISE EXCEPTION 'settlement control missing' USING ERRCODE='23514'; END IF;
    expected=jsonb_build_array(jsonb_build_object('account',source_ledger,'side','credit','amount',(r->>'amount')::numeric),jsonb_build_object('account',destination_ledger,'side','debit','amount',(r->>'amount')::numeric));
  END IF;

@@ -28,6 +28,7 @@ class CashServiceMixin:
 
     def post_cash(self, *, kind, resource_id, actor_id, idempotency_key, expected_version):
         from .finance import _hash_request
+        if kind not in CASH_TYPES: raise ValidationError('unknown cash operation')
         operation = 'post_' + kind
         request_hash = _hash_request({'id': str(resource_id), 'expected_version': expected_version})
         with self.uow_factory() as uow:
@@ -92,6 +93,7 @@ class CashServiceMixin:
         return [PostingLine(system('AP_CONTROL'), debit, r.amount), PostingLine(system('AR_CONTROL'), credit, r.amount)]
 
     def reverse_cash(self, *, kind, resource_id, actor_id, idempotency_key, command):
+        if kind not in CASH_TYPES: raise ValidationError('unknown cash operation')
         return self._reverse(kind, resource_id, actor_id, idempotency_key, command)
 
     def create_supplier_advance(self, *, actor_id, idempotency_key, command):

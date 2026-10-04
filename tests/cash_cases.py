@@ -123,6 +123,8 @@ def direct_full(fx):
     assert fx.service.get_obligation(cmd.receivable_id)['remaining_amount']=='10000.00'
     assert fx.service.get_obligation(cmd.payable_id)['remaining_amount']=='0.00'
     assert balance(fx,fx.money_account_id)==0
+    positions=fx.service.get_currency_balances(fx.entity_id)['balances']['TRY']
+    assert positions['receivable']=='10000.00' and positions['payable']=='0.00'
     with pytest.raises(ValidationError):
         fx.service.reverse_obligation(actor_id=fx.actor_id,idempotency_key=str(uuid4()),obligation_id=cmd.payable_id,command=ReverseCommand(expected_version=2,event_date=DAY,reason='Blocked'))
     rev=reverse(fx,'direct_settlement',r,key='reverse-direct');assert reverse(fx,'direct_settlement',r,key='reverse-direct')==rev

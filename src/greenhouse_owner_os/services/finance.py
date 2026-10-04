@@ -323,7 +323,7 @@ class FinanceService(CashServiceMixin):
     def _validate_replacement(uow, kind, original_id, replacement):
         if original_id is None:
             return
-        getter = (lambda rid, **kw: uow.finance.get_cash_record(kind, rid, **kw)) if kind in CASH_TYPES else (uow.finance.get_payment if kind == "payment" else uow.finance.get_obligation)
+        getter = uow.finance.get_payment if kind == "payment" else uow.finance.get_obligation
         original = getter(original_id, for_update=True)
         if not original:
             raise NotFoundError("replacement original not found")

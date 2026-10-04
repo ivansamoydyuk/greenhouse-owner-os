@@ -228,3 +228,30 @@ def test_direct_settlement_vs_obligation_reversal(cashpg):
         status=s.scalar(select(SettlementRow.status).where(SettlementRow.id==UUID(r['id'])))
         ap=fx.service.get_obligation(cmd.payable_id)
     assert (status,ap['status']) in [('posted','posted'),('draft','reversed')]
+
+
+@pytest.mark.parametrize('kind',['transfer','owner_funding'])
+def test_reversal_after_account_deactivated(cashpg,kind):
+    fx=cashpg;r=post(fx,kind,create(fx,kind,transfer(fx,fee='50') if kind=='transfer' else funding(fx)))
+    with fx.session_factory.begin() as s:
+        s.execute(text('UPDATE finance.money_accounts SET active=false WHERE entity_id=:id'),{'id':fx.entity_id})
+        s.execute(text('UPDATE finance.ledger_accounts SET active=false WHERE entity_id=:id'),{'id':fx.entity_id})
+    rev=reverse(fx,kind,r);assert rev['status']=='reversed'
+    with fx.session_factory() as s:
+        assert s.scalar(text('SELECT sum(balance) FROM finance.money_account_balances WHERE entity_id=:id'),{'id':fx.entity_id})==0
+
+
+@pytest.mark.parametrize('kind',['direct_settlement','payment'])
+def test_database_prevents_over_settlement_when_service_check_bypassed(cashpg,monkeypatch,kind):
+    from greenhouse_owner_os.repositories.sqlalchemy import SqlAlchemyFinanceRepository
+    fx=cashpg;cmd=settlement(fx,'15000');post(fx,'direct_settlement',create(fx,'direct_settlement',cmd))
+    if kind=='direct_settlement':r=create(fx,kind,cmd)
+    else:r=payment(fx,[(str(cmd.payable_id),'15000')],'15000',post=False)
+    before=counts(fx)
+    with monkeypatch.context() as m:
+        m.setattr(SqlAlchemyFinanceRepository,'obligation_remaining',lambda *a:Decimal('999999'))
+        with pytest.raises(DBAPIError):
+            if kind=='direct_settlement':post(fx,kind,r)
+            else:fx.service.post_payment(actor_id=fx.actor_id,idempotency_key='db-over',payment_id=UUID(r['id']),expected_version=1)
+    assert counts(fx)==before
+    assert fx.service.get_obligation(cmd.payable_id)['remaining_amount']=='5000.00'
