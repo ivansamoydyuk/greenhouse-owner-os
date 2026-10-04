@@ -32,3 +32,15 @@ def test_api_nonposting_evidence_and_posting_guard(fx):
     old=draft(fx)
     response=client.post(f"/v1/obligations/{old['id']}/post?expected_version=1",headers={'Idempotency-Key':'blocked'})
     assert response.status_code==422 and 'pre-cut-over' in response.json()['error']['message']
+
+
+def test_cutover_openapi_matches_runtime(fx):
+    import yaml
+    from pathlib import Path
+    spec=yaml.safe_load(Path('openapi/owner_core_v1.yaml').read_text())
+    runtime=create_app(finance_service=fx.service,actor_provider=lambda:fx.actor_id).openapi()
+    for path,ops in runtime['paths'].items():
+        if any(x in path for x in ('/cutover','/import-batches','/historical-candidates')):
+            assert spec['paths'][path.removeprefix('/v1')]==ops
+    for name in ('ImportBatchCommand','HistoricalCandidateCommand','VerificationState'):
+        assert spec['components']['schemas'][name]==runtime['components']['schemas'][name]

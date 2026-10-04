@@ -11,7 +11,8 @@ from greenhouse_owner_os.infrastructure.models import (
 from greenhouse_owner_os.repositories.sqlalchemy import SqlAlchemyFinanceRepository, SqlAlchemyAuditRepository
 from greenhouse_owner_os.services.reconciliation import check_snapshot
 from tests.cutover_cases import CASES, batch, candidate, draft, post, zero, CUTOVER, OLD
-from tests.integration.test_postgres_cash import race, cashpg
+from tests.integration.test_postgres_cash import cashpg
+from tests.integration.test_postgres_applications import race
 
 @pytest.mark.parametrize('case',CASES,ids=lambda c:c.__name__)
 def test_postgres_cutover_acceptance(pgfx,case):case(pgfx)
