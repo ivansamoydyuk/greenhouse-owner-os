@@ -76,6 +76,8 @@ def pgfx(migrated_database: str) -> PgFixture:
     with session_factory.begin() as session:
         session.add(EntityRow(id=entity_id, name="Test Entity", default_currency="TRY"))
         session.add(ActorRow(id=actor_id, actor_type="owner", display_name="Test Owner"))
+        # These mappings have no ORM relationships; flush FK parents explicitly.
+        session.flush()
         session.add_all([
             CounterpartyRow(id=counterparty_id, entity_id=entity_id, name="Supplier A", counterparty_type="company"),
             CounterpartyRow(id=other_counterparty_id, entity_id=entity_id, name="Supplier B", counterparty_type="company"),
@@ -89,6 +91,7 @@ def pgfx(migrated_database: str) -> PgFixture:
             LedgerAccountRow(id=bank_ledger_id, entity_id=entity_id, code="BANK", name="Test Bank", account_class="cash", normal_side="debit", currency="TRY", system_code=None),
         ]
         session.add_all(accounts)
+        session.flush()
         session.add(MoneyAccountRow(id=money_account_id, entity_id=entity_id, ledger_account_id=bank_ledger_id, account_type="bank", name="Test Bank", currency="TRY"))
 
     return PgFixture(
