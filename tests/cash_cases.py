@@ -35,7 +35,7 @@ def funding(fx, amount='100000'): return FundingCommand(**base(fx,amount), money
 
 
 def settlement(fx, amount='20000', receivable=None, payable=None):
-    ar=receivable or obligation(fx,'30000','receivable'); ap=payable or obligation(fx,'20000','payable')
+    ar=receivable or obligation(fx,'30000','receivable',counterparty=fx.other_counterparty_id); ap=payable or obligation(fx,'20000','payable')
     return SettlementCommand(**base(fx,amount), receivable_id=UUID(ar['id']), payable_id=UUID(ap['id']))
 
 

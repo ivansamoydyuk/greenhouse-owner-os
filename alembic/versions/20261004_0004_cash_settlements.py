@@ -39,7 +39,7 @@ def upgrade():
             sa.CheckConstraint('amount > 0', name='ck_'+table+'_amount'),
             sa.CheckConstraint("currency ~ '^[A-Z]{3}$'", name='ck_'+table+'_currency'),
             sa.CheckConstraint("status IN ('draft','posted','reversed')", name='ck_'+table+'_status'),
-            sa.CheckConstraint("(status='draft' AND version=1 AND posting_id IS NULL AND posted_at IS NULL) OR (status IN ('posted','reversed') AND version >= 2 AND posting_id IS NOT NULL AND posted_at IS NOT NULL)", name='ck_'+table+'_posting'),
+            sa.CheckConstraint("(status='draft' AND version=1 AND posting_id IS NULL AND posted_at IS NULL) OR (((status='posted' AND version=2) OR (status='reversed' AND version=3)) AND posting_id IS NOT NULL AND posted_at IS NOT NULL)", name='ck_'+table+'_posting'),
             sa.CheckConstraint("(status='reversed' AND reversal_posting_id IS NOT NULL AND reversed_at IS NOT NULL AND reversed_by IS NOT NULL AND length(btrim(reversal_reason))>0) OR (status<>'reversed' AND reversal_posting_id IS NULL AND reversed_at IS NULL AND reversed_by IS NULL AND reversal_reason IS NULL)", name='ck_'+table+'_reversal'),
         ]
         if kind == 'transfer':

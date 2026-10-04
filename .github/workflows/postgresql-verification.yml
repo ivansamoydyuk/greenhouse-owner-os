@@ -73,7 +73,7 @@ jobs:
           import os
           import xml.etree.ElementTree as ET
           cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'integration.xml')).findall('.//testcase')
-          assert len(cases) >= 82, 'PostgreSQL tests did not execute'
+          assert len(cases) >= 92, 'PostgreSQL tests did not execute'
           assert not any(case.find('skipped') is not None for case in cases), 'PostgreSQL tests skipped'
           PY
       - name: Complete Finance test suite

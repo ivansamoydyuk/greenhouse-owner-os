@@ -165,3 +165,66 @@ def test_transfer_cross_currency_and_entity(cashpg):
             s.add(MoneyAccountRow(id=aid,entity_id=entity,ledger_account_id=lid,name='foreign',account_type='bank',currency=currency))
         data=transfer(fx).model_dump();data['destination_account_id']=aid
         with pytest.raises(ValidationError):create(fx,'transfer',TransferCommand(**data))
+
+
+@pytest.mark.parametrize('kind',['transfer','owner_funding','direct_settlement'])
+@pytest.mark.parametrize('phase',['post','reverse'])
+def test_deferred_domain_or_compensation_failure_rolls_back(cashpg,monkeypatch,kind,phase):
+    from greenhouse_owner_os.repositories.sqlalchemy import SqlAlchemyFinanceRepository
+    from greenhouse_owner_os.domain.finance import PostingLine
+    fx=cashpg;cmd={'transfer':lambda:transfer(fx,fee='50'),'owner_funding':lambda:funding(fx),'direct_settlement':lambda:settlement(fx)}[kind]()
+    r=create(fx,kind,cmd)
+    if phase=='reverse':r=post(fx,kind,r)
+    before=counts(fx);orig=SqlAlchemyFinanceRepository.add_posting
+    def corrupt(self,p):
+        # Balanced and correctly scoped, but not the requested domain effect/exact compensation.
+        p.lines=[PostingLine(l.ledger_account_id,l.side,l.amount+Decimal('1')) for l in p.lines]
+        orig(self,p)
+    with monkeypatch.context() as m:
+        m.setattr(SqlAlchemyFinanceRepository,'add_posting',corrupt)
+        with pytest.raises(DBAPIError):
+            if phase=='post':post(fx,kind,r,key='corrupt')
+            else:reverse(fx,kind,r,key='corrupt')
+    assert counts(fx)==before
+    if phase=='post':post(fx,kind,r,key='corrupt')
+    else:reverse(fx,kind,r,key='corrupt')
+
+
+def test_database_rejects_cash_post_without_matching_journal(cashpg):
+    fx=cashpg;r=create(fx,'transfer',transfer(fx))
+    unrelated=post(fx,'owner_funding',create(fx,'owner_funding',funding(fx)))
+    before=counts(fx)
+    with pytest.raises(DBAPIError):
+        with fx.session_factory.begin() as s:
+            s.execute(text("UPDATE finance.own_account_transfers SET status='posted',version=2,posted_at=now(),posting_id=:p WHERE id=:id"),{'id':UUID(r['id']),'p':UUID(unrelated['posting_id'])})
+    assert counts(fx)==before
+
+
+@pytest.mark.parametrize('same_key',[True,False])
+def test_concurrent_direct_reversal_exactly_once(cashpg,same_key):
+    fx=cashpg;cmd=settlement(fx);r=post(fx,'direct_settlement',create(fx,'direct_settlement',cmd));b=Barrier(2)
+    def call(i):
+        b.wait(timeout=5)
+        try:return reverse(fx,'direct_settlement',r,key='rev-race' if same_key else str(uuid4()))
+        except ConflictError:return 'conflict'
+    with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(call,range(2)))
+    if same_key:assert results[0]==results[1]
+    else:assert results.count('conflict')==1
+    assert fx.service.get_obligation(cmd.receivable_id)['remaining_amount']=='30000.00'
+    assert fx.service.get_obligation(cmd.payable_id)['remaining_amount']=='20000.00'
+
+
+def test_direct_settlement_vs_obligation_reversal(cashpg):
+    fx=cashpg;cmd=settlement(fx);r=create(fx,'direct_settlement',cmd);b=Barrier(2)
+    def call(i):
+        b.wait(timeout=5)
+        try:
+            if i==0:return post(fx,'direct_settlement',r)
+            return fx.service.reverse_obligation(actor_id=fx.actor_id,idempotency_key='reverse-ap',obligation_id=cmd.payable_id,command=ReverseCommand(expected_version=2,event_date=DAY,reason='Wrong payable'))
+        except ValidationError:return 'rejected'
+    with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(call,range(2)))
+    assert results.count('rejected')==1
+    with fx.session_factory() as s:
+        status=s.scalar(select(SettlementRow.status).where(SettlementRow.id==UUID(r['id'])))
+        ap=fx.service.get_obligation(cmd.payable_id)
+    assert (status,ap['status']) in [('posted','posted'),('draft','reversed')]
