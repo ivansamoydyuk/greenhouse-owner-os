@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Header, HTTPException
 
 from greenhouse_owner_os.api.schemas import ObligationCreateBody, PaymentCreateBody
-from greenhouse_owner_os.domain.commands import AllocationInput, CreateObligationCommand, CreatePaymentCommand
+from greenhouse_owner_os.domain.commands import AllocationInput, CreateObligationCommand, CreatePaymentCommand, ReverseCommand
 from greenhouse_owner_os.domain.errors import ConflictError, DomainError, NotFoundError, ValidationError
 from greenhouse_owner_os.services.finance import FinanceService
 
@@ -62,6 +62,26 @@ def create_app(*, finance_service: FinanceService, actor_provider) -> FastAPI:
             payment_id=payment_id,
             expected_version=expected_version,
         )
+
+    @app.post("/v1/payments/{payment_id}/reverse")
+    def reverse_payment(payment_id: UUID, body: ReverseCommand, idempotency_key: str = Header(alias="Idempotency-Key"), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.reverse_payment(actor_id=actor_id, idempotency_key=idempotency_key, payment_id=payment_id, command=body)
+
+    @app.post("/v1/obligations/{obligation_id}/reverse")
+    def reverse_obligation(obligation_id: UUID, body: ReverseCommand, idempotency_key: str = Header(alias="Idempotency-Key"), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.reverse_obligation(actor_id=actor_id, idempotency_key=idempotency_key, obligation_id=obligation_id, command=body)
+
+    @app.get("/v1/payments/{payment_id}/linkage")
+    def payment_linkage(payment_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_linkage("payment", payment_id)
+
+    @app.get("/v1/obligations/{obligation_id}/linkage")
+    def obligation_linkage(obligation_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_linkage("obligation", obligation_id)
+
+    @app.get("/v1/entities/{entity_id}/balances")
+    def balances(entity_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_currency_balances(entity_id)
 
     return app
 

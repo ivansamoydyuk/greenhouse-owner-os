@@ -2,172 +2,536 @@ openapi: 3.1.0
 info:
   title: Greenhouse Owner OS — Owner Core API
   version: 0.1.0
-  description: API contract for the first finance vertical slice. Financial amounts are JSON strings in responses and decimals in requests; clients must not use binary floating point for calculations.
+  description: API contract for the first finance vertical slice. Financial amounts
+    are JSON strings in responses and decimals in requests; clients must not use binary
+    floating point for calculations.
 servers:
-  - url: /v1
+- url: /v1
 paths:
   /obligations:
     post:
       operationId: createObligationDraft
       summary: Create obligation draft; no financial effect
       parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ObligationCreate' }
+            schema:
+              $ref: '#/components/schemas/ObligationCreate'
       responses:
         '201':
           description: Draft created
-          content: { application/json: { schema: { $ref: '#/components/schemas/Obligation' } } }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Validation' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Obligation'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Validation'
   /obligations/{id}:
     get:
       operationId: getObligation
       parameters:
-        - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/ResourceId'
       responses:
         '200':
           description: Obligation with derived remaining amount
-          content: { application/json: { schema: { $ref: '#/components/schemas/Obligation' } } }
-        '404': { $ref: '#/components/responses/NotFound' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Obligation'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /obligations/{id}/post:
     post:
       operationId: postObligation
       summary: Post obligation and immutable balanced posting atomically
       parameters:
-        - $ref: '#/components/parameters/ResourceId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - name: expected_version
-          in: query
-          required: true
-          schema: { type: integer, minimum: 1 }
+      - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: expected_version
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
       responses:
         '200':
           description: Posted
-          content: { application/json: { schema: { $ref: '#/components/schemas/Obligation' } } }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Validation' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Obligation'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Validation'
   /payments:
     post:
       operationId: createPaymentDraft
-      summary: Create settlement payment draft and proposed allocations; no financial effect
+      summary: Create settlement payment draft and proposed allocations; no financial
+        effect
       parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/PaymentCreate' }
+            schema:
+              $ref: '#/components/schemas/PaymentCreate'
       responses:
         '201':
           description: Draft created
-          content: { application/json: { schema: { $ref: '#/components/schemas/Payment' } } }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Validation' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Validation'
   /payments/{id}/post:
     post:
       operationId: postPayment
-      summary: Lock referenced obligations; validate and post payment, allocations, advance remainder and balanced posting in one transaction
+      summary: Lock referenced obligations; validate and post payment, allocations,
+        advance remainder and balanced posting in one transaction
       parameters:
-        - $ref: '#/components/parameters/ResourceId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - name: expected_version
-          in: query
-          required: true
-          schema: { type: integer, minimum: 1 }
+      - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: expected_version
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
       responses:
         '200':
           description: Posted
-          content: { application/json: { schema: { $ref: '#/components/schemas/Payment' } } }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Validation' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Validation'
+  /payments/{id}/reverse:
+    post:
+      operationId: reversePayment
+      summary: Reverse posted transaction atomically; preserve original history
+      parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReversalRequest'
+      responses:
+        '200':
+          description: Reversed; actor, timestamp, reason and original/reversal/replacement
+            linkage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionLinkage'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Validation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /payments/{id}/linkage:
+    get:
+      operationId: paymentLinkage
+      parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Original/reversal/optional replacement lineage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionLinkage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /obligations/{id}/reverse:
+    post:
+      operationId: reverseObligation
+      summary: Reverse posted transaction atomically; preserve original history
+      parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReversalRequest'
+      responses:
+        '200':
+          description: Reversed; actor, timestamp, reason and original/reversal/replacement
+            linkage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionLinkage'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Validation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /obligations/{id}/linkage:
+    get:
+      operationId: obligationLinkage
+      parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Original/reversal/optional replacement lineage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionLinkage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /entities/{entity_id}/balances:
+    get:
+      operationId: currencyBalances
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Balances keyed by currency; never a combined FX total
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - entity_id
+                - balances
+                properties:
+                  entity_id:
+                    type: string
+                    format: uuid
+                  balances:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      additionalProperties:
+                        type: string
 components:
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
       in: header
       required: true
-      schema: { type: string, minLength: 1, maxLength: 200 }
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
     ResourceId:
       name: id
       in: path
       required: true
-      schema: { type: string, format: uuid }
+      schema:
+        type: string
+        format: uuid
   schemas:
     Money:
       type: string
-      pattern: '^-?[0-9]+\\.[0-9]{2}$'
-      examples: ['10000.00']
+      pattern: ^-?[0-9]+\\.[0-9]{2}$
+      examples:
+      - '10000.00'
     ObligationCreate:
       type: object
       additionalProperties: false
-      required: [entity_id, counterparty_id, direction, original_amount, currency, event_date, offset_ledger_account_id]
+      required:
+      - entity_id
+      - counterparty_id
+      - direction
+      - original_amount
+      - currency
+      - event_date
+      - offset_ledger_account_id
       properties:
-        entity_id: { type: string, format: uuid }
-        counterparty_id: { type: string, format: uuid }
-        direction: { type: string, enum: [payable, receivable] }
-        original_amount: { type: number, exclusiveMinimum: 0 }
-        currency: { type: string, minLength: 3, maxLength: 3 }
-        event_date: { type: string, format: date }
-        due_date: { type: [string, 'null'], format: date }
-        offset_ledger_account_id: { type: string, format: uuid }
+        entity_id:
+          type: string
+          format: uuid
+        counterparty_id:
+          type: string
+          format: uuid
+        direction:
+          type: string
+          enum:
+          - payable
+          - receivable
+        original_amount:
+          type: number
+          exclusiveMinimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        event_date:
+          type: string
+          format: date
+        due_date:
+          type:
+          - string
+          - 'null'
+          format: date
+        offset_ledger_account_id:
+          type: string
+          format: uuid
+        replacement_of_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: Optional unique reversed original of same type, entity, counterparty,
+            currency and direction
     Obligation:
       type: object
-      required: [id, direction, original_amount, remaining_amount, currency, status, version]
+      required:
+      - id
+      - direction
+      - original_amount
+      - remaining_amount
+      - currency
+      - status
+      - version
       properties:
-        id: { type: string, format: uuid }
-        direction: { type: string, enum: [payable, receivable] }
-        original_amount: { $ref: '#/components/schemas/Money' }
-        remaining_amount: { $ref: '#/components/schemas/Money' }
-        currency: { type: string }
-        status: { type: string, enum: [draft, review, posted, reversed] }
-        version: { type: integer }
-        posting_id: { type: [string, 'null'], format: uuid }
+        id:
+          type: string
+          format: uuid
+        direction:
+          type: string
+          enum:
+          - payable
+          - receivable
+        original_amount:
+          $ref: '#/components/schemas/Money'
+        remaining_amount:
+          $ref: '#/components/schemas/Money'
+        currency:
+          type: string
+        status:
+          type: string
+          enum:
+          - draft
+          - review
+          - posted
+          - reversed
+        version:
+          type: integer
+        posting_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
     Allocation:
       type: object
       additionalProperties: false
-      required: [obligation_id, amount]
+      required:
+      - obligation_id
+      - amount
       properties:
-        obligation_id: { type: string, format: uuid }
-        amount: { type: number, exclusiveMinimum: 0 }
+        obligation_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          exclusiveMinimum: 0
     PaymentCreate:
       type: object
       additionalProperties: false
-      required: [entity_id, money_account_id, counterparty_id, direction, amount, currency, event_date]
+      required:
+      - entity_id
+      - money_account_id
+      - counterparty_id
+      - direction
+      - amount
+      - currency
+      - event_date
       properties:
-        entity_id: { type: string, format: uuid }
-        money_account_id: { type: string, format: uuid }
-        counterparty_id: { type: string, format: uuid }
-        direction: { type: string, enum: [in, out] }
-        amount: { type: number, exclusiveMinimum: 0 }
-        currency: { type: string, minLength: 3, maxLength: 3 }
-        event_date: { type: string, format: date }
+        entity_id:
+          type: string
+          format: uuid
+        money_account_id:
+          type: string
+          format: uuid
+        counterparty_id:
+          type: string
+          format: uuid
+        direction:
+          type: string
+          enum:
+          - in
+          - out
+        amount:
+          type: number
+          exclusiveMinimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        event_date:
+          type: string
+          format: date
         allocations:
           type: array
-          items: { $ref: '#/components/schemas/Allocation' }
+          items:
+            $ref: '#/components/schemas/Allocation'
+        replacement_of_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: Optional unique reversed original of same type, entity, counterparty,
+            currency and direction
     Payment:
       type: object
-      required: [id, direction, amount, currency, status, version, allocation_total, unallocated_amount, allocations]
+      required:
+      - id
+      - direction
+      - amount
+      - currency
+      - status
+      - version
+      - allocation_total
+      - unallocated_amount
+      - allocations
       properties:
-        id: { type: string, format: uuid }
-        direction: { type: string, enum: [in, out] }
-        amount: { $ref: '#/components/schemas/Money' }
-        currency: { type: string }
-        status: { type: string, enum: [draft, review, posted, reversed] }
-        version: { type: integer }
-        allocation_total: { $ref: '#/components/schemas/Money' }
-        unallocated_amount: { $ref: '#/components/schemas/Money' }
-        advance_id: { type: [string, 'null'], format: uuid }
+        id:
+          type: string
+          format: uuid
+        direction:
+          type: string
+          enum:
+          - in
+          - out
+        amount:
+          $ref: '#/components/schemas/Money'
+        currency:
+          type: string
+        status:
+          type: string
+          enum:
+          - draft
+          - review
+          - posted
+          - reversed
+        version:
+          type: integer
+        allocation_total:
+          $ref: '#/components/schemas/Money'
+        unallocated_amount:
+          $ref: '#/components/schemas/Money'
+        advance_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
         allocations:
           type: array
           items:
             allOf:
-              - $ref: '#/components/schemas/Allocation'
-              - type: object
-                properties: { id: { type: string, format: uuid } }
+            - $ref: '#/components/schemas/Allocation'
+            - type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+    ReversalRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - expected_version
+      - event_date
+      - reason
+      properties:
+        expected_version:
+          type: integer
+          minimum: 1
+        event_date:
+          type: string
+          format: date
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    TransactionLinkage:
+      type: object
+      required:
+      - id
+      - type
+      - status
+      - version
+      - currency
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum:
+          - payment
+          - obligation
+        status:
+          type: string
+        version:
+          type: integer
+        currency:
+          type: string
+        original_posting_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        reversal_posting_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        replacement_of_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        replacement_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        reversed_by:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        reversed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        reason:
+          type:
+          - string
+          - 'null'
+        obligation_balances:
+          type: object
+          additionalProperties:
+            type: string
   responses:
     Conflict:
       description: Version or idempotency conflict

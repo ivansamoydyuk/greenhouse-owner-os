@@ -118,6 +118,7 @@ class PostingRow(Base):
     posting_type: Mapped[str] = mapped_column(String(80), nullable=False)
     source_type: Mapped[str] = mapped_column(String(80), nullable=False)
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
     reversal_of_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("finance.postings.id"))
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.actors.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)
@@ -165,6 +166,10 @@ class ObligationRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reversed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("core.actors.id"))
+    reversal_reason: Mapped[str | None] = mapped_column(Text)
+    reversal_posting_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("finance.postings.id"), unique=True)
+    replacement_of_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("finance." + __tablename__ + ".id"), unique=True)
 
 
 class PaymentRow(Base):
@@ -192,6 +197,10 @@ class PaymentRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reversed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("core.actors.id"))
+    reversal_reason: Mapped[str | None] = mapped_column(Text)
+    reversal_posting_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("finance.postings.id"), unique=True)
+    replacement_of_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("finance." + __tablename__ + ".id"), unique=True)
 
 
 class PaymentAllocationRow(Base):
