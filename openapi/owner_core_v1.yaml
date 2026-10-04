@@ -8,6 +8,49 @@ info:
 servers:
 - url: /v1
 paths:
+  /entities/{entity_id}/finance-overview:
+    get:
+      operationId: getOwnerFinanceOverview
+      summary: Read-only entity-scoped owner projection from one PostgreSQL snapshot
+      description: Live balances derive from Finance views. Drafts and historical candidates are excluded from totals. Obligations and advances include separate lifecycle status; operations are paginated across all Finance R1 kinds, newest created first. No repair or write is performed. Preview authentication is an adapter concern.
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: offset
+        in: query
+        schema: {type: integer, minimum: 0, maximum: 10000, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        '200':
+          description: Consistent owner overview; all monetary values are exact decimal strings
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entity_id, entity_name, reference_class, cutover_date, references, balances, accounts, obligations, advances, operations, offset, limit, has_more, history_policy]
+                properties:
+                  entity_id: {type: string, format: uuid}
+                  entity_name: {type: string}
+                  reference_class: {type: string, enum: [OWNER_VERIFIED, TEST_PREVIEW]}
+                  cutover_date: {type: string, format: date}
+                  references: {type: array, items: {type: object}}
+                  balances: {type: object, additionalProperties: {type: object, additionalProperties: {type: string, pattern: '^-?[0-9]+\.[0-9]{2}$'}}}
+                  accounts: {type: array, items: {type: object, required: [money_account_id, entity_id, currency, balance], properties: {money_account_id: {type: string, format: uuid}, entity_id: {type: string, format: uuid}, currency: {type: string}, balance: {type: string}}}}
+                  obligations: {type: array, items: {type: object}}
+                  advances: {type: array, items: {type: object}}
+                  operations: {type: array, items: {type: object}}
+                  offset: {type: integer}
+                  limit: {type: integer}
+                  has_more: {type: boolean}
+                  history_policy: {type: string, const: NON_POSTING}
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Validation'
   /obligations:
     post:
       operationId: createObligationDraft

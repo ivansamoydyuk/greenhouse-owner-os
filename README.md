@@ -108,3 +108,61 @@ production setup command and creates no factual payment. Tests exercising later
 payments label them synthetic and reverse them. No remaining owner-reference
 data gate applies to this confirmed profile; production deployment remains out
 of scope.
+
+## Owner Finance mobile preview
+
+The Russian owner interface is served by the existing FastAPI application through
+an explicit **disposable preview adapter**, not a production entrypoint. Four
+sections expose position/accounts per currency, open debts/advances, paginated
+operations and counterparties. Existing Finance R1 command endpoints remain the
+only source of posting, allocation, fee, advance, settlement and correction rules.
+`finance-overview` adds a read-only REPEATABLE READ projection over existing views;
+no schema migration or alternative financial arithmetic is introduced.
+
+Every preview mutation is synthetic. The exact owner reference manifest and
+opening AP are provisioned idempotently through the reviewed API. No payment to
+Serkan is automatically created. The payment form can settle his opening debt
+normally; create, explicit confirmation/post, reversal and supported linked
+obligation/payment correction are distinct actions. Amounts remain decimal
+strings in the UI and requests. HISTORY/VERIFY stays outside live balances.
+
+Local reproduction uses PostgreSQL 17 database `greenhouse_owner_os_test`, user
+`postgres`, localhost port 5432, `APP_ENV=test`, and matching `DATABASE_URL` /
+`TEST_DATABASE_URL`. Install `pip install -e ".[dev]"`, `npm ci`, then:
+
+```bash
+alembic upgrade head
+npm run test:ui
+npx playwright install --with-deps chromium
+python scripts/run_owner_e2e.py
+```
+
+The E2E command explicitly resets only the exact allowlisted disposable database,
+starts the real authenticated HTTP server and runs Chromium at mobile/desktop
+widths. It reverses successful synthetic postings in dependency order and proves
+cash zero/AP 2600 TRY/reconciliation afterward. Failed posting drafts remain
+non-posting test audit evidence. Screenshots/logs are CI artifacts, not source.
+
+For isolated local manual review, after migrations set `PREVIEW_SECRET` to a
+random key of at least 24 characters and run
+`python -m greenhouse_owner_os.preview`. Port defaults to 4173, bind to loopback.
+Runtime refuses production/non-local database targets. Access uses an HttpOnly
+SameSite Strict cookie, same-origin mutations, CSP and failed-login throttling.
+Client actor IDs are never accepted. Retry keys survive reloads in sessionStorage
+as request hashes/keys only; amounts/documents are not stored there.
+
+`.github/workflows/owner-finance-preview.yml` opens an isolated HTTPS review
+window when the MVP PR is opened/reopened, or through explicit dispatch/rerun.
+It uses ephemeral PostgreSQL 17 and a pinned Cloudflare quick tunnel; no hosting
+account, production secret or paid resource is provisioned. The private
+`owner-finance-review-access` artifact contains the URL and random key (one-day
+retention). Review lasts **35 minutes** after startup; afterward URL/data expire.
+This is temporary test hosting, not durable hosting or production go-live.
+`PREVIEW_PUBLIC_ORIGIN` is configured from the returned HTTPS URL; forwarded
+headers cannot choose an origin or relax authentication. Browser-facing cookies
+are Secure for that explicitly configured HTTPS origin. Only an external review
+smoke counts as proof that the temporary URL is available.
+
+Production identity, backups, durable hosting, multi-owner authorization and
+deployment remain a separate authorized task. Large-history projection scaling
+is outside this owner MVP; operation pages contain 50 rows across all currencies.

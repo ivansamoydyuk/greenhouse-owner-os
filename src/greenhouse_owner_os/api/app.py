@@ -4,7 +4,7 @@ from greenhouse_owner_os.domain.references import EntitySetup, MoneyAccountSetup
 from greenhouse_owner_os.domain.opening import OpeningPayableCommand
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 
 from greenhouse_owner_os.domain.history import ImportBatchCommand, HistoricalCandidateCommand
 from greenhouse_owner_os.domain.cash import TransferCommand, FundingCommand, SettlementCommand, SupplierAdvanceCommand, AdvanceApplicationCommand
@@ -75,6 +75,12 @@ def create_app(*, finance_service: FinanceService, actor_provider, reference_ser
     @app.get('/v1/finance/reconciliation')
     def reconciliation(entity_id: UUID | None = None, actor_id: UUID = Depends(actor_provider)):
         return finance_service.reconcile(include_classification=True, entity_id=entity_id)
+
+    @app.get('/v1/entities/{entity_id}/finance-overview')
+    def finance_overview(entity_id: UUID, offset: int = Query(0, ge=0, le=10000),
+                         limit: int = Query(50, ge=1, le=100), actor_id: UUID = Depends(actor_provider)):
+        from greenhouse_owner_os.services.owner_view import owner_view
+        return owner_view(finance_service.uow_factory, entity_id, offset=offset, limit=limit)
 
     @app.get('/v1/entities/{entity_id}/cutover')
     def cutover(entity_id: UUID, actor_id: UUID = Depends(actor_provider)):

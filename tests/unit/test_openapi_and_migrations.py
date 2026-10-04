@@ -16,6 +16,7 @@ def test_openapi_contract_parses_and_has_vertical_paths():
     assert "/obligations/{id}/post" in paths
     assert "/payments" in paths
     assert "/payments/{id}/post" in paths
+    assert "/entities/{entity_id}/finance-overview" in paths
 
 
 def test_migration_chain_is_linear_and_importable():

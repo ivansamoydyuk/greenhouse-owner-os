@@ -9,4 +9,7 @@ __pycache__/
 .coverage
 htmlcov/
 .DS_Store
+node_modules/
+artifacts/
+preview-access.txt
 *.egg-info/

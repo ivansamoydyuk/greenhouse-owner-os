@@ -13,6 +13,7 @@ dependencies = [
   "pydantic>=2.13,<3",
   "sqlalchemy>=2.0.50,<3",
   "psycopg[binary]>=3.2,<4",
+  "uvicorn>=0.34,<1",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +25,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+greenhouse_owner_os = ["web/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
