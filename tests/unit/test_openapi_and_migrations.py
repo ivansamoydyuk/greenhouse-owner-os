@@ -23,6 +23,7 @@ def test_migration_chain_is_linear_and_importable():
         ROOT / "alembic/versions/20261004_0001_architecture_foundation.py",
         ROOT / "alembic/versions/20261004_0002_finance_vertical.py",
         ROOT / "alembic/versions/20261004_0003_integrity_corrections.py",
+        ROOT / "alembic/versions/20261004_0004_cash_settlements.py",
     ]
     mods = []
     for idx, path in enumerate(files):
@@ -37,6 +38,8 @@ def test_migration_chain_is_linear_and_importable():
     assert mods[1].down_revision == mods[0].revision
     assert mods[2].revision == "20261004_0003"
     assert mods[2].down_revision == mods[1].revision
+    assert mods[3].revision == "20261004_0004"
+    assert mods[3].down_revision == mods[2].revision
 
 
 def test_sqlalchemy_metadata_imports_with_expected_tables():

@@ -10,6 +10,10 @@ from sqlalchemy import case, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from dataclasses import asdict, fields
+from greenhouse_owner_os.domain.cash import CASH_TYPES
+from greenhouse_owner_os.infrastructure.models import TransferRow, FundingRow, SettlementRow, CounterpartyRow
+
 from greenhouse_owner_os.domain.errors import IdempotencyConflictError, NotFoundError, ValidationError
 from greenhouse_owner_os.domain.finance import (
     Advance,
@@ -117,7 +121,9 @@ class SqlAlchemyFinanceRepository:
             )
         )
         allocated = Decimal(self.session.scalar(allocated_stmt) or 0)
-        return money(Decimal(obligation.original_amount) - allocated)
+        settled = self.session.scalar(select(func.coalesce(func.sum(SettlementRow.amount), 0)).where(
+            (SettlementRow.receivable_id == obligation_id) | (SettlementRow.payable_id == obligation_id), SettlementRow.status == 'posted'))
+        return money(Decimal(obligation.original_amount) - allocated - Decimal(settled or 0))
 
     def add_payment(self, payment: Payment, actor_id: UUID) -> None:
         self.session.add(PaymentRow(
@@ -126,6 +132,8 @@ class SqlAlchemyFinanceRepository:
             money_account_id=payment.money_account_id,
             counterparty_id=payment.counterparty_id,
             direction=payment.direction.value,
+            source=payment.source,
+            reason=payment.reason,
             amount=payment.amount,
             currency=payment.currency,
             event_date=payment.event_date,
@@ -154,6 +162,8 @@ class SqlAlchemyFinanceRepository:
             money_account_id=row.money_account_id,
             counterparty_id=row.counterparty_id,
             direction=PaymentDirection(row.direction),
+            source=row.source,
+            reason=row.reason,
             amount=money(row.amount),
             currency=row.currency,
             event_date=row.event_date,
@@ -237,7 +247,7 @@ class SqlAlchemyFinanceRepository:
             row.status = "reversed"
 
     def replacement_id(self, resource_type: str, original_id: UUID) -> UUID | None:
-        model = PaymentRow if resource_type == "payment" else ObligationRow
+        model = self.CASH_MODELS[resource_type] if resource_type in self.CASH_MODELS else (PaymentRow if resource_type == "payment" else ObligationRow)
         return self.session.scalar(select(model.id).where(model.replacement_of_id == original_id))
 
     def currency_balances(self, entity_id: UUID) -> dict[str, dict[str, Decimal]]:
@@ -300,6 +310,7 @@ class SqlAlchemyFinanceRepository:
             raise NotFoundError("money account not found")
         if account.entity_id != entity_id or account.currency != currency or not account.active:
             raise ValidationError("money account entity/currency mismatch or inactive")
+        self.assert_account_class(account.ledger_account_id, entity_id, currency, 'cash')
         return account.ledger_account_id
 
     def assert_ledger_account_scope(self, account_id: UUID, entity_id: UUID, currency: str) -> None:
@@ -308,6 +319,42 @@ class SqlAlchemyFinanceRepository:
             raise NotFoundError("ledger account not found")
         if account.entity_id != entity_id or account.currency != currency or not account.active:
             raise ValidationError("ledger account entity/currency mismatch or inactive")
+
+    CASH_MODELS = {'transfer': TransferRow, 'owner_funding': FundingRow, 'direct_settlement': SettlementRow}
+
+    def add_cash_record(self, kind, record, actor_id):
+        self.session.add(self.CASH_MODELS[kind](**asdict(record), created_by=actor_id))
+        self.session.flush()
+
+    def get_cash_record(self, kind, resource_id, *, for_update=False):
+        model = self.CASH_MODELS[kind]
+        stmt = select(model).where(model.id == resource_id)
+        if for_update: stmt = stmt.with_for_update()
+        row = self.session.scalar(stmt)
+        if not row: return None
+        data = {f.name: getattr(row, f.name) for f in fields(CASH_TYPES[kind])}
+        data['status'] = RecordStatus(data['status'])
+        return CASH_TYPES[kind](**data)
+
+    def save_cash_record(self, kind, record):
+        row = self.session.get(self.CASH_MODELS[kind], record.id)
+        for name in ('status','version','posting_id','posted_at','reversal_posting_id','reversed_at','reversed_by','reversal_reason'):
+            setattr(row, name, getattr(record, name))
+
+    def lock_money_accounts(self, account_ids):
+        for account_id in sorted(set(account_ids), key=str):
+            self.session.scalar(select(MoneyAccountRow).where(MoneyAccountRow.id == account_id).with_for_update())
+
+    def assert_counterparty_scope(self, counterparty_id, entity_id):
+        row = self.session.get(CounterpartyRow, counterparty_id)
+        if not row or row.entity_id != entity_id:
+            raise ValidationError('counterparty entity mismatch')
+
+    def assert_account_class(self, account_id, entity_id, currency, account_class):
+        self.assert_ledger_account_scope(account_id, entity_id, currency)
+        row = self.session.get(LedgerAccountRow, account_id)
+        if row.account_class != account_class:
+            raise ValidationError('ledger account class mismatch')
 
 
 class SqlAlchemyIdempotencyRepository:

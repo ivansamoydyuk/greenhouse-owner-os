@@ -230,6 +230,482 @@ paths:
                       type: object
                       additionalProperties:
                         type: string
+  /transfers:
+    post:
+      summary: Create Transfer
+      operationId: create_transfer_v1_transfers_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferCommand'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /transfers/{resource_id}/post:
+    post:
+      summary: Post Transfer
+      operationId: post_transfer_v1_transfers__resource_id__post_post
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      - name: expected_version
+        in: query
+        required: true
+        schema:
+          type: integer
+          title: Expected Version
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /transfers/{resource_id}/reverse:
+    post:
+      summary: Reverse Transfer
+      operationId: reverse_transfer_v1_transfers__resource_id__reverse_post
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReverseCommand'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /transfers/{resource_id}/linkage:
+    get:
+      summary: Linkage Transfer
+      operationId: linkage_transfer_v1_transfers__resource_id__linkage_get
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /owner-fundings:
+    post:
+      summary: Create Owner Funding
+      operationId: create_owner_funding_v1_owner_fundings_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FundingCommand'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /owner-fundings/{resource_id}/post:
+    post:
+      summary: Post Owner Funding
+      operationId: post_owner_funding_v1_owner_fundings__resource_id__post_post
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      - name: expected_version
+        in: query
+        required: true
+        schema:
+          type: integer
+          title: Expected Version
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /owner-fundings/{resource_id}/reverse:
+    post:
+      summary: Reverse Owner Funding
+      operationId: reverse_owner_funding_v1_owner_fundings__resource_id__reverse_post
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReverseCommand'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /owner-fundings/{resource_id}/linkage:
+    get:
+      summary: Linkage Owner Funding
+      operationId: linkage_owner_funding_v1_owner_fundings__resource_id__linkage_get
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /direct-settlements:
+    post:
+      summary: Create Direct Settlement
+      operationId: create_direct_settlement_v1_direct_settlements_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettlementCommand'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /direct-settlements/{resource_id}/post:
+    post:
+      summary: Post Direct Settlement
+      operationId: post_direct_settlement_v1_direct_settlements__resource_id__post_post
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      - name: expected_version
+        in: query
+        required: true
+        schema:
+          type: integer
+          title: Expected Version
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /direct-settlements/{resource_id}/reverse:
+    post:
+      summary: Reverse Direct Settlement
+      operationId: reverse_direct_settlement_v1_direct_settlements__resource_id__reverse_post
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReverseCommand'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /direct-settlements/{resource_id}/linkage:
+    get:
+      summary: Linkage Direct Settlement
+      operationId: linkage_direct_settlement_v1_direct_settlements__resource_id__linkage_get
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /supplier-advances:
+    post:
+      summary: Create Supplier Advance
+      operationId: create_supplier_advance_v1_supplier_advances_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupplierAdvanceCommand'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /supplier-advances/{payment_id}/post:
+    post:
+      summary: Post Supplier Advance
+      operationId: post_supplier_advance_v1_supplier_advances__payment_id__post_post
+      parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Payment Id
+      - name: expected_version
+        in: query
+        required: true
+        schema:
+          type: integer
+          title: Expected Version
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /supplier-advances/{payment_id}/reverse:
+    post:
+      summary: Reverse Supplier Advance
+      operationId: reverse_supplier_advance_v1_supplier_advances__payment_id__reverse_post
+      parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Payment Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReverseCommand'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -532,6 +1008,432 @@ components:
           type: object
           additionalProperties:
             type: string
+    AllocationBody:
+      properties:
+        obligation_id:
+          type: string
+          format: uuid
+          title: Obligation Id
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Amount
+      additionalProperties: false
+      type: object
+      required:
+      - obligation_id
+      - amount
+      title: AllocationBody
+    FundingCommand:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Amount
+        currency:
+          type: string
+          maxLength: 3
+          minLength: 3
+          title: Currency
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        source:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Source
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+        money_account_id:
+          type: string
+          format: uuid
+          title: Money Account Id
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - amount
+      - currency
+      - event_date
+      - money_account_id
+      title: FundingCommand
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ObligationCreateBody:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        counterparty_id:
+          type: string
+          format: uuid
+          title: Counterparty Id
+        direction:
+          $ref: '#/components/schemas/ObligationDirection'
+        original_amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Original Amount
+        currency:
+          type: string
+          maxLength: 3
+          minLength: 3
+          title: Currency
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        due_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Due Date
+        replacement_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Of Id
+        offset_ledger_account_id:
+          type: string
+          format: uuid
+          title: Offset Ledger Account Id
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - counterparty_id
+      - direction
+      - original_amount
+      - currency
+      - event_date
+      - offset_ledger_account_id
+      title: ObligationCreateBody
+    ObligationDirection:
+      type: string
+      enum:
+      - payable
+      - receivable
+      title: ObligationDirection
+    PaymentCreateBody:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        source:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Source
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+        replacement_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Of Id
+        money_account_id:
+          type: string
+          format: uuid
+          title: Money Account Id
+        counterparty_id:
+          type: string
+          format: uuid
+          title: Counterparty Id
+        direction:
+          $ref: '#/components/schemas/PaymentDirection'
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Amount
+        currency:
+          type: string
+          maxLength: 3
+          minLength: 3
+          title: Currency
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        allocations:
+          items:
+            $ref: '#/components/schemas/AllocationBody'
+          type: array
+          title: Allocations
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - money_account_id
+      - counterparty_id
+      - direction
+      - amount
+      - currency
+      - event_date
+      title: PaymentCreateBody
+    PaymentDirection:
+      type: string
+      enum:
+      - out
+      - in
+      title: PaymentDirection
+    ReverseCommand:
+      properties:
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - event_date
+      - reason
+      title: ReverseCommand
+    SettlementCommand:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Amount
+        currency:
+          type: string
+          maxLength: 3
+          minLength: 3
+          title: Currency
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        source:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Source
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+        receivable_id:
+          type: string
+          format: uuid
+          title: Receivable Id
+        payable_id:
+          type: string
+          format: uuid
+          title: Payable Id
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - amount
+      - currency
+      - event_date
+      - receivable_id
+      - payable_id
+      title: SettlementCommand
+    SupplierAdvanceCommand:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Amount
+        currency:
+          type: string
+          maxLength: 3
+          minLength: 3
+          title: Currency
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        source:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Source
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+        money_account_id:
+          type: string
+          format: uuid
+          title: Money Account Id
+        counterparty_id:
+          type: string
+          format: uuid
+          title: Counterparty Id
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - amount
+      - currency
+      - event_date
+      - money_account_id
+      - counterparty_id
+      title: SupplierAdvanceCommand
+    TransferCommand:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Amount
+        currency:
+          type: string
+          maxLength: 3
+          minLength: 3
+          title: Currency
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        source:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Source
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+        source_account_id:
+          type: string
+          format: uuid
+          title: Source Account Id
+        destination_account_id:
+          type: string
+          format: uuid
+          title: Destination Account Id
+        fee:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Fee
+          default: '0.00'
+        fee_account_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Fee Account Id
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - amount
+      - currency
+      - event_date
+      - source_account_id
+      - destination_account_id
+      title: TransferCommand
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
   responses:
     Conflict:
       description: Version or idempotency conflict

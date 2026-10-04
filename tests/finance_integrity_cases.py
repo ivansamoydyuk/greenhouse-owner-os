@@ -12,9 +12,9 @@ from greenhouse_owner_os.domain.errors import ConflictError, IdempotencyConflict
 DAY = date(2026, 10, 4)
 
 
-def obligation(fx, amount="10000", direction="payable", replacement=None, currency="TRY", offset=None):
+def obligation(fx, amount="10000", direction="payable", replacement=None, currency="TRY", offset=None, counterparty=None):
     created = fx.service.create_obligation(actor_id=fx.actor_id, idempotency_key=str(uuid4()),
-        command=CreateObligationCommand(entity_id=fx.entity_id, counterparty_id=fx.counterparty_id,
+        command=CreateObligationCommand(entity_id=fx.entity_id, counterparty_id=counterparty or fx.counterparty_id,
             direction=direction, original_amount=Decimal(amount), currency=currency, event_date=DAY,
             offset_ledger_account_id=offset or fx.offset_account_id, replacement_of_id=replacement))
     return fx.service.post_obligation(actor_id=fx.actor_id, idempotency_key=str(uuid4()),

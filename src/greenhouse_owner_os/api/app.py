@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
+from greenhouse_owner_os.domain.cash import TransferCommand, FundingCommand, SettlementCommand, SupplierAdvanceCommand
 from greenhouse_owner_os.api.schemas import ObligationCreateBody, PaymentCreateBody
 from greenhouse_owner_os.domain.commands import AllocationInput, CreateObligationCommand, CreatePaymentCommand, ReverseCommand
 from greenhouse_owner_os.domain.errors import ConflictError, DomainError, NotFoundError, ValidationError
@@ -82,6 +83,67 @@ def create_app(*, finance_service: FinanceService, actor_provider) -> FastAPI:
     @app.get("/v1/entities/{entity_id}/balances")
     def balances(entity_id: UUID, actor_id: UUID = Depends(actor_provider)):
         return finance_service.get_currency_balances(entity_id)
+
+
+    @app.post('/v1/transfers', status_code=201)
+    def create_transfer(body: TransferCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.create_cash(kind='transfer', actor_id=actor_id, idempotency_key=idempotency_key, command=body)
+
+    @app.post('/v1/transfers/{resource_id}/post')
+    def post_transfer(resource_id: UUID, expected_version: int, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.post_cash(kind='transfer', resource_id=resource_id, actor_id=actor_id, idempotency_key=idempotency_key, expected_version=expected_version)
+
+    @app.post('/v1/transfers/{resource_id}/reverse')
+    def reverse_transfer(resource_id: UUID, body: ReverseCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.reverse_cash(kind='transfer', resource_id=resource_id, actor_id=actor_id, idempotency_key=idempotency_key, command=body)
+
+    @app.get('/v1/transfers/{resource_id}/linkage')
+    def linkage_transfer(resource_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_linkage('transfer', resource_id)
+
+    @app.post('/v1/owner-fundings', status_code=201)
+    def create_owner_funding(body: FundingCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.create_cash(kind='owner_funding', actor_id=actor_id, idempotency_key=idempotency_key, command=body)
+
+    @app.post('/v1/owner-fundings/{resource_id}/post')
+    def post_owner_funding(resource_id: UUID, expected_version: int, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.post_cash(kind='owner_funding', resource_id=resource_id, actor_id=actor_id, idempotency_key=idempotency_key, expected_version=expected_version)
+
+    @app.post('/v1/owner-fundings/{resource_id}/reverse')
+    def reverse_owner_funding(resource_id: UUID, body: ReverseCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.reverse_cash(kind='owner_funding', resource_id=resource_id, actor_id=actor_id, idempotency_key=idempotency_key, command=body)
+
+    @app.get('/v1/owner-fundings/{resource_id}/linkage')
+    def linkage_owner_funding(resource_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_linkage('owner_funding', resource_id)
+
+    @app.post('/v1/direct-settlements', status_code=201)
+    def create_direct_settlement(body: SettlementCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.create_cash(kind='direct_settlement', actor_id=actor_id, idempotency_key=idempotency_key, command=body)
+
+    @app.post('/v1/direct-settlements/{resource_id}/post')
+    def post_direct_settlement(resource_id: UUID, expected_version: int, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.post_cash(kind='direct_settlement', resource_id=resource_id, actor_id=actor_id, idempotency_key=idempotency_key, expected_version=expected_version)
+
+    @app.post('/v1/direct-settlements/{resource_id}/reverse')
+    def reverse_direct_settlement(resource_id: UUID, body: ReverseCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.reverse_cash(kind='direct_settlement', resource_id=resource_id, actor_id=actor_id, idempotency_key=idempotency_key, command=body)
+
+    @app.get('/v1/direct-settlements/{resource_id}/linkage')
+    def linkage_direct_settlement(resource_id: UUID, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.get_linkage('direct_settlement', resource_id)
+
+    @app.post('/v1/supplier-advances', status_code=201)
+    def create_supplier_advance(body: SupplierAdvanceCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.create_supplier_advance(actor_id=actor_id, idempotency_key=idempotency_key, command=body)
+
+    @app.post('/v1/supplier-advances/{payment_id}/post')
+    def post_supplier_advance(payment_id: UUID, expected_version: int, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.post_supplier_advance(payment_id=payment_id, actor_id=actor_id, idempotency_key=idempotency_key, expected_version=expected_version)
+
+    @app.post('/v1/supplier-advances/{payment_id}/reverse')
+    def reverse_supplier_advance(payment_id: UUID, body: ReverseCommand, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return finance_service.reverse_payment(payment_id=payment_id, actor_id=actor_id, idempotency_key=idempotency_key, command=body)
 
     return app
 
