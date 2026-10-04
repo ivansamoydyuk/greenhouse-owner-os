@@ -205,3 +205,31 @@ def test_readiness_fails_before_owner_accounts_and_system_setup(preview):
     report=refs.readiness(UUID(entity['id']))
     assert not report['ok']
     assert {'money_account_required','counterparty_required'}.issubset({f['code'] for f in report['findings']})
+
+
+def test_preview_metadata_cannot_claim_owner_verified(preview):
+    c,eid,*_=setup(preview)
+    sf,actor,refs,_,_=preview
+    rid=uuid4()
+    with pytest.raises(DBAPIError,match='environment mismatch'):
+        with sf.begin() as s:
+            s.add(CounterpartyRow(id=rid,entity_id=UUID(eid),name='TEST PREVIEW Forged',counterparty_type='supplier'))
+            s.flush()
+            s.add(ReferenceRecordRow(id=rid,entity_id=UUID(eid),kind='counterparty',canonical_key='forged',
+                reference_class='OWNER_VERIFIED',original_name='TEST PREVIEW Forged',source='test:forged',
+                definition={'role':'supplier'},created_by=actor))
+    assert refs.readiness(UUID(eid))['ok']
+
+
+def test_readiness_reports_inactive_mapping_without_repair(preview):
+    c,eid,*_=setup(preview)
+    sf,actor,refs,_,_=preview
+    with sf.begin() as s:
+        ledger=s.scalar(select(LedgerAccountRow).where(LedgerAccountRow.entity_id==UUID(eid),LedgerAccountRow.system_code=='AP_CONTROL'))
+        ledger.active=False
+    report=refs.readiness(UUID(eid))
+    assert not report['ok'] and any(f['code']=='system_mapping:TRY/AP_CONTROL' for f in report['findings'])
+    with sf() as s:
+        assert s.get(LedgerAccountRow,ledger.id).active is False
+    # Fixture cleanup is explicit; readiness never repairs.
+    with sf.begin() as s:s.get(LedgerAccountRow,ledger.id).active=True
