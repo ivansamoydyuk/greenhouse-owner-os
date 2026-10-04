@@ -6,12 +6,13 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 
 from greenhouse_owner_os.domain.commands import AllocationInput, CreateObligationCommand, CreatePaymentCommand
 from greenhouse_owner_os.domain.errors import ValidationError
 from greenhouse_owner_os.domain.finance import ObligationDirection, PaymentDirection
-from greenhouse_owner_os.infrastructure.models import PaymentAllocationRow, PostingEntryRow, PostingRow
+from greenhouse_owner_os.infrastructure.models import AdvanceRow, PaymentAllocationRow, PostingEntryRow, PostingRow
 
 
 def create_posted_obligation(pgfx, amount: str = "10000.00") -> dict:
@@ -84,6 +85,45 @@ def test_database_rejects_unbalanced_posting_at_commit(pgfx):
         with pytest.raises(DBAPIError):
             session.commit()
         session.rollback()
+
+
+def test_postgresql_overpayment_creates_explicit_advance(pgfx):
+    obligation = create_posted_obligation(pgfx, "10000.00")
+    payment = pgfx.service.create_payment(
+        actor_id=pgfx.actor_id,
+        idempotency_key=f"create-overpayment-{uuid4()}",
+        command=CreatePaymentCommand(
+            entity_id=pgfx.entity_id,
+            money_account_id=pgfx.money_account_id,
+            counterparty_id=pgfx.counterparty_id,
+            direction=PaymentDirection.OUT,
+            amount=Decimal("12000.00"),
+            currency="TRY",
+            event_date=date(2026, 10, 4),
+            allocations=(AllocationInput(obligation_id=UUID(obligation["id"]), amount=Decimal("10000.00")),),
+        ),
+    )
+    posted = pgfx.service.post_payment(
+        actor_id=pgfx.actor_id,
+        idempotency_key=f"post-overpayment-{uuid4()}",
+        payment_id=UUID(payment["id"]),
+        expected_version=payment["version"],
+    )
+    assert posted["obligation_balances"][obligation["id"]] == "0.00"
+    assert posted["unallocated_amount"] == "2000.00"
+    assert posted["advance_id"] is not None
+    assert pgfx.service.get_obligation(UUID(obligation["id"]))["remaining_amount"] == "0.00"
+    with pgfx.session_factory() as session:
+        advances = session.scalars(select(AdvanceRow).where(AdvanceRow.source_payment_id == UUID(payment["id"]))).all()
+        assert len(advances) == 1
+        assert str(advances[0].id) == posted["advance_id"]
+        assert advances[0].original_amount == Decimal("2000.00")
+        assert advances[0].currency == "TRY"
+        assert advances[0].counterparty_id == pgfx.counterparty_id
+        entries = session.scalars(select(PostingEntryRow).where(PostingEntryRow.posting_id == UUID(posted["posting_id"]))).all()
+        assert len(entries) == 3
+        assert sum(row.amount for row in entries if row.side == "debit") == Decimal("12000.00")
+        assert sum(row.amount for row in entries if row.side == "credit") == Decimal("12000.00")
 
 
 def test_concurrent_allocations_cannot_make_obligation_negative(pgfx):

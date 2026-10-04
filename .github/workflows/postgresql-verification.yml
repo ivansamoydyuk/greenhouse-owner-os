@@ -1,0 +1,89 @@
+name: PostgreSQL verification
+
+on:
+  push:
+    branches: [01-architecture-database]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: greenhouse_owner_os_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d greenhouse_owner_os_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install project and test dependencies
+        run: pip install -e ".[dev]"
+      - name: Verify disposable local PostgreSQL target
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+          database_url = os.environ['DATABASE_URL']
+          assert database_url == os.environ['TEST_DATABASE_URL']
+          url = make_url(database_url)
+          assert url.drivername == 'postgresql+psycopg'
+          assert url.host == 'localhost' and url.port == 5432
+          assert url.database == 'greenhouse_owner_os_test' and url.username == 'postgres'
+          with create_engine(database_url).connect() as conn:
+              assert conn.scalar(text('SELECT current_database()')) == 'greenhouse_owner_os_test'
+              version = conn.scalar(text('SHOW server_version_num'))
+              assert 170000 <= int(version) < 180000
+          print('Disposable local PostgreSQL 17 target verified')
+          PY
+      - name: Alembic online upgrade
+        run: alembic upgrade head
+      - name: Verify actual Alembic revision
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          with create_engine(os.environ['DATABASE_URL']).connect() as conn:
+              revisions = conn.execute(text('SELECT version_num FROM public.alembic_version')).scalars().all()
+          assert revisions == ['20261004_0002'], 'Unexpected Alembic revision'
+          print('Alembic head: 20261004_0002')
+          PY
+      - name: PostgreSQL integration and concurrency tests
+        run: |
+          pytest tests/integration -v --junitxml="$RUNNER_TEMP/integration.xml"
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'integration.xml')).findall('.//testcase')
+          assert len(cases) >= 6, 'PostgreSQL tests did not execute'
+          assert not any(case.find('skipped') is not None for case in cases), 'PostgreSQL tests skipped'
+          PY
+      - name: Complete Finance test suite
+        run: |
+          pytest -v --junitxml="$RUNNER_TEMP/finance.xml"
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'finance.xml')).findall('.//testcase')
+          assert not any(case.find('skipped') is not None for case in cases), 'Finance tests skipped'
+          PY
+      - name: Verify artifacts
+        run: python scripts/verify_artifacts.py
