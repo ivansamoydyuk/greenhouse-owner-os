@@ -13,6 +13,7 @@ import httpx
 from greenhouse_owner_os.infrastructure.test_safety import require_disposable_database
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 def main():
     require_disposable_database(os.environ['TEST_DATABASE_URL'],os.getenv('APP_ENV'))
