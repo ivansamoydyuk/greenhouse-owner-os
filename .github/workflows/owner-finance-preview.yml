@@ -66,6 +66,24 @@ jobs:
             sleep 1
           done
           curl --fail --retry 8 --retry-delay 2 "$preview_url/health"
+          python - <<'PY'
+          import os, httpx
+          origin=os.environ['PREVIEW_PUBLIC_ORIGIN']
+          with httpx.Client(base_url=origin,timeout=30) as client:
+              assert client.get('/preview/config').status_code==401
+              response=client.post('/preview/login',json={'secret':os.environ['PREVIEW_SECRET']},headers={'Origin':origin})
+              assert response.status_code==200 and 'Secure' in response.headers['set-cookie']
+              eid=client.get('/preview/config').json()['entity_id']
+              overview=client.get('/v1/entities/'+eid+'/finance-overview').json()
+              assert overview['balances']['TRY']['payable']=='2600.00'
+              assert overview['balances']['TRY']['cash']=='0.00'
+              assert all(v['cash']=='0.00' for v in overview['balances'].values())
+              assert client.get('/v1/finance/reconciliation',params={'entity_id':eid}).json()['ok']
+              assert client.get('/').status_code==200
+              assert client.get('/assets/app.js').status_code==200
+              client.post('/preview/logout')
+          print('External HTTPS authenticated preview smoke PASS; zero cash, Serkan unpaid 2600 TRY, reconciliation PASS')
+          PY
           printf 'URL: %s\nAccess key: %s\nTEST PREVIEW ONLY. Opening Serkan AP 2600 TRY remains unpaid.\nExpires after 35 minutes of review time; runner database is then destroyed.\n' "$preview_url" "$PREVIEW_SECRET" > artifacts/preview-access.txt
           printf '### Isolated Owner Finance preview\n\n%s\n\nAccess key: download the private **owner-finance-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
