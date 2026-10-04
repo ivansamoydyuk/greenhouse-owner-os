@@ -39,7 +39,10 @@ def upgrade():
     DECLARE classification text; found_id uuid;
     BEGIN
       IF TG_TABLE_NAME = 'entities' THEN
-        IF NEW.reference_class IS DISTINCT FROM OLD.reference_class THEN
+        IF NEW.reference_class='TEST_PREVIEW' AND current_database()<>'greenhouse_owner_os_test' THEN
+          RAISE EXCEPTION 'preview references require disposable test database' USING ERRCODE='23514';
+        END IF;
+        IF TG_OP='UPDATE' AND NEW.reference_class IS DISTINCT FROM OLD.reference_class THEN
           RAISE EXCEPTION 'entity reference class is immutable' USING ERRCODE='23514';
         END IF;
       ELSE
@@ -62,7 +65,7 @@ def upgrade():
       END IF;
       RETURN NEW;
     END $$;
-    CREATE TRIGGER entity_reference_class_guard BEFORE UPDATE ON core.entities
+    CREATE TRIGGER entity_reference_class_guard BEFORE INSERT OR UPDATE ON core.entities
       FOR EACH ROW EXECUTE FUNCTION core.guard_reference_class();
     CREATE TRIGGER reference_scope_guard BEFORE INSERT ON core.reference_records
       FOR EACH ROW EXECUTE FUNCTION core.guard_reference_class();

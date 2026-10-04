@@ -32,7 +32,13 @@ class ReferenceService:
         self.environment = environment
         self.finance = FinanceService(uow_factory)
 
+    def _check_target(self, session):
+        if self.environment == 'TEST_PREVIEW':
+            from greenhouse_owner_os.infrastructure.test_safety import require_disposable_database
+            require_disposable_database(session.get_bind().url, 'test')
+
     def _entity(self, session, entity_id):
+        self._check_target(session)
         entity = session.get(EntityRow, entity_id)
         if not entity:
             raise NotFoundError('entity not found')
@@ -77,6 +83,7 @@ class ReferenceService:
         values = command.model_dump(mode='json')
         request_hash = _hash_request(dict(values, entity_id=str(entity_id)))
         with self.uow_factory() as uow:
+            self._check_target(uow.session)
             actor = uow.session.get(ActorRow, actor_id)
             if not actor or not actor.active or actor.actor_type != 'owner':
                 raise ValidationError('active authenticated owner actor required')
@@ -125,6 +132,7 @@ class ReferenceService:
         request_hash = _hash_request({'entity_id':str(entity_id),'currency':currency})
         with self.uow_factory() as uow:
             self._entity(uow.session, entity_id)
+            self._check_target(uow.session)
             actor = uow.session.get(ActorRow, actor_id)
             if not actor or not actor.active or actor.actor_type != 'owner':
                 raise ValidationError('active authenticated owner actor required')
@@ -190,6 +198,12 @@ class ReferenceService:
                 if row.kind=='ledger_account' and resource and row.definition != dict(currency=resource.currency,
                     system_code=resource.system_code, account_class=resource.account_class, normal_side=resource.normal_side):
                     fail('reference_definition_mismatch',row.id)
+                if row.kind=='counterparty' and resource and resource.counterparty_type != row.definition['role']:
+                    fail('reference_definition_mismatch',row.id)
+                if row.kind=='entity' and resource and resource.default_currency != row.definition['currency']:
+                    fail('reference_definition_mismatch',row.id)
+                if row.kind=='money_account' and resource and (resource.currency,resource.account_type,str(resource.ledger_account_id)) != (row.definition['currency'],row.definition['account_type'],row.definition['ledger_account_id']):
+                    fail('reference_definition_mismatch',row.id)
                 if resource and getattr(resource,'name',None)!=row.original_name:
                     fail('reference_name_mismatch',row.id)
             for ledger in ledgers.values():
@@ -213,7 +227,7 @@ class ReferenceService:
                     fail('precutover_posting',posting.id)
             from .reconciliation import reconcile
             # Snapshot already selected above: reconciliation accepts a caller-established snapshot.
-            reconciliation = reconcile(s, snapshot_established=True)
+            reconciliation = reconcile(s, snapshot_established=True, entity_id=entity_id)
             if not reconciliation['ok']:
                 findings.extend(reconciliation['findings'])
             return dict(ok=not findings, findings=sorted(findings,key=lambda f:(f['code'],str(f))),
@@ -235,3 +249,30 @@ class ReferenceService:
                                       .order_by(AuditEventRow.occurred_at,AuditEventRow.id))
             return {'resource_id':str(resource_id),'events':[dict(id=str(r.id),actor_id=str(r.actor_id),
                 action=r.action,before=r.before_json,after=r.after_json,reason=r.reason,created_at=r.occurred_at.isoformat()) for r in rows]}
+
+
+def provision_authenticated_owner(session_factory, *, external_ref, display_name, environment):
+    """Trusted adapter hook after authentication; never accepts client actor IDs.
+
+    No HTTP endpoint impersonates an owner. Authentication itself belongs to the
+    deployment task. This deterministic hook removes manual SQL provisioning.
+    """
+    if environment not in ('OWNER_VERIFIED','TEST_PREVIEW') or not external_ref.strip() or not display_name.strip():
+        raise ValueError('verified identity and explicit environment required')
+    rid = reference_id(environment,'actor',external_ref)
+    with session_factory.begin() as session:
+        if environment=='TEST_PREVIEW':
+            from greenhouse_owner_os.infrastructure.test_safety import require_disposable_database
+            require_disposable_database(session.get_bind().url,'test')
+        session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:key, 73))'), {'key':str(rid)})
+        old = session.get(ActorRow,rid)
+        if old:
+            if (old.actor_type,old.external_ref,old.display_name,old.active) != ('owner',external_ref,display_name,True):
+                raise ConflictError('authenticated actor identity differs; explicit verification required')
+        else:
+            session.add(ActorRow(id=rid,actor_type='owner',display_name=display_name,external_ref=external_ref))
+            session.flush()
+            from greenhouse_owner_os.repositories.sqlalchemy import SqlAlchemyAuditRepository
+            SqlAlchemyAuditRepository(session).append(actor_id=rid,action='reference_create',entity_type='actor',
+                entity_id=rid,before=None,after={'id':str(rid),'display_name':display_name,'source':'authenticated:'+external_ref,'classification':environment})
+    return rid

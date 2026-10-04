@@ -72,8 +72,8 @@ def create_app(*, finance_service: FinanceService, actor_provider, reference_ser
             return _serialize_payment(payment,uow.finance.get_advance_by_payment(payment_id))
 
     @app.get('/v1/finance/reconciliation')
-    def reconciliation(actor_id: UUID = Depends(actor_provider)):
-        return finance_service.reconcile(include_classification=True)
+    def reconciliation(entity_id: UUID | None = None, actor_id: UUID = Depends(actor_provider)):
+        return finance_service.reconcile(include_classification=True, entity_id=entity_id)
 
     @app.get('/v1/entities/{entity_id}/cutover')
     def cutover(entity_id: UUID, actor_id: UUID = Depends(actor_provider)):

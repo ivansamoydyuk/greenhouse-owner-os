@@ -1276,12 +1276,28 @@ paths:
     get:
       summary: Reconciliation
       operationId: reconciliation_v1_finance_reconciliation_get
+      parameters:
+      - name: entity_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Entity Id
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /obligations/{obligation_id}/post:
     post:
       summary: Post Obligation

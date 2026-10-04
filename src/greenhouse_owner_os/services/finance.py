@@ -445,10 +445,10 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin):
                 raise NotFoundError(kind + " not found")
             return self._linkage(uow, kind, record)
 
-    def reconcile(self, *, include_classification=False):
+    def reconcile(self, *, include_classification=False, entity_id=None):
         from .reconciliation import reconcile
         with self.uow_factory() as uow:
-            return reconcile(uow.session, include_classification=include_classification)
+            return reconcile(uow.session, include_classification=include_classification, entity_id=entity_id)
 
     def get_currency_balances(self, entity_id: UUID):
         with self.uow_factory() as uow:

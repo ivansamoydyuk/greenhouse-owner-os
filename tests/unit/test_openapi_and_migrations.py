@@ -60,4 +60,3 @@ def test_sqlalchemy_metadata_imports_with_expected_tables():
         "audit.idempotency_keys", "audit.events",
     }
     assert expected.issubset(set(Base.metadata.tables))
-

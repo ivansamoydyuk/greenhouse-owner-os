@@ -13,15 +13,15 @@ from greenhouse_owner_os.infrastructure.database import make_session_factory
 from greenhouse_owner_os.infrastructure.models import ActorRow, ReferenceRecordRow, PostingRow, LedgerAccountRow, MoneyAccountRow, EntityRow, CounterpartyRow, AuditEventRow, IdempotencyRow
 from greenhouse_owner_os.repositories.sqlalchemy import SqlAlchemyUnitOfWork, SqlAlchemyAuditRepository
 from greenhouse_owner_os.services.finance import FinanceService
-from greenhouse_owner_os.services.references import ReferenceService
+from greenhouse_owner_os.services.references import ReferenceService, provision_authenticated_owner
 
 
 @pytest.fixture
 def preview(migrated_database):
     sf = make_session_factory(migrated_database)
-    actor = uuid4()
-    with sf.begin() as s:
-        s.add(ActorRow(id=actor, actor_type='owner',display_name='TEST PREVIEW Owner',external_ref='test:'+str(actor)))
+    identity='test:'+str(uuid4())
+    actor = provision_authenticated_owner(sf,external_ref=identity,display_name='TEST PREVIEW Owner',environment='TEST_PREVIEW')
+    assert provision_authenticated_owner(sf,external_ref=identity,display_name='TEST PREVIEW Owner',environment='TEST_PREVIEW')==actor
     factory = lambda: SqlAlchemyUnitOfWork(sf)
     refs = ReferenceService(factory,environment='TEST_PREVIEW')
     finance = FinanceService(factory)
@@ -59,7 +59,7 @@ def test_complete_operational_api_smoke(preview):
     cutoff=c.get(base+'/cutover').json()
     assert cutoff['cutover_date']=='2026-10-04' and cutoff['opening_policy']=='ZERO'
     assert set(cutoff['opening_balances'].values())=={'0.00'}
-    assert c.get(base+'/readiness').json()['ok'] is True
+    assert c.get(base+'/readiness').json()['ok'] is True, c.get(base+'/readiness').json()
     common=dict(entity_id=eid,counterparty_id=cp,currency='TRY',event_date='2026-10-04')
     def obligation(direction,amount):
         r=send(c,'/obligations',dict(common,direction=direction,original_amount=amount,
@@ -106,8 +106,8 @@ def test_complete_operational_api_smoke(preview):
     assert balances()==dict(zero,cash='470.00',payable='75.00',advance_paid='30.00')
     position=c.get(base+f'/counterparties/{cp}/financial-position?currency=TRY').json()
     assert position['open_payable']=='75.00' and position['supplier_advance_remaining']=='30.00'
-    assert c.get('/v1/finance/reconciliation').json()['ok'] is True
-    assert c.get(base+'/readiness').json()['ok'] is True
+    assert c.get('/v1/finance/reconciliation?entity_id='+eid).json()['ok'] is True
+    assert c.get(base+'/readiness').json()['ok'] is True, c.get(base+'/readiness').json()
     sf=preview[0]
     with sf() as s:
         entries=s.execute(text("SELECT p.id,sum(CASE e.side WHEN 'debit' THEN e.amount ELSE -e.amount END) FROM finance.postings p JOIN finance.posting_entries e ON e.posting_id=p.id WHERE p.entity_id=:id GROUP BY p.id"),{'id':UUID(eid)}).all()
@@ -118,7 +118,7 @@ def test_complete_operational_api_smoke(preview):
     old=send(c,'/obligations',dict(common,event_date='2026-10-03',direction='payable',original_amount='1',offset_ledger_account_id=ids['GENERAL_EXPENSE']))
     r=c.post(f"/v1/obligations/{old['id']}/post?expected_version=1",headers={'Idempotency-Key':'reject-old'})
     assert r.status_code==422 and balances()['payable']=='75.00'
-    assert c.get(base+'/readiness').json()['ok'] is True
+    assert c.get(base+'/readiness').json()['ok'] is True, c.get(base+'/readiness').json()
 
 
 def test_bootstrap_setup_idempotency_and_original_name_conflict(preview):

@@ -9,7 +9,7 @@ from greenhouse_owner_os.infrastructure.models import (
 )
 
 
-def reconcile(session, *, include_classification=False, snapshot_established=False):
+def reconcile(session, *, include_classification=False, snapshot_established=False, entity_id=None):
     # A consistent snapshot is necessary: independent READ COMMITTED selects could
     # otherwise report a valid concurrent transaction as a false inconsistency.
     if not snapshot_established:
@@ -18,6 +18,16 @@ def reconcile(session, *, include_classification=False, snapshot_established=Fal
               PostingRow, PostingEntryRow, LedgerAccountRow, MoneyAccountRow, CounterpartyRow,
               TransferRow, FundingRow, SettlementRow, EntityRow, ImportBatchRow, HistoricalCandidateRow]
     rows = {m: {r.id:r for r in session.scalars(select(m).order_by(m.id)).all()} for m in models}
+    if entity_id is not None:
+        for model in (ObligationRow, PaymentRow, AdvanceRow, ApplicationRow, PostingRow,
+                      LedgerAccountRow, MoneyAccountRow, CounterpartyRow, TransferRow,
+                      FundingRow, SettlementRow, ImportBatchRow):
+            rows[model] = {rid:r for rid,r in rows[model].items() if r.entity_id==entity_id}
+        rows[EntityRow] = {rid:r for rid,r in rows[EntityRow].items() if rid==entity_id}
+        for child, parent, key in ((PostingEntryRow,PostingRow,'posting_id'),
+                                   (PaymentAllocationRow,PaymentRow,'payment_id'),
+                                   (HistoricalCandidateRow,ImportBatchRow,'import_batch_id')):
+            rows[child] = {rid:r for rid,r in rows[child].items() if getattr(r,key) in rows[parent]}
     return check_snapshot(rows, include_classification=include_classification)
 
 
