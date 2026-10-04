@@ -115,7 +115,7 @@ BEGIN
      SELECT * INTO ob FROM finance.obligations WHERE id=oid FOR UPDATE;
      SELECT remaining_amount INTO remaining FROM finance.obligation_balances WHERE obligation_id=oid;
      IF ob.status<>'posted' OR ob.entity_id<>NEW.entity_id OR ob.currency<>NEW.currency OR NEW.event_date<ob.event_date
-       OR ob.direction<>CASE WHEN oid=NEW.receivable_id THEN 'receivable' ELSE 'payable' END
+       OR ob.direction<>(CASE WHEN oid=NEW.receivable_id THEN 'receivable' ELSE 'payable' END)
        OR NOT EXISTS(SELECT 1 FROM core.counterparties WHERE id=ob.counterparty_id AND entity_id=NEW.entity_id)
        OR NEW.amount>remaining THEN
        RAISE EXCEPTION 'invalid/over settlement' USING ERRCODE='23514';
@@ -137,7 +137,7 @@ BEGIN
      SELECT * INTO ob FROM finance.obligations WHERE id=a.obligation_id FOR UPDATE;
      SELECT remaining_amount INTO remaining FROM finance.obligation_balances WHERE obligation_id=ob.id;
      IF ob.status<>'posted' OR ob.entity_id<>NEW.entity_id OR ob.currency<>NEW.currency OR ob.counterparty_id<>NEW.counterparty_id
-       OR ob.direction<>CASE NEW.direction WHEN 'out' THEN 'payable' ELSE 'receivable' END OR a.amount>remaining THEN
+       OR ob.direction<>(CASE NEW.direction WHEN 'out' THEN 'payable' ELSE 'receivable' END) OR a.amount>remaining THEN
        RAISE EXCEPTION 'invalid/over allocation' USING ERRCODE='23514';
      END IF;
    END LOOP;
