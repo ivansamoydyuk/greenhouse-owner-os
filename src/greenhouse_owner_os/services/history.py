@@ -5,11 +5,22 @@ class HistoryServiceMixin:
     def get_cutover_status(self, entity_id):
         with self.uow_factory() as uow:
             cutoff, opening = uow.finance.get_cutover(entity_id)
-            return {'entity_id':str(entity_id), 'cutover_date':cutoff.isoformat(),
+            result = {'entity_id':str(entity_id), 'cutover_date':cutoff.isoformat(),
                     'opening_policy':opening, 'opening_balances':dict.fromkeys(
                         ['cash', 'payable', 'receivable', 'supplier_advances', 'customer_advances'], '0.00'),
                     'opening_postings_generated':False, 'historical_posting_policy':'NON_POSTING',
                     'live_posting_from':cutoff.isoformat()}
+            openings = uow.finance.get_opening_payables(entity_id)
+            if openings:
+                from decimal import Decimal
+                by_currency = {}
+                for row in openings:
+                    by_currency[row['currency']] = by_currency.get(row['currency'], Decimal('0.00')) + Decimal(row['amount'])
+                result['opening_balances']['payable'] = {currency:f'{amount:.2f}' for currency,amount in sorted(by_currency.items())}
+                result['opening_postings_generated'] = True
+                result['opening_payables'] = openings
+                result['opening_balance_policy'] = 'ZERO_OTHER_POSITIONS_WITH_EXPLICIT_VERIFIED_PAYABLES'
+            return result
 
     def create_import_batch(self, *, actor_id, idempotency_key, command):
         return self._import_evidence('import_batch', actor_id, idempotency_key, command)

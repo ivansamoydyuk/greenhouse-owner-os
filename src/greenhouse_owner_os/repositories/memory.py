@@ -44,6 +44,17 @@ from .history import MemoryHistoryRepositoryMixin
 
 
 class MemoryFinanceRepository(MemoryHistoryRepositoryMixin):
+    def get_opening_payable(self, obligation_id):
+        return None
+
+    def get_opening_payables(self, entity_id):
+        return []
+
+    def assert_regular_offset(self, account_id):
+        if any(code == 'OPENING_PAYABLE_OFFSET' and aid == account_id
+               for (_, _, code), aid in self.store.system_accounts.items()):
+            raise ValidationError('opening offset reserved for explicit owner approval')
+
     def __init__(self, store: MemoryStore) -> None:
         self.store = store
 

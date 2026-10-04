@@ -1022,6 +1022,630 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /reference-currencies:
+    get:
+      summary: Reference Currencies
+      operationId: reference_currencies_v1_reference_currencies_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /entities:
+    post:
+      summary: Setup Entity
+      operationId: setup_entity_v1_entities_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntitySetup'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/money-accounts:
+    post:
+      summary: Setup Money Account
+      operationId: setup_money_account_v1_entities__entity_id__money_accounts_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoneyAccountSetup'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/counterparties:
+    post:
+      summary: Setup Counterparty
+      operationId: setup_counterparty_v1_entities__entity_id__counterparties_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CounterpartySetup'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/reference-bootstrap:
+    post:
+      summary: Reference Bootstrap
+      operationId: reference_bootstrap_v1_entities__entity_id__reference_bootstrap_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BootstrapCommand'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/references:
+    get:
+      summary: References
+      operationId: references_v1_entities__entity_id__references_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/readiness:
+    get:
+      summary: Readiness
+      operationId: readiness_v1_entities__entity_id__readiness_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/resources/{resource_id}/audit:
+    get:
+      summary: Audit
+      operationId: audit_v1_entities__entity_id__resources__resource_id__audit_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /payments/{payment_id}:
+    get:
+      summary: Get Payment
+      operationId: get_payment_v1_payments__payment_id__get
+      parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Payment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /finance/reconciliation:
+    get:
+      summary: Reconciliation
+      operationId: reconciliation_v1_finance_reconciliation_get
+      parameters:
+      - name: entity_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Entity Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /obligations/{obligation_id}/post:
+    post:
+      summary: Post Obligation
+      operationId: post_obligation_v1_obligations__obligation_id__post_post
+      parameters:
+      - name: obligation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Obligation Id
+      - name: expected_version
+        in: query
+        required: true
+        schema:
+          type: integer
+          title: Expected Version
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /obligations/{obligation_id}:
+    get:
+      summary: Get Obligation
+      operationId: get_obligation_v1_obligations__obligation_id__get
+      parameters:
+      - name: obligation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Obligation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /payments/{payment_id}/post:
+    post:
+      summary: Post Payment
+      operationId: post_payment_v1_payments__payment_id__post_post
+      parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Payment Id
+      - name: expected_version
+        in: query
+        required: true
+        schema:
+          type: integer
+          title: Expected Version
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /payments/{payment_id}/reverse:
+    post:
+      summary: Reverse Payment
+      operationId: reverse_payment_v1_payments__payment_id__reverse_post
+      parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Payment Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReverseCommand'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /obligations/{obligation_id}/reverse:
+    post:
+      summary: Reverse Obligation
+      operationId: reverse_obligation_v1_obligations__obligation_id__reverse_post
+      parameters:
+      - name: obligation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Obligation Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReverseCommand'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /payments/{payment_id}/linkage:
+    get:
+      summary: Payment Linkage
+      operationId: payment_linkage_v1_payments__payment_id__linkage_get
+      parameters:
+      - name: payment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Payment Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /obligations/{obligation_id}/linkage:
+    get:
+      summary: Obligation Linkage
+      operationId: obligation_linkage_v1_obligations__obligation_id__linkage_get
+      parameters:
+      - name: obligation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Obligation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /transfers/{resource_id}:
+    get:
+      summary: Read Transfer
+      operationId: read_transfer_v1_transfers__resource_id__get
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /owner-fundings/{resource_id}:
+    get:
+      summary: Read Owner Funding
+      operationId: read_owner_funding_v1_owner_fundings__resource_id__get
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /direct-settlements/{resource_id}:
+    get:
+      summary: Read Direct Settlement
+      operationId: read_direct_settlement_v1_direct_settlements__resource_id__get
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /advance-applications/{resource_id}:
+    get:
+      summary: Read Advance Application
+      operationId: read_advance_application_v1_advance_applications__resource_id__get
+      parameters:
+      - name: resource_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Resource Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/opening-payables:
+    post:
+      summary: Recognize Opening Payable
+      operationId: recognize_opening_payable_v1_entities__entity_id__opening_payables_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpeningPayableCommand'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -1897,6 +2521,160 @@ components:
       - VERIFY
       - HISTORY
       title: VerificationState
+    BootstrapCommand:
+      properties:
+        currency:
+          type: string
+          enum:
+          - TRY
+          - USD
+          - EUR
+          - UAH
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - currency
+      title: BootstrapCommand
+    CounterpartySetup:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        source:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Source
+        role:
+          type: string
+          enum:
+          - supplier
+          - customer
+          - depot
+          - both
+          title: Role
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - source
+      - role
+      title: CounterpartySetup
+    EntitySetup:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        source:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Source
+        currency:
+          type: string
+          enum:
+          - TRY
+          - USD
+          - EUR
+          - UAH
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - source
+      - currency
+      title: EntitySetup
+    MoneyAccountSetup:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        source:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Source
+        currency:
+          type: string
+          enum:
+          - TRY
+          - USD
+          - EUR
+          - UAH
+          title: Currency
+        account_type:
+          type: string
+          enum:
+          - bank
+          - cash
+          title: Account Type
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - source
+      - currency
+      - account_type
+      title: MoneyAccountSetup
+    OpeningPayableCommand:
+      properties:
+        counterparty_id:
+          type: string
+          format: uuid
+          title: Counterparty Id
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Amount
+        currency:
+          type: string
+          enum:
+          - TRY
+          - USD
+          - EUR
+          - UAH
+          title: Currency
+        original_event_date:
+          type: string
+          format: date
+          title: Original Event Date
+        description:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Description
+        source:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Source
+        approval_reference:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Approval Reference
+      additionalProperties: false
+      type: object
+      required:
+      - counterparty_id
+      - amount
+      - currency
+      - original_event_date
+      - description
+      - source
+      - approval_reference
+      title: OpeningPayableCommand
   responses:
     Conflict:
       description: Version or idempotency conflict

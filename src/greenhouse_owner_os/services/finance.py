@@ -86,9 +86,10 @@ from .cash import CashServiceMixin
 
 
 from .history import HistoryServiceMixin
+from .opening import OpeningServiceMixin
 
 
-class FinanceService(CashServiceMixin, HistoryServiceMixin):
+class FinanceService(CashServiceMixin, HistoryServiceMixin, OpeningServiceMixin):
     def __init__(self, uow_factory: UowFactory) -> None:
         self.uow_factory = uow_factory
 
@@ -112,6 +113,7 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin):
                 offset_ledger_account_id=command.offset_ledger_account_id,
             )
             uow.finance.assert_ledger_account_scope(obligation.offset_ledger_account_id, obligation.entity_id, obligation.currency)
+            uow.finance.assert_regular_offset(obligation.offset_ledger_account_id)
             self._validate_replacement(uow, "obligation", command.replacement_of_id, obligation)
             obligation.replacement_of_id = command.replacement_of_id
             uow.finance.add_obligation(obligation, actor_id)
@@ -322,7 +324,11 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin):
             obligation = uow.finance.get_obligation(obligation_id)
             if not obligation:
                 raise NotFoundError("obligation not found")
-            return _serialize_obligation(obligation, uow.finance.obligation_remaining(obligation.id))
+            response = _serialize_obligation(obligation, uow.finance.obligation_remaining(obligation.id))
+            opening = uow.finance.get_opening_payable(obligation.id)
+            if opening:
+                response['opening_provenance'] = opening
+            return response
 
     @staticmethod
     def _validate_replacement(uow, kind, original_id, replacement):
@@ -443,12 +449,17 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin):
             record = getter(resource_id)
             if not record:
                 raise NotFoundError(kind + " not found")
-            return self._linkage(uow, kind, record)
+            response = self._linkage(uow, kind, record)
+            if kind == 'obligation':
+                opening = uow.finance.get_opening_payable(resource_id)
+                if opening:
+                    response['opening_provenance'] = opening
+            return response
 
-    def reconcile(self, *, include_classification=False):
+    def reconcile(self, *, include_classification=False, entity_id=None):
         from .reconciliation import reconcile
         with self.uow_factory() as uow:
-            return reconcile(uow.session, include_classification=include_classification)
+            return reconcile(uow.session, include_classification=include_classification, entity_id=entity_id)
 
     def get_currency_balances(self, entity_id: UUID):
         with self.uow_factory() as uow:

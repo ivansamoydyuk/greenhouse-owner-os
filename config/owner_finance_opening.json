@@ -1,0 +1,22 @@
+{
+  "purpose": "EXPLICIT_OWNER_VERIFIED_INPUT_NOT_SYSTEM_SEED",
+  "authority": "owner-message:2026-10-04:opening-correction",
+  "cutover_date": "2026-10-04",
+  "entity": "IO Farming Industries Tarım Ticaret Ltd. Şti.",
+  "money_accounts": [
+    {"name": "Банк TR", "account_type": "bank", "currency": "TRY", "opening_balance": "0.00"},
+    {"name": "Банк USD", "account_type": "bank", "currency": "USD", "opening_balance": "0.00"},
+    {"name": "Банк EUR", "account_type": "bank", "currency": "EUR", "opening_balance": "0.00"},
+    {"name": "Cash TR", "account_type": "cash", "currency": "TRY", "opening_balance": "0.00"},
+    {"name": "Cash USD", "account_type": "cash", "currency": "USD", "opening_balance": "0.00"}
+  ],
+  "counterparty": {"name": "Серкан Ремонт насосов", "role": "supplier"},
+  "opening_payable": {
+    "amount": "2600.00",
+    "currency": "TRY",
+    "original_event_date": "2026-10-02",
+    "description": "ремонт трубы для İmamlı",
+    "source": "owner-message:2026-10-04:opening-correction:serkan-imamli-pipe",
+    "approval_reference": "owner-correction:2026-10-04:serkan-imamli-pipe"
+  }
+}
