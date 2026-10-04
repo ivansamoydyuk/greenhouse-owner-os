@@ -30,8 +30,11 @@ def upgrade():
     CREATE OR REPLACE FUNCTION finance.assert_money_account_scope() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
       IF NOT EXISTS(SELECT 1 FROM finance.ledger_accounts WHERE id=NEW.ledger_account_id
-        AND entity_id=NEW.entity_id AND currency=NEW.currency AND account_class='cash') THEN
-        RAISE EXCEPTION 'money account needs matching cash-class ledger' USING ERRCODE='23514';
+        AND entity_id=NEW.entity_id AND currency=NEW.currency) THEN
+        RAISE EXCEPTION 'money account ledger entity/currency mismatch' USING ERRCODE='23514';
+      END IF;
+      IF NOT EXISTS(SELECT 1 FROM finance.ledger_accounts WHERE id=NEW.ledger_account_id AND account_class='cash') THEN
+        RAISE EXCEPTION 'money account needs cash-class ledger' USING ERRCODE='23514';
       END IF;
       RETURN NEW;
     END; $$;
