@@ -167,11 +167,46 @@ def upgrade() -> None:
     CREATE TRIGGER trg_obligation_protect_posted BEFORE UPDATE ON finance.obligations
       FOR EACH ROW EXECUTE FUNCTION finance.protect_posted_obligation();
 
+    CREATE OR REPLACE FUNCTION finance.protect_financial_delete() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF OLD.status IN ('posted','reversed') THEN
+        RAISE EXCEPTION 'posted/reversed financial record cannot be deleted' USING ERRCODE='55000';
+      END IF;
+      RETURN OLD;
+    END;
+    $$;
+    CREATE TRIGGER trg_obligation_protect_delete BEFORE DELETE ON finance.obligations
+      FOR EACH ROW EXECUTE FUNCTION finance.protect_financial_delete();
+    CREATE TRIGGER trg_payment_protect_delete BEFORE DELETE ON finance.payments
+      FOR EACH ROW EXECUTE FUNCTION finance.protect_financial_delete();
+
+    CREATE OR REPLACE FUNCTION finance.protect_posted_payment() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF OLD.status IN ('posted','reversed') AND (
+        NEW.entity_id IS DISTINCT FROM OLD.entity_id OR
+        NEW.money_account_id IS DISTINCT FROM OLD.money_account_id OR
+        NEW.counterparty_id IS DISTINCT FROM OLD.counterparty_id OR
+        NEW.direction IS DISTINCT FROM OLD.direction OR
+        NEW.amount IS DISTINCT FROM OLD.amount OR
+        NEW.currency IS DISTINCT FROM OLD.currency OR
+        NEW.event_date IS DISTINCT FROM OLD.event_date OR
+        NEW.posting_id IS DISTINCT FROM OLD.posting_id
+      ) THEN
+        RAISE EXCEPTION 'posted payment business fields are immutable' USING ERRCODE='55000';
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
+    CREATE TRIGGER trg_payment_protect_posted BEFORE UPDATE ON finance.payments
+      FOR EACH ROW EXECUTE FUNCTION finance.protect_posted_payment();
+
     CREATE OR REPLACE FUNCTION finance.protect_payment_allocation() RETURNS trigger
     LANGUAGE plpgsql AS $$
     DECLARE v_status text;
     BEGIN
-      SELECT status INTO v_status FROM finance.payments WHERE id=COALESCE(OLD.payment_id, NEW.payment_id);
+      SELECT status INTO v_status FROM finance.payments WHERE id=(CASE WHEN TG_OP='DELETE' THEN OLD.payment_id ELSE NEW.payment_id END);
       IF v_status IN ('posted','reversed') THEN
         RAISE EXCEPTION 'allocations of posted/reversed payment are immutable' USING ERRCODE='55000';
       END IF;
@@ -186,6 +221,11 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS trg_payment_allocation_protect ON finance.payment_allocations")
     op.execute("DROP FUNCTION IF EXISTS finance.protect_payment_allocation()")
+    op.execute("DROP TRIGGER IF EXISTS trg_payment_protect_posted ON finance.payments")
+    op.execute("DROP FUNCTION IF EXISTS finance.protect_posted_payment()")
+    op.execute("DROP TRIGGER IF EXISTS trg_payment_protect_delete ON finance.payments")
+    op.execute("DROP TRIGGER IF EXISTS trg_obligation_protect_delete ON finance.obligations")
+    op.execute("DROP FUNCTION IF EXISTS finance.protect_financial_delete()")
     op.execute("DROP TRIGGER IF EXISTS trg_obligation_protect_posted ON finance.obligations")
     op.execute("DROP FUNCTION IF EXISTS finance.protect_posted_obligation()")
     op.execute("DROP VIEW IF EXISTS finance.money_account_balances")

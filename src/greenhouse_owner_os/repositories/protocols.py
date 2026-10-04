@@ -27,6 +27,7 @@ class FinanceRepository(Protocol):
 
 
 class IdempotencyRepository(Protocol):
+    def lock(self, actor_id: UUID, operation: str, key: str) -> None: ...
     def get(self, actor_id: UUID, operation: str, key: str) -> dict[str, Any] | None: ...
     def put(
         self,

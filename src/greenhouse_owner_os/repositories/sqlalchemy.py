@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -244,6 +244,11 @@ class SqlAlchemyFinanceRepository:
 class SqlAlchemyIdempotencyRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
+
+    def lock(self, actor_id: UUID, operation: str, key: str) -> None:
+        # Transaction-scoped advisory lock serializes concurrent retries for the same intended write.
+        lock_material = f"{actor_id}:{operation}:{key}"
+        self.session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:value, 0))"), {"value": lock_material})
 
     def get(self, actor_id: UUID, operation: str, key: str) -> dict[str, Any] | None:
         row = self.session.scalar(select(IdempotencyRow).where(

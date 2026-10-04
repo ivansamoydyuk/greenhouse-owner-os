@@ -160,7 +160,7 @@ def upgrade() -> None:
       v_credit numeric(20,2);
       v_scope_errors integer;
     BEGIN
-      v_posting_id := COALESCE(NEW.posting_id, NEW.id, OLD.posting_id, OLD.id);
+      IF TG_TABLE_NAME = 'postings' THEN v_posting_id := NEW.id; ELSE v_posting_id := NEW.posting_id; END IF;
       SELECT entity_id, currency INTO v_entity_id, v_currency FROM finance.postings WHERE id = v_posting_id;
       IF v_entity_id IS NULL THEN RETURN NULL; END IF;
       SELECT count(*),

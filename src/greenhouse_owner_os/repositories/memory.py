@@ -115,6 +115,9 @@ class MemoryIdempotencyRepository:
     def __init__(self, store: MemoryStore) -> None:
         self.store = store
 
+    def lock(self, actor_id: UUID, operation: str, key: str) -> None:
+        return None
+
     def get(self, actor_id: UUID, operation: str, key: str) -> dict[str, Any] | None:
         item = self.store.idempotency.get((actor_id, operation, key))
         return copy.deepcopy(item) if item else None

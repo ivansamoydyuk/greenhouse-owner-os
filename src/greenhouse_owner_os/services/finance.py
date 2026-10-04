@@ -8,7 +8,7 @@ from typing import Any, Callable
 from uuid import UUID, uuid4
 
 from greenhouse_owner_os.domain.commands import CreateObligationCommand, CreatePaymentCommand
-from greenhouse_owner_os.domain.errors import IdempotencyConflictError, NotFoundError, ValidationError
+from greenhouse_owner_os.domain.errors import ConflictError, IdempotencyConflictError, NotFoundError, ValidationError
 from greenhouse_owner_os.domain.finance import (
     Advance,
     AdvanceDirection,
@@ -84,6 +84,7 @@ class FinanceService:
         payload = command.model_dump(mode="json")
         request_hash = _hash_request(payload)
         with self.uow_factory() as uow:
+            uow.idempotency.lock(actor_id, operation, idempotency_key)
             replay = self._replay_if_exists(uow, actor_id, operation, idempotency_key, request_hash)
             if replay:
                 return replay
@@ -110,6 +111,7 @@ class FinanceService:
         payload = {"obligation_id": str(obligation_id), "expected_version": expected_version}
         request_hash = _hash_request(payload)
         with self.uow_factory() as uow:
+            uow.idempotency.lock(actor_id, operation, idempotency_key)
             replay = self._replay_if_exists(uow, actor_id, operation, idempotency_key, request_hash)
             if replay:
                 return replay
@@ -117,7 +119,7 @@ class FinanceService:
             if not obligation:
                 raise NotFoundError("obligation not found")
             if obligation.version != expected_version:
-                raise ValidationError("obligation version conflict")
+                raise ConflictError("obligation version conflict")
             if obligation.status not in {RecordStatus.DRAFT, RecordStatus.REVIEW}:
                 raise ValidationError("only draft/review obligation can be posted")
             uow.finance.assert_ledger_account_scope(obligation.offset_ledger_account_id, obligation.entity_id, obligation.currency)
@@ -161,6 +163,7 @@ class FinanceService:
         payload = command.model_dump(mode="json")
         request_hash = _hash_request(payload)
         with self.uow_factory() as uow:
+            uow.idempotency.lock(actor_id, operation, idempotency_key)
             replay = self._replay_if_exists(uow, actor_id, operation, idempotency_key, request_hash)
             if replay:
                 return replay
@@ -187,6 +190,7 @@ class FinanceService:
         payload = {"payment_id": str(payment_id), "expected_version": expected_version}
         request_hash = _hash_request(payload)
         with self.uow_factory() as uow:
+            uow.idempotency.lock(actor_id, operation, idempotency_key)
             replay = self._replay_if_exists(uow, actor_id, operation, idempotency_key, request_hash)
             if replay:
                 return replay
@@ -194,7 +198,7 @@ class FinanceService:
             if not payment:
                 raise NotFoundError("payment not found")
             if payment.version != expected_version:
-                raise ValidationError("payment version conflict")
+                raise ConflictError("payment version conflict")
             if payment.status not in {RecordStatus.DRAFT, RecordStatus.REVIEW}:
                 raise ValidationError("only draft/review payment can be posted")
             if payment.allocation_total > payment.amount:

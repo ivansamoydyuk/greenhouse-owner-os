@@ -34,3 +34,14 @@ def test_migration_chain_is_linear_and_importable():
     assert mods[0].down_revision is None
     assert mods[1].revision == "20261004_0002"
     assert mods[1].down_revision == mods[0].revision
+
+
+def test_sqlalchemy_metadata_imports_with_expected_tables():
+    from greenhouse_owner_os.infrastructure.models import Base
+    expected = {
+        "core.entities", "core.actors", "core.counterparties",
+        "finance.ledger_accounts", "finance.money_accounts", "finance.postings", "finance.posting_entries",
+        "finance.obligations", "finance.payments", "finance.payment_allocations", "finance.advances",
+        "audit.idempotency_keys", "audit.events",
+    }
+    assert expected.issubset(set(Base.metadata.tables))

@@ -26,7 +26,10 @@ class Base(DeclarativeBase):
     pass
 
 
-UUID_PK = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+def uuid_pk():
+    return mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+
+
 UTC_NOW = text("now()")
 
 
@@ -34,7 +37,7 @@ class EntityRow(Base):
     __tablename__ = "entities"
     __table_args__ = {"schema": "core"}
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     default_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="TRY")
     active: Mapped[bool] = mapped_column(nullable=False, default=True, server_default=text("true"))
@@ -45,7 +48,7 @@ class ActorRow(Base):
     __tablename__ = "actors"
     __table_args__ = {"schema": "core"}
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     actor_type: Mapped[str] = mapped_column(String(30), nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     external_ref: Mapped[str | None] = mapped_column(String(255))
@@ -57,7 +60,7 @@ class CounterpartyRow(Base):
     __tablename__ = "counterparties"
     __table_args__ = {"schema": "core"}
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.entities.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(250), nullable=False)
     counterparty_type: Mapped[str] = mapped_column(String(30), nullable=False, default="company")
@@ -73,7 +76,7 @@ class LedgerAccountRow(Base):
         {"schema": "finance"},
     )
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.entities.id"), nullable=False)
     code: Mapped[str] = mapped_column(String(80), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -92,7 +95,7 @@ class MoneyAccountRow(Base):
         {"schema": "finance"},
     )
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.entities.id"), nullable=False)
     ledger_account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("finance.ledger_accounts.id"), nullable=False)
     account_type: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -108,7 +111,7 @@ class PostingRow(Base):
         {"schema": "finance"},
     )
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.entities.id"), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     event_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -128,7 +131,7 @@ class PostingEntryRow(Base):
         {"schema": "finance"},
     )
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     posting_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("finance.postings.id", ondelete="RESTRICT"), nullable=False)
     ledger_account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("finance.ledger_accounts.id"), nullable=False)
     side: Mapped[str] = mapped_column(String(6), nullable=False)
@@ -146,7 +149,7 @@ class ObligationRow(Base):
         {"schema": "finance"},
     )
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.entities.id"), nullable=False)
     counterparty_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.counterparties.id"), nullable=False)
     direction: Mapped[str] = mapped_column(String(12), nullable=False)
@@ -174,7 +177,7 @@ class PaymentRow(Base):
         {"schema": "finance"},
     )
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.entities.id"), nullable=False)
     money_account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("finance.money_accounts.id"), nullable=False)
     counterparty_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.counterparties.id"), nullable=False)
@@ -199,7 +202,7 @@ class PaymentAllocationRow(Base):
         {"schema": "finance"},
     )
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("finance.payments.id", ondelete="CASCADE"), nullable=False)
     obligation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("finance.obligations.id", ondelete="RESTRICT"), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
@@ -216,7 +219,7 @@ class AdvanceRow(Base):
         {"schema": "finance"},
     )
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.entities.id"), nullable=False)
     counterparty_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.counterparties.id"), nullable=False)
     source_payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("finance.payments.id"), nullable=False)
@@ -235,7 +238,7 @@ class IdempotencyRow(Base):
         {"schema": "audit"},
     )
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.actors.id"), nullable=False)
     operation: Mapped[str] = mapped_column(String(100), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -250,7 +253,7 @@ class AuditEventRow(Base):
     __tablename__ = "events"
     __table_args__ = {"schema": "audit"}
 
-    id: Mapped[uuid.UUID] = UUID_PK
+    id: Mapped[uuid.UUID] = uuid_pk()
     actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.actors.id"), nullable=False)
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
