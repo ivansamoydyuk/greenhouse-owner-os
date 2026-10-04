@@ -270,3 +270,12 @@ def test_ledger_taxonomy_cannot_relabel_financial_history(cashpg,field,value):
     with pytest.raises(DBAPIError):
         with fx.session_factory.begin() as s:
             s.execute(text(f'UPDATE finance.ledger_accounts SET {field}={value} WHERE id=(SELECT ledger_account_id FROM finance.money_accounts WHERE id=:id)'),{'id':fx.money_account_id})
+
+
+@pytest.mark.parametrize('system_code',['AP_CONTROL','AR_CONTROL','SUPPLIER_ADVANCE','CUSTOMER_ADVANCE','OWNER_FUNDING'])
+def test_system_roles_cannot_be_configured_as_cash(cashpg,system_code):
+    fx=cashpg
+    # Different currency avoids the existing unique role constraint; taxonomy itself rejects this.
+    with pytest.raises(DBAPIError):
+        with fx.session_factory.begin() as s:
+            s.add(LedgerAccountRow(id=uuid4(),entity_id=fx.entity_id,code=str(uuid4()),name='Bad control',account_class='cash',normal_side='debit',currency='USD',system_code=system_code))

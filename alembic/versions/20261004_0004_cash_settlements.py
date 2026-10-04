@@ -36,6 +36,8 @@ def upgrade():
       RETURN NEW;
     END; $$;
     """)
+    op.create_check_constraint('ck_ledger_system_taxonomy', 'ledger_accounts',
+        "system_code IS NULL OR system_code NOT IN ('AP_CONTROL','AR_CONTROL','SUPPLIER_ADVANCE','CUSTOMER_ADVANCE','OWNER_FUNDING') OR account_class = CASE system_code WHEN 'AP_CONTROL' THEN 'payable' WHEN 'AR_CONTROL' THEN 'receivable' WHEN 'SUPPLIER_ADVANCE' THEN 'advance' WHEN 'CUSTOMER_ADVANCE' THEN 'advance' WHEN 'OWNER_FUNDING' THEN 'owner_funding' END", schema='finance')
     op.execute(CASH_FUNCTIONS)
     for kind, table in [('transfer','own_account_transfers'), ('owner_funding','owner_fundings'), ('direct_settlement','direct_settlements')]:
         cols = [
