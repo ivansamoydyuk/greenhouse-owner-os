@@ -14,6 +14,8 @@ depends_on = None
 
 
 def upgrade():
+    op.alter_column('entities', 'finance_opening_policy', existing_type=sa.String(10),
+                    type_=sa.String(20), schema='core')
     op.drop_constraint('ck_entity_opening_policy', 'entities', schema='core')
     op.create_check_constraint('ck_entity_opening_policy', 'entities',
         "finance_opening_policy IN ('ZERO','EXPLICIT_AP')", schema='core')

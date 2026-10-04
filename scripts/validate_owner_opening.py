@@ -4,6 +4,7 @@ Reference facts/opening are authoritative owner input; actor authentication is a
 test adapter. This script invents no actual payment, funding or opening cash.
 """
 import json
+import hashlib
 import os
 from pathlib import Path
 from uuid import UUID
@@ -35,7 +36,7 @@ def setup_confirmed_profile(client, manifest):
         send('/entities/'+eid+'/reference-bootstrap',{'currency':currency},'confirmed-system-'+currency,200)
     accounts = [send('/entities/'+eid+'/money-accounts',
         {**{k:v for k,v in a.items() if k!='opening_balance'},'source':manifest['authority']},
-        'confirmed-money-'+a['name']) for a in manifest['money_accounts']]
+        'confirmed-money-'+hashlib.sha256(a['name'].encode('utf-8')).hexdigest()) for a in manifest['money_accounts']]
     cp = send('/entities/'+eid+'/counterparties',dict(manifest['counterparty'],source=manifest['authority']),'confirmed-counterparty')
     opening = send('/entities/'+eid+'/opening-payables',
         dict(manifest['opening_payable'],counterparty_id=cp['id']),'confirmed-opening-payable')

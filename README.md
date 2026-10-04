@@ -65,8 +65,8 @@ adoption needs a separately reviewed workflow.
 
 Setup supports TRY, USD, EUR and UAH independently; no exchange/conversion is
 performed. Bootstrap includes AP/AR, both advance controls, owner funding,
-transfer fee, general expense and general revenue. UUIDv5 identities and canonical
-Opening payable bootstrap additionally includes a reserved opening-equity offset.
+transfer fee, general expense and general revenue, plus a reserved opening-equity
+offset for explicitly approved opening payables. UUIDv5 identities and canonical
 NFC/casefold duplicate keys are stable; original names are preserved exactly.
 Requests with changed original name/definition conflict. Repeated imports retain
 the first creator/source; each successful request key uses existing idempotency.

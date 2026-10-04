@@ -40,7 +40,7 @@ class EntityRow(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     finance_cutover_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=text("DATE '2026-10-04'"))
-    finance_opening_policy: Mapped[str] = mapped_column(String(10), nullable=False, server_default='ZERO')
+    finance_opening_policy: Mapped[str] = mapped_column(String(20), nullable=False, server_default='ZERO')
     reference_class: Mapped[str] = mapped_column(String(20), nullable=False, server_default='OWNER_VERIFIED')
     default_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="TRY")
     active: Mapped[bool] = mapped_column(nullable=False, default=True, server_default=text("true"))
