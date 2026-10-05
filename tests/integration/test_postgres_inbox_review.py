@@ -130,7 +130,7 @@ def test_real_entities_isolate_source_and_linkage(preview):
     with pytest.raises(DBAPIError):
         with preview[0].begin() as s:s.execute(text("INSERT INTO core.inbox_items SELECT (jsonb_populate_record(NULL::core.inbox_items,to_jsonb(i)||jsonb_build_object('id',CAST(:newid AS text),'entity_id',CAST(:other AS text),'duplicate_of_id',i.id,'locator','foreign'))).* FROM core.inbox_items i WHERE i.id=:id"),dict(newid=str(uuid4()),other=other,id=first['id']))
 
-@pytest.mark.parametrize('raw',[b'',b'%PDF-'+b'x'*5242880])
+@pytest.mark.parametrize('raw',[b'',b'%PDF-'+b'x'*5242880],ids=['empty','over-5-mib'])
 def test_binary_empty_and_oversized_rejected(preview,raw):
     c,e,f,_=context(preview)
     send(c,f'/entities/{e}/inbox',dict(source_type='pdf',filename='test.pdf',mime_type='application/pdf',file_base64=base64.b64encode(raw).decode()),expected=422)
