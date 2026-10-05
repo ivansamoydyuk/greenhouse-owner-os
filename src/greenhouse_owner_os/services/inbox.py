@@ -133,6 +133,7 @@ class InboxService:
                 output=dict(text=body.raw_text,route='UNRESOLVED',fields={},gaps=['Не удалось разобрать документ. Оригинал сохранён для проверки.'],confidence='UNAVAILABLE',method='extraction_failed')
             gaps=list(output['gaps'])
             if conflict:gaps.append('Источник изменился. Первый оригинал сохранён; нужен отдельный исправленный источник.')
+            if self._domain_duplicate(u,e,body.source if body.locator else 'inbox:manual',body.locator,body.raw_text,binary):gaps.append('Похожее событие уже есть в доменных черновиках. Проверьте, что это отдельное событие, а не дубль.')
             if duplicate:gaps.append('Такой контент уже получен. Проверьте, один ли это документ или другое событие.')
             row=InboxRow(id=uuid4(),entity_id=e,source_type=body.source_type,source=body.source,locator=body.locator,
                 filename=body.filename,mime_type=body.mime_type,file_bytes=binary,raw_text=body.raw_text,metadata_json=body.metadata,
@@ -144,6 +145,16 @@ class InboxService:
             u.session.add(row);u.session.flush();return serialize(row)
         return self._write(e,a,key,'inbox_ingest',body.model_dump(mode='json'),run)
 
+    def _domain_duplicate(self,u,e,source,reference,raw,binary):
+        from greenhouse_owner_os.infrastructure.harvest_models import EvidenceRow
+        if raw:
+            fp=hashlib.sha256(raw.strip().encode()).hexdigest()
+            captures=u.session.scalars(select(CaptureRow).where(CaptureRow.entity_id==e,CaptureRow.fingerprint==fp))
+            if any((c.source_namespace,c.source_reference)!=(source,reference) for c in captures):return True
+        fp=hashlib.sha256(binary if binary is not None else (raw or '').encode()).hexdigest()
+        evidence=u.session.scalars(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.fingerprint==fp,EvidenceRow.file_bytes.is_not(None) if binary is not None else EvidenceRow.file_bytes.is_(None)))
+        return any((r.source,r.source_reference)!=(source,reference) for r in evidence)
+
     def _row(self,u,e,i,lock=False):
         query=select(InboxRow).where(InboxRow.entity_id==e,InboxRow.id==i)
         row=u.session.scalar(query.with_for_update() if lock else query)
@@ -151,7 +162,10 @@ class InboxService:
         return row
 
     def get(self,e,i):
-        with self.factory() as u:return serialize(self._row(u,e,i))
+        with self.factory() as u:
+            row=self._row(u,e,i);result=serialize(row)
+            result['duplicate_warning']=self._domain_duplicate(u,e,row.source if row.locator else 'inbox:manual',row.locator or str(row.id),row.raw_text,row.file_bytes)
+            return result
 
     def list(self,e,offset=0,limit=50):
         with self.factory() as u:
@@ -185,7 +199,8 @@ class InboxService:
                     if not ledger or ledger.entity_id!=e or ledger.currency!=fields.get('currency'):raise ValidationError('Choose the explicit economic basis and matching currency')
                 child=CaptureService(lambda:BorrowedUow(u))
                 capture=child.create(e,a,'inbox:capture:'+str(i),CaptureInput(text=row.extracted_text or row.raw_text,source_namespace=row.source if row.locator else 'inbox:manual',source_reference=row.locator or str(i)))
-                fields['duplicate_reviewed']=True
+                if capture['state']!='LINKED' and any('Похожее' in gap for gap in capture['gaps']) and not body.duplicate_reviewed:raise ValidationError('Похожее событие уже есть. Откройте входящее снова и явно проверьте дубль.')
+                fields['duplicate_reviewed']=body.duplicate_reviewed
                 result=child.confirm(e,UUID(capture['id']),a,'inbox:confirm:'+str(i),CaptureConfirm(expected_version=1,reviewed=fields,confirmed=True))
                 row.capture_id=UUID(result['capture']['id'])
             else:
@@ -194,6 +209,9 @@ class InboxService:
                 from .harvest import HarvestService
                 if fields.pop('kind',None)!='settlement':raise ValidationError('Inbox depot handoff requires a reviewed receipt')
                 fields.pop('greenhouse_id',None);fields.pop('direction',None)
+                content_key='harvest-content:'+str(e)+('binary:' if row.file_bytes is not None else 'text:')+row.fingerprint
+                u.session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':content_key})
+                if not body.duplicate_reviewed and self._domain_duplicate(u,e,row.source if row.locator else 'inbox:manual',row.locator or str(i),row.raw_text,row.file_bytes):raise ValidationError('Похожее событие уже есть. Откройте входящее снова и явно проверьте дубль.')
                 # Preserve upstream identity across both adapters. A byte hash
                 # is only duplicate suspicion, never an alternate source locator.
                 evidence=dict(source=row.source if row.locator else 'inbox:manual',source_reference=row.locator or str(i),raw_text=row.raw_text)

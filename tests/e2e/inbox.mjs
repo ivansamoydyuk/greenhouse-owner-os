@@ -20,7 +20,7 @@ try{
  await add('Сегодня заплатил Серкану 2600 лир из Cash TR','TEST:manual:1');
  let queue=await api(root);financeItem=queue.items[0];
  assert.equal(financeItem.normalized.amount,'2600');await click('Проверить поля и создать черновик');await sheet().getByRole('heading',{name:'Проверить сообщение',exact:true}).waitFor();
- await click('Подтвердить данные и создать черновик');await page.locator('#confirmation').getByRole('button',{name:'Подтвердить',exact:true}).click();await sheet().getByText('Черновик',{exact:true}).waitFor();
+ if(await sheet().locator('#duplicate-reviewed').count())await sheet().locator('#duplicate-reviewed').check();await click('Подтвердить данные и создать черновик');await page.locator('#confirmation').getByRole('button',{name:'Подтвердить',exact:true}).click();await sheet().getByText('Черновик',{exact:true}).waitFor();
  assert.deepEqual((await view()).balances,initial.balances);await close();
  const confirmed=await api(root+'/'+financeItem.id);assert.equal(confirmed.state,'CONFIRMED');assert.ok(confirmed.capture_id);
  const retry=await api(root,{raw_text:financeItem.raw_text,locator:'TEST:manual:1'});assert.equal(retry.id,confirmed.id);assert.equal(retry.capture_id,confirmed.capture_id);

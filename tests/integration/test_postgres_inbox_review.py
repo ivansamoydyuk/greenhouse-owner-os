@@ -199,3 +199,75 @@ def test_sql_handoff_cannot_misrepresent_confirmed_capture_review(preview):
     with pytest.raises(DBAPIError) as error:
         with preview[0].begin() as s:s.execute(text("UPDATE core.inbox_items SET state='CONFIRMED',version=2,capture_id=:child,reviewed=CAST(:review AS jsonb),reviewed_by=:actor,reviewed_at=now() WHERE id=:id"),dict(child=child['id'],actor=str(preview[1]),id=item['id'],review=json.dumps(dict(expected_version=1,confirmed=True,reviewed=dict(f,amount='1'),duplicate_reviewed=False,reason='TEST forged'))))
     assert error.value.orig.sqlstate=='23514'
+
+@pytest.mark.parametrize('before_ingest',[True,False])
+def test_unlocated_finance_duplicate_never_auto_approved(preview,before_ingest):
+    c,e,f,_=context(preview)
+    original='Сегодня заплатил Серкану 2600 лир из Cash TR'
+    if not before_ingest:item=ingest(c,e)
+    child=send(c,f'/entities/{e}/captures',dict(text=original))
+    send(c,f"/entities/{e}/captures/{child['id']}/confirm",dict(expected_version=1,confirmed=True,reviewed=f),expected=200)
+    if before_ingest:item=ingest(c,e)
+    detail=c.get(f"/v1/entities/{e}/inbox/{item['id']}").json()
+    assert detail['duplicate_warning']
+    if before_ingest:assert any('Похожее' in gap for gap in detail['validation']['missing_fields'])
+    send(c,f"/entities/{e}/inbox/{item['id']}/confirm",dict(expected_version=1,confirmed=True,reviewed=f,reason='TEST'),expected=422)
+    assert counts(preview[0],e)==[1,1,1,0,0]
+    # The owner can explicitly assert a distinct event; absence of a locator
+    # must never make the adapter silently take that decision itself.
+    confirm(c,e,item,f,duplicate_reviewed=True)
+    assert counts(preview[0],e)==[1,2,2,0,0]
+
+
+def test_unlocated_harvest_source_requires_explicit_duplicate_review(preview):
+    c,e,f,_=context(preview)
+    depot=send(c,f'/entities/{e}/counterparties',dict(name='TEST Depot',role='depot',source='test:review'))['id']
+    raw='Сегодня депо TEST Depot Grand 100 кг по 40 лир'
+    fields=dict(depot_id=depot,event_date='2026-10-05',currency='TRY',original_greenhouse='İmamlı',lines=[dict(original_quality_name='Grand',net_weight_kg='100',unit_price='40',count=5,source_line='1')])
+    item=send(c,f'/entities/{e}/inbox',dict(raw_text=raw))
+    send(c,f'/entities/{e}/harvest/settlements',dict(fields,evidence=dict(source='owner_mobile:manual',raw_text=raw)))
+    assert c.get(f"/v1/entities/{e}/inbox/{item['id']}").json()['duplicate_warning']
+    send(c,f"/entities/{e}/inbox/{item['id']}/confirm",dict(expected_version=1,confirmed=True,reviewed=dict(fields,kind='settlement'),reason='TEST'),expected=422)
+    assert counts(preview[0],e)[-3:]==[0,0,0]
+
+
+def test_synthetic_manual_locator_cannot_defeat_binary_duplicate_guard(preview):
+    c,e,f,_=context(preview)
+    depot=send(c,f'/entities/{e}/counterparties',dict(name='TEST Depot',role='depot',source='test:review'))['id']
+    original=dict(raw_text='Сегодня депо TEST Depot Grand 100 кг по 40 лир',source_type='pdf',filename='receipt.pdf',mime_type='application/pdf',file_base64=base64.b64encode(b'%PDF-1.7 TEST manual duplicate').decode())
+    fields=dict(kind='settlement',depot_id=depot,event_date='2026-10-05',currency='TRY',original_greenhouse='İmamlı',lines=[dict(original_quality_name='Grand',net_weight_kg='100',unit_price='40',count=5,source_line='1')])
+    first=send(c,f'/entities/{e}/inbox',original);confirm(c,e,first,fields)
+    other=send(c,f'/entities/{e}/inbox',original)
+    send(c,f"/entities/{e}/inbox/{other['id']}/confirm",dict(expected_version=1,confirmed=True,reviewed=fields,reason='TEST',duplicate_reviewed=True),expected=409)
+    with pytest.raises(DBAPIError):
+        with preview[0].begin() as s:s.execute(text("INSERT INTO harvest.evidence SELECT (jsonb_populate_record(NULL::harvest.evidence,to_jsonb(ev)||jsonb_build_object('id',CAST(:newid AS text),'source_reference','forged:manual'))).* FROM harvest.evidence ev WHERE ev.entity_id=:e"),dict(newid=str(uuid4()),e=e))
+
+
+def test_unlocated_direct_harvest_retry_cannot_duplicate_inbox_chain(preview):
+    c,e,f,_=context(preview)
+    depot=send(c,f'/entities/{e}/counterparties',dict(name='TEST Depot',role='depot',source='test:review'))['id']
+    raw='Сегодня депо TEST Depot Grand 100 кг по 40 лир'
+    fields=dict(depot_id=depot,event_date='2026-10-05',currency='TRY',original_greenhouse='İmamlı',lines=[dict(original_quality_name='Grand',net_weight_kg='100',unit_price='40',count=5,source_line='1')])
+    item=send(c,f'/entities/{e}/inbox',dict(raw_text=raw));confirm(c,e,item,dict(fields,kind='settlement'))
+    send(c,f'/entities/{e}/harvest/settlements',dict(fields,evidence=dict(source='owner_mobile:manual',raw_text=raw)),expected=409)
+    assert counts(preview[0],e)[-3:]==[0,0,0]
+
+
+def test_0015_refuses_legacy_manual_binary_duplicates_without_repair(preview,monkeypatch):
+    import importlib.util
+    from pathlib import Path
+    c,e,f,_=context(preview)
+    depot=send(c,f'/entities/{e}/counterparties',dict(name='TEST Depot',role='depot',source='test:review'))['id']
+    original=dict(raw_text='Сегодня депо TEST Depot Grand 100 кг по 40 лир',source_type='pdf',filename='receipt.pdf',mime_type='application/pdf',file_base64=base64.b64encode(b'%PDF-1.7 TEST migration').decode())
+    fields=dict(kind='settlement',depot_id=depot,event_date='2026-10-05',currency='TRY',original_greenhouse='İmamlı',lines=[dict(original_quality_name='Grand',net_weight_kg='100',unit_price='40',count=5,source_line='1')])
+    item=send(c,f'/entities/{e}/inbox',original);confirm(c,e,item,fields)
+    before=c.get(f"/v1/entities/{e}/inbox/{item['id']}").json()
+    spec=importlib.util.spec_from_file_location('review_migration_15',Path('alembic/versions/20261005_0015_inbox_manual_duplicates.py'));module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    with pytest.raises(DBAPIError) as error:
+        with preview[0].begin() as s:
+            s.execute(text("DROP INDEX harvest.evidence_binary_sha; CREATE UNIQUE INDEX evidence_binary_sha ON harvest.evidence(entity_id,fingerprint) WHERE file_bytes IS NOT NULL AND (source_reference IS NULL OR source='owner_mobile:manual')"))
+            s.execute(text("INSERT INTO harvest.evidence SELECT (jsonb_populate_record(NULL::harvest.evidence,to_jsonb(ev)||jsonb_build_object('id',CAST(:newid AS text),'source_reference','legacy:duplicate'))).* FROM harvest.evidence ev WHERE ev.entity_id=:e"),dict(newid=str(uuid4()),e=e))
+            monkeypatch.setattr(module.op,'execute',lambda sql:s.execute(text(sql)))
+            module.upgrade()
+    assert error.value.orig.sqlstate=='23505'
+    assert c.get(f"/v1/entities/{e}/inbox/{item['id']}").json()==before

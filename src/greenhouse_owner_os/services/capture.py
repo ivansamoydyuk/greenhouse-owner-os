@@ -119,6 +119,8 @@ class CaptureService:
                     uow.idempotency.put(actor_id=actor_id,operation='capture_create',key=key,request_hash=h,resource_type='capture',resource_id=prior.id,response=result)
                     uow.audit.append(actor_id=actor_id,action='capture_source_reuse',entity_type='capture',entity_id=prior.id,before=None,after=result)
                     uow.commit();return result
+            content_key='capture-content:'+str(entity_id)+hashlib.sha256(body.text.strip().encode()).hexdigest()
+            uow.session.execute(sql_text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':content_key})
             q=lambda model:list(uow.session.scalars(select(model).where(model.entity_id==entity_id)))
             route,fields,gaps=extract(body.text,counterparties=q(CounterpartyRow),areas=q(WorkAreaRow),accounts=q(MoneyAccountRow))
             fingerprint=hashlib.sha256(body.text.strip().encode()).hexdigest()
