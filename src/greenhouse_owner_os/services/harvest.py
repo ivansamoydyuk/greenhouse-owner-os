@@ -122,15 +122,18 @@ class HarvestService:
             cp=u.session.get(CounterpartyRow,body.depot_id)
             if not cp or cp.entity_id!=e or cp.counterparty_type not in ('depot','customer','both'):raise ValidationError('select an existing depot/customer counterparty')
             evidence=self._evidence(u,e,actor,body.evidence)
-            prior=u.session.scalar(select(SettlementRow).where(SettlementRow.entity_id==e,SettlementRow.evidence_id==evidence.id,SettlementRow.status!='reversed'))
+            # Serialize all lifecycle creation for this immutable evidence, including
+            # existing-id corrections and retries after reversal.
+            u.session.scalar(select(EvidenceRow).where(EvidenceRow.id==evidence.id).with_for_update())
+            prior=u.session.scalar(select(SettlementRow).where(SettlementRow.entity_id==e,SettlementRow.evidence_id==evidence.id,SettlementRow.replacement_of_id==body.replacement_of_id))
             if prior:
-                if body.evidence.source_reference is not None and self._same_settlement(u,prior,body):
+                if (prior.status=='reversed' or body.replacement_of_id or body.evidence.source_reference is not None or body.evidence.existing_id) and self._same_settlement(u,prior,body):
                     return self._settlement_view(u,prior)
                 raise ConflictError('duplicate receipt or changed settlement; existing settlement '+str(prior.id))
             if body.document_number and u.session.scalar(select(SettlementRow.id).where(SettlementRow.entity_id==e,SettlementRow.depot_id==body.depot_id,SettlementRow.document_number==body.document_number,SettlementRow.status!='reversed')):raise ConflictError('duplicate receipt number')
             if body.replacement_of_id:
                 prior=u.session.scalar(select(SettlementRow).where(SettlementRow.id==body.replacement_of_id).with_for_update())
-                if not prior or (prior.entity_id,prior.depot_id,prior.currency,prior.status)!=(e,body.depot_id,body.currency,'reversed'):raise ValidationError('replacement requires reversed receipt with same scope')
+                if not prior or (prior.entity_id,prior.depot_id,prior.currency,prior.evidence_id,prior.status)!=(e,body.depot_id,body.currency,evidence.id,'reversed'):raise ValidationError('replacement requires reversed receipt with same entity/depot/currency/evidence')
                 if u.session.scalar(select(SettlementRow.id).where(SettlementRow.replacement_of_id==prior.id)):raise ConflictError('receipt already has a replacement')
             gid=self._greenhouse(u,e,body.original_greenhouse)
             total=sum((ln.confirmed_amount if ln.confirmed_amount is not None else line_amount(ln.net_weight_kg,ln.unit_price) for ln in body.lines),Decimal(0))

@@ -241,3 +241,12 @@ limited hash duplicate protection. PostgreSQL partial unique indexes and ordered
 transaction locks protect all three cases. Global capture passes its immutable ID
 as the locator. Normal mobile entry uses `owner_mobile:manual`; test environment
 classification belongs to the preview/reference metadata, not evidence provenance.
+
+Settlement evidence remains bound across reversal. Exact stale creation retries
+return the original reversed settlement; changed values without explicit correction
+conflict. A replacement must name a reversed predecessor with the same evidence,
+entity, depot and currency. A reversed child can itself be explicitly replaced.
+Migration `20261005_0012` adds insert-time lineage validation and one-root-per-evidence
+partial uniqueness; existing active-source/predecessor uniqueness stays intact.
+Evidence row locks serialize service and SQL insertion paths. No unlinked reuse of
+a historical receipt can restart sale recognition. Prior migrations remain unchanged.

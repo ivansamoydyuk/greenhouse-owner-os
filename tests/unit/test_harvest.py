@@ -38,3 +38,11 @@ def test_evidence_identity_migration_is_forward_only_new_head():
     spec=importlib.util.spec_from_file_location('identity_migration',p);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
     assert m.revision=='20261005_0011' and m.down_revision=='20261005_0010'
     with pytest.raises(RuntimeError):m.downgrade()
+
+
+def test_lineage_migration_links_to_unchanged_identity_head():
+    from pathlib import Path
+    import importlib.util
+    spec=importlib.util.spec_from_file_location('lineage_migration',Path('alembic/versions/20261005_0012_settlement_lineage.py'));m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+    assert m.revision=='20261005_0012' and m.down_revision=='20261005_0011'
+    with pytest.raises(RuntimeError):m.downgrade()
