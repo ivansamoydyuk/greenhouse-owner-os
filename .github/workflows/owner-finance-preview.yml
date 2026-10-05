@@ -2,7 +2,7 @@ name: Inventory isolated review preview
 
 on:
   pull_request:
-    types: [opened, reopened]
+    types: [opened, reopened, synchronize]
     branches: [01-architecture-database]
   workflow_dispatch:
 
