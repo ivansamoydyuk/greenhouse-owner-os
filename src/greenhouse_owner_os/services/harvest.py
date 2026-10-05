@@ -71,8 +71,7 @@ class HarvestService:
         locks=[]
         if stable:
             locks.append('harvest-source:'+json.dumps([str(e),body.source,body.source_reference],ensure_ascii=False))
-        if raw is not None or not stable:
-            locks.append('harvest-content:'+str(e)+('binary:' if raw is not None else 'text:')+fingerprint)
+        locks.append('harvest-content:'+str(e)+('binary:' if raw is not None else 'text:')+fingerprint)
         # Lock all relevant identities in a fixed order, across independent request keys.
         for key in sorted(locks):
             u.session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':key})
@@ -82,11 +81,12 @@ class HarvestService:
                 if existing.raw_text!=body.raw_text or existing.file_bytes!=raw:
                     raise ConflictError('stable evidence source content changed; original retained')
                 return existing
-        if raw is not None:
+        if raw is not None and (not stable or body.source in ('owner_mobile:manual','inbox:manual')):
             if u.session.scalar(select(EvidenceRow.id).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_not(None),EvidenceRow.fingerprint==fingerprint)):
                 raise ConflictError('duplicate binary document; original evidence retained')
         elif not stable:
-            existing=u.session.scalar(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_(None),EvidenceRow.source_reference.is_(None),EvidenceRow.fingerprint==fingerprint))
+            existing=u.session.scalar(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_(None),EvidenceRow.fingerprint==fingerprint).order_by(EvidenceRow.received_at,EvidenceRow.id).limit(1))
+            if existing and existing.source_reference is not None:raise ConflictError('possible duplicate text source; provide the original source reference or explicitly reuse its evidence')
             if existing:return existing
         r=EvidenceRow(id=uuid4(),entity_id=e,created_by=actor,fingerprint=fingerprint,file_bytes=raw,**body.model_dump(exclude={'file_base64','existing_id'}))
         u.session.add(r);u.session.flush();return r

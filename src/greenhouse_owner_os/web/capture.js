@@ -43,6 +43,7 @@ export function globalCapture({api, openSheet, ask, reload, detail, getData, get
     html+=input('amount','Сумма',f.amount||'')+select('currency','Валюта',[['TRY','TRY · лиры'],['USD','USD · доллары'],['EUR','EUR · евро']],f.currency)+select('counterparty_id','Контрагент',parties.map(p=>[p.id,p.original_name]),f.counterparty_id);
     html+=input('event_date','Дата события',f.event_date||'','date')+input('due_date','Ожидаемая дата оплаты (если согласована)',f.due_date||'','date');
     if(f.kind==='obligation')html+=select('obligation_class','Тип долга',[['OPERATIONAL','Операционный'],['STRATEGIC','Стратегический · основная сумма']],f.obligation_class)+select('principal_received','Деньги по стратегическому долгу',[['false','Только признаю непогашенный долг'],['true','Деньги получены на указанный счёт']],String(f.principal_received||false));
+    if(r.inbox&&f.kind==='obligation')html+=select('offset_ledger_account_id','Экономическое основание',data.references.filter(a=>a.kind==='ledger_account'&&['expense','revenue','financing_principal'].includes(a.account_class)).map(a=>[a.id,a.original_name+' · '+a.currency]),f.offset_ledger_account_id);
     if(f.kind==='payment'||f.obligation_class==='STRATEGIC')html+=select('money_account_id','Счёт / касса',accounts.map(a=>[a.id,a.original_name+' · '+a.currency]),f.money_account_id);
     if(f.kind==='obligation')html+=`<div class="wide"><h3>Место события · явное распределение</h3>${data.work_areas.map(a=>input('area-'+a.id,a.name+' · сумма',(f.attributions||[]).find(x=>x.work_area_id===a.id)?.amount||'')).join('')}<p class="note">Пусто — место неизвестно. Остаток не распределяется автоматически.</p></div>`;
     if(f.kind==='payment')html+=`<div class="wide"><h3>Погасить долги (пусто — аванс)</h3>${data.obligations.filter(o=>['open','partial'].includes(o.settlement_status)).map(o=>input('allocation-'+o.obligation_id,(parties.find(p=>p.id===o.counterparty_id)?.original_name||'Контрагент')+' · '+money(o.remaining_amount,o.currency),(f.allocations||[]).find(a=>a.obligation_id===o.obligation_id)?.amount||'')).join('')}</div>`;
@@ -52,6 +53,7 @@ export function globalCapture({api, openSheet, ask, reload, detail, getData, get
       ev.preventDefault();const v=Object.fromEntries(new FormData(ev.target));let amount;try{amount=exact(v.amount);}catch(err){$('#capture-error').textContent=err.message;return;}const reviewed={kind:f.kind,direction:f.direction,amount,currency:v.currency,counterparty_id:v.counterparty_id,event_date:v.event_date};
       if(f.kind==='obligation')Object.assign(reviewed,{obligation_class:v.obligation_class,principal_received:v.principal_received==='true',description:v.description,due_date:v.due_date||null,attributions:data.work_areas.map(a=>({work_area_id:a.id,amount:v['area-'+a.id]})).filter(a=>a.amount?.trim())});
       if(v.money_account_id)reviewed.money_account_id=v.money_account_id;
+      if(r.inbox&&v.offset_ledger_account_id)reviewed.offset_ledger_account_id=v.offset_ledger_account_id;
       if(f.kind==='payment')reviewed.allocations=data.obligations.map(o=>({obligation_id:o.obligation_id,amount:v['allocation-'+o.obligation_id]})).filter(a=>a.amount?.trim());
       if($('#duplicate-reviewed'))reviewed.duplicate_reviewed=$('#duplicate-reviewed').checked;
       if(!await ask('Создать черновик по проверенным данным?',`<p>${e(v.amount)} ${e(v.currency)}</p><p>Дата события: ${e(v.event_date)}</p><p>Без проведения и движения денег.</p>`))return;
@@ -59,5 +61,5 @@ export function globalCapture({api, openSheet, ask, reload, detail, getData, get
       try{const result=await api(`/v1/entities/${getEntity()}/captures/${r.id}/confirm`,{expected_version:r.version,reviewed,confirmed:true});await reload();await detail(result.capture.finance_kind,result.finance.id);notice('Черновик создан. Проверьте его перед проведением.');}catch(err){if($('#capture-error'))$('#capture-error').textContent=err.message;}finally{button.disabled=false;}
     };
   }
-  return {open,read};
+  return {open,read,review};
 }

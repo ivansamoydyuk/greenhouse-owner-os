@@ -165,6 +165,9 @@ class AttributionRow(Base):
 
 
 class CaptureRow(Base):
+    source_namespace: Mapped[str | None] = mapped_column(Text)
+    source_reference: Mapped[str | None] = mapped_column(Text)
+    confirmed_review: Mapped[dict | None] = mapped_column(JSONB)
     harvest_kind: Mapped[str | None] = mapped_column(String(30))
     harvest_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     __tablename__ = "capture_drafts"
