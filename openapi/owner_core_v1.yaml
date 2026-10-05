@@ -2402,6 +2402,390 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory:
+    get:
+      summary: Overview
+      operationId: overview_v1_entities__entity_id__inventory_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/products:
+    post:
+      summary: Product
+      operationId: product_v1_entities__entity_id__inventory_products_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/products/{product_id}/active:
+    post:
+      summary: Active
+      operationId: active_v1_entities__entity_id__inventory_products__product_id__active_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: product_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Product Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActiveInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/products/{product_id}/conversions:
+    post:
+      summary: Conversion
+      operationId: conversion_v1_entities__entity_id__inventory_products__product_id__conversions_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: product_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Product Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversionInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/locations:
+    post:
+      summary: Location
+      operationId: location_v1_entities__entity_id__inventory_locations_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocationInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/events:
+    post:
+      summary: Create
+      operationId: create_v1_entities__entity_id__inventory_events_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/events/{event_id}:
+    get:
+      summary: Get
+      operationId: get_v1_entities__entity_id__inventory_events__event_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/events/{event_id}/original:
+    get:
+      summary: Original
+      operationId: original_v1_entities__entity_id__inventory_events__event_id__original_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/events/{event_id}/post:
+    post:
+      summary: Post
+      operationId: post_v1_entities__entity_id__inventory_events__event_id__post_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryPost'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/events/{event_id}/reverse:
+    post:
+      summary: Reverse
+      operationId: reverse_v1_entities__entity_id__inventory_events__event_id__reverse_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryReverse'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -4074,6 +4458,402 @@ components:
       - expected_version
       - reason
       title: InboxReject
+    ActiveInput:
+      properties:
+        active:
+          type: boolean
+          title: Active
+      additionalProperties: false
+      type: object
+      required:
+      - active
+      title: ActiveInput
+    ConversionInput:
+      properties:
+        unit:
+          type: string
+          enum:
+          - kg
+          - L
+          - piece
+          - bag
+          - container
+          - package
+          title: Unit
+        factor:
+          type: string
+          title: Factor
+        verification:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Verification
+      additionalProperties: false
+      type: object
+      required:
+      - unit
+      - factor
+      - verification
+      title: ConversionInput
+    InventoryEvidence:
+      properties:
+        source:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Source
+          default: owner_mobile:inventory
+        locator:
+          anyOf:
+          - type: string
+            maxLength: 2000
+            minLength: 1
+          - type: 'null'
+          title: Locator
+        raw_text:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Raw Text
+        file_base64:
+          anyOf:
+          - type: string
+            maxLength: 7000000
+          - type: 'null'
+          title: File Base64
+        filename:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Filename
+        mime_type:
+          anyOf:
+          - type: string
+            enum:
+            - image/jpeg
+            - image/png
+            - application/pdf
+          - type: 'null'
+          title: Mime Type
+        source_file:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Source File
+        source_row:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Source Row
+        source_document:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Source Document
+        import_batch_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Import Batch Id
+        imported_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Imported At
+        confidence:
+          anyOf:
+          - type: string
+            enum:
+            - LOW
+            - MEDIUM
+            - HIGH
+          - type: 'null'
+          title: Confidence
+        verification:
+          type: string
+          enum:
+          - VERIFY
+          - VERIFIED
+          - HISTORY
+          title: Verification
+          default: VERIFY
+      additionalProperties: false
+      type: object
+      title: InventoryEvidence
+    InventoryInput:
+      properties:
+        kind:
+          type: string
+          enum:
+          - receipt
+          - application
+          - transfer
+          - writeoff
+          - plan
+          title: Kind
+        event_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Event Date
+        lines:
+          items:
+            $ref: '#/components/schemas/InventoryLine'
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Lines
+        supplier_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supplier Id
+        finance_obligation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Finance Obligation Id
+        method:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Method
+        notes:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Notes
+        evidence:
+          $ref: '#/components/schemas/InventoryEvidence'
+        replacement_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Of Id
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - lines
+      title: InventoryInput
+    InventoryLine:
+      properties:
+        product_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Product Id
+        original_product_name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Original Product Name
+        quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity
+        unit:
+          anyOf:
+          - type: string
+            enum:
+            - kg
+            - L
+            - piece
+            - bag
+            - container
+            - package
+          - type: 'null'
+          title: Unit
+        original_unit:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Original Unit
+        original_quantity:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Original Quantity
+        location_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+        destination_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Destination Id
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        work_area_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Work Area Id
+        unit_cost:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Unit Cost
+        currency:
+          anyOf:
+          - type: string
+            enum:
+            - TRY
+            - USD
+            - EUR
+            - UAH
+          - type: 'null'
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - original_product_name
+      title: InventoryLine
+    InventoryPost:
+      properties:
+        duplicate_reviewed:
+          type: boolean
+          title: Duplicate Reviewed
+          default: false
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+      additionalProperties: false
+      type: object
+      required:
+      - confirmed
+      - expected_version
+      title: InventoryPost
+    InventoryReverse:
+      properties:
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - event_date
+      - reason
+      title: InventoryReverse
+    LocationInput:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        work_area_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Work Area Id
+        source:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - source
+      title: LocationInput
+    ProductInput:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        aliases:
+          items:
+            type: string
+          type: array
+          maxItems: 30
+          title: Aliases
+        category:
+          type: string
+          enum:
+          - fertilizer
+          - biostimulant
+          - biological
+          - crop_protection
+          - other
+          title: Category
+          default: fertilizer
+        base_unit:
+          type: string
+          enum:
+          - kg
+          - L
+          - piece
+          title: Base Unit
+        currency:
+          anyOf:
+          - type: string
+            enum:
+            - TRY
+            - USD
+            - EUR
+            - UAH
+          - type: 'null'
+          title: Currency
+        supplier_reference:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Supplier Reference
+        source:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - base_unit
+      - source
+      title: ProductInput
   responses:
     Conflict:
       description: Version or idempotency conflict
