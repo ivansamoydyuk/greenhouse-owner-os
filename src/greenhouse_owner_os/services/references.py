@@ -128,7 +128,7 @@ class ReferenceService:
     def bootstrap(self, *, entity_id, currency, actor_id, idempotency_key):
         if currency not in SUPPORTED_CURRENCIES:
             raise ValidationError('unsupported setup currency')
-        operation = 'reference_bootstrap_v2'
+        operation = 'reference_bootstrap_v3'
         request_hash = _hash_request({'entity_id':str(entity_id),'currency':currency})
         with self.uow_factory() as uow:
             self._entity(uow.session, entity_id)

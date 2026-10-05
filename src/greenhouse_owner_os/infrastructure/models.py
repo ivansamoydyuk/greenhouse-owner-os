@@ -143,7 +143,50 @@ class PostingEntryRow(Base):
     memo: Mapped[str | None] = mapped_column(Text)
 
 
+class WorkAreaRow(Base):
+    __tablename__ = "work_areas"
+    __table_args__ = {"schema": "core"}
+    id: Mapped[uuid.UUID] = uuid_pk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.entities.id"), nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("core.work_areas.id"))
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AttributionRow(Base):
+    __tablename__ = "obligation_attributions"
+    __table_args__ = {"schema": "finance"}
+    obligation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("finance.obligations.id"), primary_key=True)
+    work_area_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.work_areas.id"), primary_key=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(20,2), nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.actors.id"), nullable=False)
+
+
+class CaptureRow(Base):
+    __tablename__ = "capture_drafts"
+    __table_args__ = {"schema": "core"}
+    id: Mapped[uuid.UUID] = uuid_pk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.entities.id"), nullable=False)
+    original_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    route: Mapped[str] = mapped_column(String(30), nullable=False)
+    extracted: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    gaps: Mapped[list] = mapped_column(JSONB, nullable=False)
+    state: Mapped[str] = mapped_column(String(20), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    finance_kind: Mapped[str | None] = mapped_column(String(30))
+    finance_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("core.actors.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=UTC_NOW)
+
+
 class ObligationRow(Base):
+    obligation_class: Mapped[str] = mapped_column(String(20), nullable=False, default="OPERATIONAL", server_default="OPERATIONAL")
+    economic_source: Mapped[str] = mapped_column(String(30), nullable=False, default="manual_other", server_default="manual_other")
+    description: Mapped[str | None] = mapped_column(Text)
     __tablename__ = "obligations"
     __table_args__ = (
         CheckConstraint("direction in ('payable','receivable')", name="ck_obligation_direction"),

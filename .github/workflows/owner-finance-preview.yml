@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   preview:
-    if: github.head_ref == '06-owner-finance-mvp' || github.ref_name == '06-owner-finance-mvp'
+    if: github.head_ref == '06-owner-workflow-alignment' || github.ref_name == '06-owner-workflow-alignment'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:

@@ -51,6 +51,8 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
     manifest=json.loads((Path(__file__).resolve().parents[2]/'config/owner_finance_opening.json').read_text())
     profile=setup_confirmed_profile(TestClient(setup_app),manifest)
     eid=UUID(profile['entity']['id'])
+    from greenhouse_owner_os.services.dimensions import provision_owner_dimensions
+    provision_owner_dimensions(factory,eid,actor,profile['opening']['id'])
     cookie_value=secrets.token_urlsafe(48)
     def owner(request:Request):
         if not hmac.compare_digest(request.cookies.get('preview_session',''),cookie_value):

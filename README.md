@@ -166,3 +166,38 @@ smoke counts as proof that the temporary URL is available.
 Production identity, backups, durable hosting, multi-owner authorization and
 deployment remain a separate authorized task. Large-history projection scaling
 is outside this owner MVP; operation pages contain 50 rows across all currencies.
+
+## Owner business alignment / global capture
+
+Migration `20261005_0009` adds explicit OPERATIONAL/STRATEGIC obligation meaning,
+entity-scoped greenhouse/work-area references and immutable exact economic-basis
+attribution. Split sums cannot exceed the original amount; unallocated geography
+remains unknown. Payments settle obligations without relocating their economic
+costs. The approved Serkan opening is annotated for İmamlı without rewriting its
+posted event or producing new cost/cash. Strategic principal debits explicitly
+selected cash on receipt or a financing-principal clearing basis for outstanding
+debt recognition; repayment is not an operating expense.
+
+The owner overview uses distinct currency-keyed business positions, receivable
+due dates/as-of overdue state and an exception list. Banana sales and depot debt
+messages belong to future authoritative Harvest/Depot settlements, not a second
+generic manual Finance sale. Other non-banana receivables and actual advances or
+payments retain existing Finance R1 semantics.
+
+Global capture accepts text or a browser voice transcript before form selection.
+Conservative supported Russian patterns extract suggestions, retain original
+evidence, and ask for missing critical values. No external LLM/transcription API
+key is required. Owner review atomically creates a Finance **draft only**; posting
+is a separate explicit confirmation. Duplicate review, idempotent retries,
+concurrent confirmation and late-failure rollback are tested in PostgreSQL.
+
+Web Speech API is an optional browser adapter with editable transcript evidence.
+Recognition may use browser-provider services and depends on device, permission
+and network; no audio file is exposed to this app. Unsupported/denied voice keeps
+text and phone-keyboard dictation available. CI simulates the speech-result event
+and verifies the complete draft path, not actual microphone transcription.
+
+`scripts/run_owner_e2e.py` now runs the original critical Finance suite plus
+`tests/e2e/business.mjs`. All synthetic successful postings are reversed; the
+approved opening remains unpaid at 2600 TRY, money accounts zero and reconciliation
+passes. Production remains excluded.

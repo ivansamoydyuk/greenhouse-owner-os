@@ -44,6 +44,20 @@ from .history import MemoryHistoryRepositoryMixin
 
 
 class MemoryFinanceRepository(MemoryHistoryRepositoryMixin):
+    def assert_manual_receivable_boundary(self, counterparty_id):
+        # This unit adapter has no reference directory; PostgreSQL owns roles.
+        pass
+
+    def assert_strategic_basis(self, obligation):
+        cash_ledgers={a[0] for a in self.store.money_account_ledgers.values()}
+        principal=self.store.system_accounts.get((obligation.entity_id,obligation.currency,'STRATEGIC_PRINCIPAL'))
+        if obligation.direction!='payable' or obligation.offset_ledger_account_id not in cash_ledgers|{principal}:
+            raise ValidationError('strategic principal requires cash or financing principal account; never expense')
+
+    def add_attributions(self, obligation, actor_id):
+        # Unit adapter retains typed basis in its draft, but is not FK verification.
+        pass
+
     def get_opening_payable(self, obligation_id):
         return None
 

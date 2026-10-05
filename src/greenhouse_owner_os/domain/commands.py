@@ -4,7 +4,8 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing import Literal
 
 from .finance import ObligationDirection, PaymentDirection, money
 
@@ -23,7 +24,29 @@ class AllocationInput(StrictModel):
         return money(value)
 
 
+class AttributionInput(StrictModel):
+    work_area_id: UUID
+    amount: Decimal = Field(gt=0, max_digits=20, decimal_places=2)
+
+
 class CreateObligationCommand(StrictModel):
+    obligation_class: Literal["OPERATIONAL", "STRATEGIC"] = "OPERATIONAL"
+    economic_source: Literal["manual_other", "harvest_depot"] = "manual_other"
+    description: str | None = Field(default=None, max_length=2000)
+    attributions: tuple[AttributionInput, ...] = ()
+
+    @model_validator(mode="after")
+    def valid_business_basis(self):
+        if self.obligation_class == "STRATEGIC" and self.direction != "payable":
+            raise ValueError("strategic principal must be payable")
+        if sum((a.amount for a in self.attributions), Decimal("0")) > self.original_amount:
+            raise ValueError("attribution exceeds economic amount")
+        if len({a.work_area_id for a in self.attributions}) != len(self.attributions):
+            raise ValueError("duplicate work area")
+        if self.due_date and self.due_date < self.event_date:
+            raise ValueError("due date precedes event date")
+        return self
+
     entity_id: UUID
     counterparty_id: UUID
     direction: ObligationDirection
