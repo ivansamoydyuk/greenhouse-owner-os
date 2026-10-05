@@ -34,9 +34,9 @@ try{
  const r=await api(root+'/'+receiptItem.id),receipt=await api(`/v1/entities/${eid}/harvest/settlements/${r.harvest_id}`);assert.equal(receipt.status,'draft');assert.equal(receipt.payment_id,null);assert.equal(receipt.obligation_id,null);assert.equal(receipt.alacak_value,'4000.00');assert.equal(receipt.lines[0].normalized_quality,'FIRST');assert.deepEqual((await view()).balances,initial.balances);await close();
  console.log('PASS B: uploaded depot evidence + labelled owner transcription -> authoritative Harvest draft; Alacak creates no cash/sale');
 
- await add('<img src=x onerror="window.inboxXss=true"> неизвестный документ','TEST:unknown:1',{name:'unknown.png',mimeType:'image/png',buffer:Buffer.from([137,80,78,71,13,10,26,10,0])});
+ await add('<img src=x onerror="window.inboxXss=true"> неизвестный документ','TEST:unknown:1',{name:'чек<img onerror=window.inboxFilenameXss=true>.png',mimeType:'image/png',buffer:Buffer.from([137,80,78,71,13,10,26,10,0])});
  await sheet().getByText('Нужна проверка',{exact:true}).waitFor();assert.equal(await sheet().locator('#inbox-review').count(),0);assert.equal(await page.evaluate(()=>window.inboxXss),undefined);
- assert.equal(await sheet().locator('img').count(),0);const unknown=(await api(root)).items[0];assert.equal(unknown.route,'UNRESOLVED');assert.equal(unknown.normalized.amount,undefined);
+ assert.equal(await page.evaluate(()=>window.inboxFilenameXss),undefined);assert.equal(await sheet().locator('img').count(),0);const unknown=(await api(root)).items[0];assert.equal(unknown.route,'UNRESOLVED');assert.equal(unknown.normalized.amount,undefined);
  await click('Отклонить');await sheet().getByLabel('Причина',{exact:true}).fill('TEST unknown rejected');await click('Подтвердить отклонение');await sheet().getByText('Отклонён',{exact:true}).waitFor();await close();assert.deepEqual((await view()).balances,initial.balances);
  console.log('PASS C: unknown/XSS text -> review required -> no guessed route/values/effect; auditable rejection');
 

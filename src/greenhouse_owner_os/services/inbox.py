@@ -116,7 +116,9 @@ class InboxService:
             if body.locator:
                 rows=list(u.session.scalars(select(InboxRow).where(InboxRow.entity_id==e,InboxRow.source==body.source,InboxRow.locator==body.locator)))
                 for row in rows:
-                    if row.identity_hash==identity_hash:return serialize(row)
+                    if row.identity_hash==identity_hash:
+                        if body.received_at and row.received_at!=body.received_at:raise ConflictError('Source timestamp changed; original retained')
+                        return serialize(row)
                     if row.content_hash==content_hash:raise ConflictError('Source metadata changed; original retained')
                 conflict=next((r for r in rows if not r.conflict_of_id),None)
             duplicate=u.session.scalar(select(InboxRow).where(InboxRow.entity_id==e,InboxRow.fingerprint==fingerprint).order_by(InboxRow.created_at,InboxRow.id).limit(1))
@@ -182,7 +184,7 @@ class InboxService:
                     except (TypeError,ValueError):ledger=None
                     if not ledger or ledger.entity_id!=e or ledger.currency!=fields.get('currency'):raise ValidationError('Choose the explicit economic basis and matching currency')
                 child=CaptureService(lambda:BorrowedUow(u))
-                capture=child.create(e,a,'inbox:capture:'+str(i),CaptureInput(text=row.extracted_text or row.raw_text))
+                capture=child.create(e,a,'inbox:capture:'+str(i),CaptureInput(text=row.extracted_text or row.raw_text,source_namespace=row.source if row.locator else 'inbox:manual',source_reference=row.locator or str(i)))
                 fields['duplicate_reviewed']=True
                 result=child.confirm(e,UUID(capture['id']),a,'inbox:confirm:'+str(i),CaptureConfirm(expected_version=1,reviewed=fields,confirmed=True))
                 row.capture_id=UUID(result['capture']['id'])
@@ -192,19 +194,15 @@ class InboxService:
                 from .harvest import HarvestService
                 if fields.pop('kind',None)!='settlement':raise ValidationError('Inbox depot handoff requires a reviewed receipt')
                 fields.pop('greenhouse_id',None);fields.pop('direction',None)
-                # Binary duplicate sources link to the authoritative evidence,
-                # never create another financial sale for the same original.
-                old=None
+                # Preserve upstream identity across both adapters. A byte hash
+                # is only duplicate suspicion, never an alternate source locator.
+                evidence=dict(source=row.source if row.locator else 'inbox:manual',source_reference=row.locator or str(i),raw_text=row.raw_text)
                 if row.file_bytes:
-                    u.session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':'inbox:harvest:'+str(e)+row.fingerprint})
-                    old=u.session.scalar(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_not(None),EvidenceRow.fingerprint==row.fingerprint))
-                evidence=dict(source='inbox:'+row.source,source_reference=str(i),raw_text=row.raw_text)
-                if old:evidence['existing_id']=str(old.id)
-                elif row.file_bytes:
                     if row.mime_type not in ('application/pdf','image/png','image/jpeg'):raise ValidationError('Unsupported Harvest document type')
                     evidence.update(filename=row.filename,mime_type=row.mime_type,file_base64=base64.b64encode(row.file_bytes).decode())
                 fields['evidence']=evidence
                 r=HarvestService(lambda:BorrowedUow(u)).settlement(e,a,'inbox:harvest:'+str(i),SettlementInput(**fields))
+                if r['status']!='draft':raise ConflictError('Existing Harvest receipt is finalized; use its explicit correction workflow')
                 row.harvest_id=UUID(r['id'])
             row.state='CONFIRMED';row.version+=1;row.reviewed=body.model_dump(mode='json');row.reviewed_by=a;row.reviewed_at=datetime.now(timezone.utc)
             u.session.flush();return serialize(row)

@@ -10,8 +10,8 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 from uuid import UUID, uuid4
 from typing import Literal
-from pydantic import Field
-from sqlalchemy import select
+from pydantic import Field, model_validator
+from sqlalchemy import select, text as sql_text
 from greenhouse_owner_os.domain.commands import StrictModel, CreateObligationCommand, CreatePaymentCommand
 from greenhouse_owner_os.domain.errors import ValidationError, NotFoundError, ConflictError
 from greenhouse_owner_os.infrastructure.models import CaptureRow, CounterpartyRow, WorkAreaRow, MoneyAccountRow, LedgerAccountRow, ObligationRow
@@ -21,6 +21,12 @@ from greenhouse_owner_os.services.owner_view import json_value
 class CaptureInput(StrictModel):
     text: str = Field(min_length=1,max_length=10000)
     source: Literal['text','voice_transcript']='text'
+    source_namespace: str|None=Field(default=None,min_length=1,max_length=200)
+    source_reference: str|None=Field(default=None,min_length=1,max_length=2000)
+    @model_validator(mode='after')
+    def source_pair(self):
+        if (self.source_namespace is None)!=(self.source_reference is None):raise ValueError('Stable source requires namespace and reference')
+        return self
 
 class CaptureConfirm(StrictModel):
     expected_version: int = Field(gt=0)
@@ -47,7 +53,7 @@ def extract(text, *, counterparties=(), areas=(), accounts=(), today=None):
     elif 'должен мне' in t or 'должны мне' in t:f.update(kind='obligation',direction='receivable',obligation_class='OPERATIONAL')
     elif 'должен' in t or 'должны' in t:f.update(kind='obligation',direction='payable',obligation_class='OPERATIONAL')
     else:route='UNRESOLVED';gaps.append('Уточните событие: долг, оплата или аванс.')
-    amounts=re.findall(r'(?<![\d.])(\d+(?:[ \u00a0]\d{3})*(?:[,.]\d{1,2})?)\s*(лир\w*|доллар\w*|евро|try|usd|eur|₺|\$)',t)
+    amounts=re.findall(r'(?<![\w.+-])(\d+(?:[ \u00a0]\d{3})*(?:[,.]\d{1,2})?)\s*(лир\w*|доллар\w*|евро|try|usd|eur|₺|\$)(?!\w)',t)
     if len(amounts)==1:
         value,cur=amounts[0];f['amount']=value.replace(' ','').replace('\u00a0','').replace(',','.')
         f['currency']='TRY' if cur.startswith(('лир','try','₺')) else 'USD' if cur.startswith(('доллар','usd','$')) else 'EUR'
@@ -103,13 +109,23 @@ class CaptureService:
             if replay:return replay
             from greenhouse_owner_os.infrastructure.models import EntityRow
             if not uow.session.get(EntityRow,entity_id):raise NotFoundError('entity not found')
+            if body.source_reference:
+                lock=_hash_request(dict(entity=str(entity_id),source=body.source_namespace,reference=body.source_reference))
+                uow.session.execute(sql_text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':'capture-source:'+lock})
+                prior=uow.session.scalar(select(CaptureRow).where(CaptureRow.entity_id==entity_id,CaptureRow.source_namespace==body.source_namespace,CaptureRow.source_reference==body.source_reference))
+                if prior:
+                    if prior.original_text!=body.text or prior.source!=body.source:raise ConflictError('Stable capture original changed; first original retained')
+                    result=serialize_capture(prior)
+                    uow.idempotency.put(actor_id=actor_id,operation='capture_create',key=key,request_hash=h,resource_type='capture',resource_id=prior.id,response=result)
+                    uow.audit.append(actor_id=actor_id,action='capture_source_reuse',entity_type='capture',entity_id=prior.id,before=None,after=result)
+                    uow.commit();return result
             q=lambda model:list(uow.session.scalars(select(model).where(model.entity_id==entity_id)))
             route,fields,gaps=extract(body.text,counterparties=q(CounterpartyRow),areas=q(WorkAreaRow),accounts=q(MoneyAccountRow))
             fingerprint=hashlib.sha256(body.text.strip().encode()).hexdigest()
             if uow.session.scalar(select(CaptureRow.id).where(CaptureRow.entity_id==entity_id,CaptureRow.fingerprint==fingerprint)):
                 gaps.append('Похожее сообщение уже сохранено. Проверьте, что это другое событие.')
             row=CaptureRow(id=uuid4(),entity_id=entity_id,original_text=body.text,source=body.source,fingerprint=fingerprint,
-                route=route,extracted=fields,gaps=gaps,state='REVIEW' if gaps else 'READY',created_by=actor_id,version=1)
+                source_namespace=body.source_namespace,source_reference=body.source_reference,route=route,extracted=fields,gaps=gaps,state='REVIEW' if gaps else 'READY',created_by=actor_id,version=1)
             uow.session.add(row);uow.session.flush();r=serialize_capture(row)
             uow.audit.append(actor_id=actor_id,action='capture_create',entity_type='capture',entity_id=row.id,before=None,after=r)
             uow.idempotency.put(actor_id=actor_id,operation='capture_create',key=key,request_hash=h,resource_type='capture',resource_id=row.id,response=r)
@@ -127,7 +143,13 @@ class CaptureService:
             if replay:return replay
             row=uow.session.scalar(select(CaptureRow).where(CaptureRow.id==cid).with_for_update())
             if not row or row.entity_id!=entity_id:raise NotFoundError('capture not found')
-            if row.version!=body.expected_version or row.state=='LINKED':raise ConflictError('capture already confirmed or version changed')
+            if row.state=='LINKED':
+                if not row.source_reference or {k:v for k,v in (row.confirmed_review or {}).items() if k!='duplicate_reviewed'}!={k:v for k,v in body.reviewed.items() if k!='duplicate_reviewed'}:raise ConflictError('capture already confirmed with another interpretation')
+                result=dict(capture=serialize_capture(row),posted=False)
+                uow.idempotency.put(actor_id=actor_id,operation='capture_confirm',key=key,request_hash=h,resource_type='capture',resource_id=cid,response=result)
+                uow.audit.append(actor_id=actor_id,action='capture_confirm_reuse',entity_type='capture',entity_id=cid,before=None,after=result)
+                uow.commit();return result
+            if row.version!=body.expected_version:raise ConflictError('capture version changed')
             if row.route=='HARVEST_DEPOT':
                 return self._confirm_harvest(uow,row,entity_id,cid,actor_id,key,body,h)
             if row.route!='FINANCE':raise ValidationError('banana sale requires authoritative harvest/depot settlement')
@@ -169,7 +191,7 @@ class CaptureService:
                 cmd=CreatePaymentCommand(entity_id=entity_id,source='capture:'+str(cid),reason=row.original_text,**f)
                 r=finance.create_payment(actor_id=actor_id,idempotency_key='capture:'+str(cid),command=cmd)
             else:raise ValidationError('capture intent requires review')
-            before=serialize_capture(row);row.finance_kind=kind;row.finance_id=UUID(r['id']);row.state='LINKED';row.version+=1
+            before=serialize_capture(row);row.confirmed_review=body.reviewed;row.finance_kind=kind;row.finance_id=UUID(r['id']);row.state='LINKED';row.version+=1
             uow.session.flush();result=dict(capture=serialize_capture(row),finance=r,posted=False)
             uow.audit.append(actor_id=actor_id,action='capture_confirm',entity_type='capture',entity_id=cid,before=before,after=dict(result,reviewed=body.reviewed))
             uow.idempotency.put(actor_id=actor_id,operation='capture_confirm',key=key,request_hash=h,resource_type='capture',resource_id=cid,response=result)
@@ -182,7 +204,7 @@ class CaptureService:
         duplicate_reviewed=f.pop('duplicate_reviewed',False)
         if any('Похожее' in g for g in row.gaps) and not duplicate_reviewed:raise ValidationError('duplicate suspicion requires explicit review')
         f.pop('greenhouse_id',None);f.pop('direction',None)
-        evidence=dict(source='capture:'+row.source,source_reference=str(cid),raw_text=row.original_text)
+        evidence=dict(source=row.source_namespace or 'capture:'+row.source,source_reference=row.source_reference or str(cid),raw_text=row.original_text)
         service=HarvestService(lambda:BorrowedUow(uow))
         if kind=='report':
             f['evidence']=evidence
@@ -195,7 +217,7 @@ class CaptureService:
             f['evidence']=evidence
             r=service.settlement(e,actor,'capture:harvest:'+str(cid),SettlementInput(**f))
         else:raise ValidationError('select harvest draft type')
-        before=serialize_capture(row);row.harvest_kind=kind;row.harvest_id=UUID(r['id']);row.state='LINKED';row.version+=1
+        before=serialize_capture(row);row.confirmed_review=body.reviewed;row.harvest_kind=kind;row.harvest_id=UUID(r['id']);row.state='LINKED';row.version+=1
         uow.session.flush();result=dict(capture=serialize_capture(row),harvest=r,posted=False)
         uow.audit.append(actor_id=actor,action='capture_confirm',entity_type='capture',entity_id=cid,before=before,after=dict(result,reviewed=body.reviewed))
         uow.idempotency.put(actor_id=actor,operation='capture_confirm',key=key,request_hash=h,resource_type='capture',resource_id=cid,response=result)

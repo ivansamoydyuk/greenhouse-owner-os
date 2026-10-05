@@ -3501,6 +3501,20 @@ components:
           - voice_transcript
           title: Source
           default: text
+        source_namespace:
+          anyOf:
+          - type: string
+            maxLength: 200
+            minLength: 1
+          - type: 'null'
+          title: Source Namespace
+        source_reference:
+          anyOf:
+          - type: string
+            maxLength: 2000
+            minLength: 1
+          - type: 'null'
+          title: Source Reference
       additionalProperties: false
       type: object
       required:

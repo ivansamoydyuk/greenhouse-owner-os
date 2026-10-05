@@ -132,8 +132,9 @@ def test_depot_binary_duplicates_reuse_authoritative_receipt_alacak_no_cash(prev
     fields=dict(kind='settlement',depot_id=depot,event_date='2026-10-05',currency='TRY',original_greenhouse='İmamlı',alacak_value='4000',lines=[dict(original_quality_name='Grand',net_weight_kg='100',unit_price='40',count=5,source_line='1')])
     a=send(c,f'/entities/{e}/inbox',dict(original,locator='receipt:A'));b=send(c,f'/entities/{e}/inbox',dict(original,locator='receipt:B'))
     assert a['route']=='HARVEST_DEPOT' and b['duplicate_of_id']==a['id']
-    a=confirm(c,e,a,fields);b=confirm(c,e,b,fields,duplicate_reviewed=True)
-    assert a['harvest_id']==b['harvest_id']
+    a=confirm(c,e,a,fields)
+    send(c,f"/entities/{e}/inbox/{b['id']}/confirm",dict(expected_version=1,confirmed=True,reviewed=fields,reason='TEST reviewed original',duplicate_reviewed=True),expected=409)
+    assert c.get(f"/v1/entities/{e}/inbox/{b['id']}").json()['state']!='CONFIRMED'
     receipt=c.get(f"/v1/entities/{e}/harvest/settlements/{a['harvest_id']}").json()
     assert receipt['status']=='draft' and receipt['payment_id'] is None and receipt['obligation_id'] is None
     assert receipt['alacak_value']=='4000.00' and receipt['lines'][0]['normalized_quality']=='FIRST'

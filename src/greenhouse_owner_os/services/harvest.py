@@ -82,7 +82,7 @@ class HarvestService:
                 if existing.raw_text!=body.raw_text or existing.file_bytes!=raw:
                     raise ConflictError('stable evidence source content changed; original retained')
                 return existing
-        if raw is not None:
+        if raw is not None and (not stable or body.source=='owner_mobile:manual'):
             if u.session.scalar(select(EvidenceRow.id).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_not(None),EvidenceRow.fingerprint==fingerprint)):
                 raise ConflictError('duplicate binary document; original evidence retained')
         elif not stable:
