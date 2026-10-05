@@ -18,7 +18,10 @@ class AllocationBody(ApiModel):
     amount: Decimal = Field(gt=0)
 
 
-class ObligationCreateBody(ApiModel):
+from greenhouse_owner_os.domain.commands import CreateObligationCommand
+
+
+class ObligationCreateBody(CreateObligationCommand):
     entity_id: UUID
     counterparty_id: UUID
     direction: ObligationDirection

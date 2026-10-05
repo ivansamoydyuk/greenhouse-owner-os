@@ -33,7 +33,15 @@ def main():
                 except httpx.HTTPError:pass
                 time.sleep(.1)
             else:raise RuntimeError('preview readiness timed out')
+            if os.getenv('AGENT_BROWSER'):
+                agent=os.environ['AGENT_BROWSER']
+                options=['--executable-path',os.environ['CHROME_PATH']] if os.getenv('CHROME_PATH') else []
+                subprocess.run([agent,*options,'open',env['PREVIEW_URL']],env=env,cwd=ROOT,check=True)
+                subprocess.run([agent,'snapshot','-i'],env=env,cwd=ROOT,check=True)
+                subprocess.run([agent,'screenshot',str(ROOT/'artifacts/agent-browser-check.png')],env=env,cwd=ROOT,check=True)
+                subprocess.run([agent,'close'],env=env,cwd=ROOT,check=True)
             subprocess.run(['node','tests/e2e/owner.mjs'],env=env,cwd=ROOT,check=True)
+            subprocess.run(['node','tests/e2e/business.mjs'],env=env,cwd=ROOT,check=True)
         finally:
             server.terminate()
             try:server.wait(timeout=5)

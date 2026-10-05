@@ -12,41 +12,121 @@ paths:
     get:
       operationId: getOwnerFinanceOverview
       summary: Read-only entity-scoped owner projection from one PostgreSQL snapshot
-      description: Live balances derive from Finance views. Drafts and historical candidates are excluded from totals. Obligations and advances include separate lifecycle status; operations are paginated across all Finance R1 kinds, newest created first. No repair or write is performed. Preview authentication is an adapter concern.
+      description: Live balances derive from Finance views. Drafts and historical
+        candidates are excluded from totals. Obligations and advances include separate
+        lifecycle status; operations are paginated across all Finance R1 kinds, newest
+        created first. No repair or write is performed. Preview authentication is
+        an adapter concern.
       parameters:
       - name: entity_id
         in: path
         required: true
-        schema: {type: string, format: uuid}
+        schema:
+          type: string
+          format: uuid
       - name: offset
         in: query
-        schema: {type: integer, minimum: 0, maximum: 10000, default: 0}
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          default: 0
       - name: limit
         in: query
-        schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
       responses:
         '200':
-          description: Consistent owner overview; all monetary values are exact decimal strings
+          description: Consistent owner overview; all monetary values are exact decimal
+            strings
           content:
             application/json:
               schema:
                 type: object
-                required: [entity_id, entity_name, reference_class, cutover_date, references, balances, accounts, obligations, advances, operations, offset, limit, has_more, history_policy]
+                required:
+                - entity_id
+                - entity_name
+                - reference_class
+                - cutover_date
+                - references
+                - balances
+                - accounts
+                - obligations
+                - advances
+                - operations
+                - offset
+                - limit
+                - has_more
+                - history_policy
                 properties:
-                  entity_id: {type: string, format: uuid}
-                  entity_name: {type: string}
-                  reference_class: {type: string, enum: [OWNER_VERIFIED, TEST_PREVIEW]}
-                  cutover_date: {type: string, format: date}
-                  references: {type: array, items: {type: object}}
-                  balances: {type: object, additionalProperties: {type: object, additionalProperties: {type: string, pattern: '^-?[0-9]+\.[0-9]{2}$'}}}
-                  accounts: {type: array, items: {type: object, required: [money_account_id, entity_id, currency, balance], properties: {money_account_id: {type: string, format: uuid}, entity_id: {type: string, format: uuid}, currency: {type: string}, balance: {type: string}}}}
-                  obligations: {type: array, items: {type: object}}
-                  advances: {type: array, items: {type: object}}
-                  operations: {type: array, items: {type: object}}
-                  offset: {type: integer}
-                  limit: {type: integer}
-                  has_more: {type: boolean}
-                  history_policy: {type: string, const: NON_POSTING}
+                  entity_id:
+                    type: string
+                    format: uuid
+                  entity_name:
+                    type: string
+                  reference_class:
+                    type: string
+                    enum:
+                    - OWNER_VERIFIED
+                    - TEST_PREVIEW
+                  cutover_date:
+                    type: string
+                    format: date
+                  references:
+                    type: array
+                    items:
+                      type: object
+                  balances:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      additionalProperties:
+                        type: string
+                        pattern: ^-?[0-9]+\.[0-9]{2}$
+                  accounts:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - money_account_id
+                      - entity_id
+                      - currency
+                      - balance
+                      properties:
+                        money_account_id:
+                          type: string
+                          format: uuid
+                        entity_id:
+                          type: string
+                          format: uuid
+                        currency:
+                          type: string
+                        balance:
+                          type: string
+                  obligations:
+                    type: array
+                    items:
+                      type: object
+                  advances:
+                    type: array
+                    items:
+                      type: object
+                  operations:
+                    type: array
+                    items:
+                      type: object
+                  offset:
+                    type: integer
+                  limit:
+                    type: integer
+                  has_more:
+                    type: boolean
+                  history_policy:
+                    type: string
+                    const: NON_POSTING
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
@@ -1689,6 +1769,116 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/captures:
+    post:
+      summary: Capture
+      operationId: capture_v1_entities__entity_id__captures_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptureInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/captures/{capture_id}:
+    get:
+      summary: Capture Read
+      operationId: capture_read_v1_entities__entity_id__captures__capture_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Capture Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/captures/{capture_id}/confirm:
+    post:
+      summary: Capture Confirm
+      operationId: capture_confirm_v1_entities__entity_id__captures__capture_id__confirm_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Capture Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptureConfirm'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -1760,6 +1950,32 @@ components:
           format: uuid
           description: Optional unique reversed original of same type, entity, counterparty,
             currency and direction
+        obligation_class: &id001
+          type: string
+          enum:
+          - OPERATIONAL
+          - STRATEGIC
+          title: Obligation Class
+          default: OPERATIONAL
+        economic_source: &id002
+          type: string
+          enum:
+          - manual_other
+          - harvest_depot
+          title: Economic Source
+          default: manual_other
+        description: &id003
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Description
+        attributions: &id004
+          items:
+            $ref: '#/components/schemas/AttributionInput'
+          type: array
+          title: Attributions
+          default: []
     Obligation:
       type: object
       required:
@@ -1799,6 +2015,10 @@ components:
           - string
           - 'null'
           format: uuid
+        obligation_class: *id001
+        economic_source: *id002
+        description: *id003
+        attributions: *id004
     Allocation:
       type: object
       additionalProperties: false
@@ -2068,6 +2288,10 @@ components:
       title: HTTPValidationError
     ObligationCreateBody:
       properties:
+        obligation_class: *id001
+        economic_source: *id002
+        description: *id003
+        attributions: *id004
         entity_id:
           type: string
           format: uuid
@@ -2718,6 +2942,65 @@ components:
       - source
       - approval_reference
       title: OpeningPayableCommand
+    CaptureInput:
+      properties:
+        text:
+          type: string
+          maxLength: 10000
+          minLength: 1
+          title: Text
+        source:
+          type: string
+          enum:
+          - text
+          - voice_transcript
+          title: Source
+          default: text
+      additionalProperties: false
+      type: object
+      required:
+      - text
+      title: CaptureInput
+    CaptureConfirm:
+      properties:
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        reviewed:
+          additionalProperties: true
+          type: object
+          title: Reviewed
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - reviewed
+      - confirmed
+      title: CaptureConfirm
+    AttributionInput:
+      properties:
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Amount
+      additionalProperties: false
+      type: object
+      required:
+      - work_area_id
+      - amount
+      title: AttributionInput
   responses:
     Conflict:
       description: Version or idempotency conflict

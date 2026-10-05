@@ -61,6 +61,7 @@ class SqlAlchemyFinanceRepository(SqlHistoryRepositoryMixin, SqlOpeningRepositor
             currency=obligation.currency,
             event_date=obligation.event_date,
             due_date=obligation.due_date,
+            obligation_class=obligation.obligation_class, economic_source=obligation.economic_source, description=obligation.description,
             offset_ledger_account_id=obligation.offset_ledger_account_id,
             status=obligation.status.value,
             version=obligation.version,
@@ -78,6 +79,8 @@ class SqlAlchemyFinanceRepository(SqlHistoryRepositoryMixin, SqlOpeningRepositor
             currency=row.currency,
             event_date=row.event_date,
             due_date=row.due_date,
+            obligation_class=row.obligation_class, economic_source=row.economic_source, description=row.description,
+            attributions=self.business_attributions(row.id),
             offset_ledger_account_id=row.offset_ledger_account_id,
             status=RecordStatus(row.status),
             version=row.version,
@@ -89,6 +92,29 @@ class SqlAlchemyFinanceRepository(SqlHistoryRepositoryMixin, SqlOpeningRepositor
             reversal_reason=row.reversal_reason,
             replacement_of_id=row.replacement_of_id,
         )
+
+    def business_attributions(self, oid):
+        from greenhouse_owner_os.infrastructure.models import AttributionRow
+        return tuple({"work_area_id":str(r.work_area_id), "amount":f"{r.amount:.2f}"} for r in self.session.scalars(select(AttributionRow).where(AttributionRow.obligation_id==oid)))
+
+    def add_attributions(self, obligation, actor_id):
+        from greenhouse_owner_os.infrastructure.models import AttributionRow, WorkAreaRow
+        self.session.flush()
+        for a in obligation.attributions:
+            area=self.session.get(WorkAreaRow, a.work_area_id)
+            if not area or area.entity_id != obligation.entity_id:
+                raise ValidationError("work area belongs to another entity or is unknown")
+            self.session.add(AttributionRow(obligation_id=obligation.id, work_area_id=a.work_area_id, amount=a.amount, source="owner:reviewed-economic-basis", created_by=actor_id))
+
+    def assert_strategic_basis(self, obligation):
+        row=self.session.get(LedgerAccountRow, obligation.offset_ledger_account_id)
+        if obligation.direction != ObligationDirection.PAYABLE or row.account_class not in ("cash", "financing_principal"):
+            raise ValidationError("strategic principal requires cash or financing principal account; never expense")
+
+    def assert_manual_receivable_boundary(self, counterparty_id):
+        cp=self.session.get(CounterpartyRow,counterparty_id)
+        if cp and cp.counterparty_type=='depot':
+            raise ValidationError('banana sale requires authoritative harvest/depot settlement')
 
     def get_obligation(self, obligation_id: UUID, *, for_update: bool = False) -> Obligation | None:
         stmt = select(ObligationRow).where(ObligationRow.id == obligation_id)

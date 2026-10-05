@@ -3,6 +3,7 @@ from __future__ import annotations
 from greenhouse_owner_os.domain.references import EntitySetup, MoneyAccountSetup, CounterpartySetup, BootstrapCommand, SUPPORTED_CURRENCIES
 from greenhouse_owner_os.domain.opening import OpeningPayableCommand
 from uuid import UUID
+from greenhouse_owner_os.services.capture import CaptureService, CaptureInput, CaptureConfirm
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 
@@ -81,6 +82,24 @@ def create_app(*, finance_service: FinanceService, actor_provider, reference_ser
                          limit: int = Query(50, ge=1, le=100), actor_id: UUID = Depends(actor_provider)):
         from greenhouse_owner_os.services.owner_view import owner_view
         return owner_view(finance_service.uow_factory, entity_id, offset=offset, limit=limit)
+
+    capture_service=CaptureService(finance_service.uow_factory) if finance_service else None
+
+    @app.post('/v1/entities/{entity_id}/captures',status_code=201)
+    def capture(entity_id: UUID, body: CaptureInput, idempotency_key: str = Header(alias='Idempotency-Key'), actor_id: UUID = Depends(actor_provider)):
+        return capture_service.create(entity_id,actor_id,idempotency_key,body)
+
+    @app.get('/v1/entities/{entity_id}/captures/{capture_id}')
+    def capture_read(entity_id: UUID,capture_id: UUID,actor_id: UUID = Depends(actor_provider)):
+        return capture_service.get(entity_id,capture_id)
+
+    @app.post('/v1/entities/{entity_id}/captures/{capture_id}/confirm')
+    def capture_confirm(entity_id: UUID,capture_id: UUID,body: CaptureConfirm,idempotency_key: str = Header(alias='Idempotency-Key'),actor_id: UUID = Depends(actor_provider)):
+        from pydantic import ValidationError as InputError
+        try:return capture_service.confirm(entity_id,capture_id,actor_id,idempotency_key,body)
+        except InputError as exc:
+            from fastapi.exceptions import RequestValidationError
+            raise RequestValidationError([dict(e,loc=('body','reviewed',*e['loc'])) for e in exc.errors()]) from exc
 
     @app.get('/v1/entities/{entity_id}/cutover')
     def cutover(entity_id: UUID, actor_id: UUID = Depends(actor_provider)):

@@ -73,6 +73,10 @@ class Obligation:
     event_date: date
     due_date: date | None
     offset_ledger_account_id: UUID
+    obligation_class: str = "OPERATIONAL"
+    economic_source: str = "manual_other"
+    description: str | None = None
+    attributions: tuple = ()
     status: RecordStatus = RecordStatus.DRAFT
     version: int = 1
     posting_id: UUID | None = None

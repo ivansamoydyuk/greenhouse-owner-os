@@ -44,6 +44,9 @@ def _serialize_obligation(obligation: Obligation, remaining: Decimal | None = No
         "currency": obligation.currency,
         "event_date": obligation.event_date.isoformat(),
         "due_date": obligation.due_date.isoformat() if obligation.due_date else None,
+        "obligation_class": obligation.obligation_class, "economic_source": obligation.economic_source,
+        "description": obligation.description,
+        "attributions": [dict(work_area_id=str(a.work_area_id),amount=f"{a.amount:.2f}") if hasattr(a,"work_area_id") else a for a in obligation.attributions],
         "status": obligation.status.value,
         "version": obligation.version,
         "reversal_posting_id": str(obligation.reversal_posting_id) if obligation.reversal_posting_id else None,
@@ -113,10 +116,24 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin, OpeningServiceMixin)
                 offset_ledger_account_id=command.offset_ledger_account_id,
             )
             uow.finance.assert_ledger_account_scope(obligation.offset_ledger_account_id, obligation.entity_id, obligation.currency)
+            obligation.obligation_class=command.obligation_class
+            obligation.economic_source=command.economic_source
+            obligation.description=command.description
+            obligation.attributions=command.attributions
+            if obligation.direction == ObligationDirection.RECEIVABLE:
+                if obligation.description and any(w in obligation.description.casefold() for w in ('банан','banana')):
+                    raise ValidationError('banana sale requires authoritative harvest/depot settlement')
+                uow.finance.assert_manual_receivable_boundary(obligation.counterparty_id)
+            if obligation.economic_source == "harvest_depot":
+                raise ValidationError("banana sale requires authoritative harvest/depot settlement")
+            if obligation.obligation_class == "STRATEGIC":
+                uow.finance.assert_strategic_basis(obligation)
             uow.finance.assert_regular_offset(obligation.offset_ledger_account_id)
             self._validate_replacement(uow, "obligation", command.replacement_of_id, obligation)
             obligation.replacement_of_id = command.replacement_of_id
             uow.finance.add_obligation(obligation, actor_id)
+            if obligation.attributions:
+                uow.finance.add_attributions(obligation, actor_id)
             response = _serialize_obligation(obligation, obligation.original_amount)
             uow.audit.append(actor_id=actor_id, action="create", entity_type="obligation", entity_id=obligation.id, before=None, after=response)
             uow.idempotency.put(actor_id=actor_id, operation=operation, key=idempotency_key, request_hash=request_hash, resource_type="obligation", resource_id=obligation.id, response=response)
@@ -141,6 +158,10 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin, OpeningServiceMixin)
                 raise ValidationError("only draft/review obligation can be posted")
             uow.finance.assert_live_date(obligation.entity_id, obligation.event_date)
             uow.finance.assert_ledger_account_scope(obligation.offset_ledger_account_id, obligation.entity_id, obligation.currency)
+            if obligation.economic_source == "harvest_depot":
+                raise ValidationError("banana sale requires authoritative harvest/depot settlement")
+            if obligation.obligation_class == "STRATEGIC":
+                uow.finance.assert_strategic_basis(obligation)
             control_code = "AP_CONTROL" if obligation.direction == ObligationDirection.PAYABLE else "AR_CONTROL"
             control_id = uow.finance.get_system_ledger_account(obligation.entity_id, obligation.currency, control_code)
             posting_id = uuid4()
