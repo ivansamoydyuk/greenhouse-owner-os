@@ -30,7 +30,26 @@ def reconcile(session, *, include_classification=False, snapshot_established=Fal
                                    (PaymentAllocationRow,PaymentRow,'payment_id'),
                                    (HistoricalCandidateRow,ImportBatchRow,'import_batch_id')):
             rows[child] = {rid:r for rid,r in rows[child].items() if getattr(r,key) in rows[parent]}
-    return check_snapshot(rows, include_classification=include_classification)
+    result=check_snapshot(rows, include_classification=include_classification)
+    from greenhouse_owner_os.infrastructure.harvest_models import SettlementRow as DepotRow, LineRow, AllocationRow
+    sources=[r for r in session.scalars(select(DepotRow).order_by(DepotRow.id)) if entity_id is None or r.entity_id==entity_id]
+    sales={r.obligation_id:r for r in sources if r.obligation_id}
+    extra=[]
+    for ob in rows[ObligationRow].values():
+        if ob.economic_source!='harvest_depot':continue
+        source=sales.get(ob.id)
+        if not source or (source.entity_id,source.depot_id,source.currency,source.total_amount,source.status,source.event_date,source.due_date)!=(ob.entity_id,ob.counterparty_id,ob.currency,ob.original_amount,ob.status,ob.event_date,ob.due_date):extra.append(dict(code='harvest_sale_source_mismatch',id=str(ob.id)))
+    for source in sources:
+        oid=source.obligation_id
+        if source.status=='draft':
+            if oid:extra.append(dict(code='harvest_draft_finance_leak',id=str(source.id)))
+            continue
+        if oid not in rows[ObligationRow]:extra.append(dict(code='harvest_sale_obligation_missing',id=str(source.id)))
+        total=sum((ln.amount for ln in session.scalars(select(LineRow).where(LineRow.settlement_id==source.id))),Decimal(0))
+        if total!=source.total_amount:extra.append(dict(code='harvest_receipt_total_mismatch',id=str(source.id)))
+    result['findings']=sorted(result['findings']+extra,key=lambda x:(x['code'],x['id']))
+    result['ok']=not result['findings']
+    return result
 
 
 def check_snapshot(rows, *, include_classification=False):

@@ -1,4 +1,4 @@
-name: Owner Finance isolated review preview
+name: Harvest & Depot isolated review preview
 
 on:
   pull_request:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   preview:
-    if: github.head_ref == '06-owner-workflow-alignment' || github.ref_name == '06-owner-workflow-alignment'
+    if: github.head_ref == '03-harvest-depot-r1' || github.ref_name == '03-harvest-depot-r1'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -81,14 +81,19 @@ jobs:
               assert client.get('/v1/finance/reconciliation',params={'entity_id':eid}).json()['ok']
               assert client.get('/').status_code==200
               assert client.get('/assets/app.js').status_code==200
+              assert client.get('/assets/harvest.js').status_code==200
+              harvest=client.get('/v1/entities/'+eid+'/harvest').json()
+              assert harvest['settlements']==[] and harvest['reports']==[]
+              assert overview['balances']['TRY']['receivable']=='0.00'
+              assert client.get('/v1/entities/'+eid+'/harvest').status_code==200
               client.post('/preview/logout')
           print('External HTTPS authenticated preview smoke PASS; zero cash, Serkan unpaid 2600 TRY, reconciliation PASS')
           PY
           printf 'URL: %s\nAccess key: %s\nTEST PREVIEW ONLY. Opening Serkan AP 2600 TRY remains unpaid.\nExpires after 35 minutes of review time; runner database is then destroyed.\n' "$preview_url" "$PREVIEW_SECRET" > artifacts/preview-access.txt
-          printf '### Isolated Owner Finance preview\n\n%s\n\nAccess key: download the private **owner-finance-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
+          printf '### Isolated Harvest & Depot preview\n\n%s\n\nAccess key: download the private **owner-harvest-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
-          name: owner-finance-review-access
+          name: owner-harvest-review-access
           path: artifacts/preview-access.txt
           retention-days: 1
       - name: Owner review window (35 minutes, ephemeral data)

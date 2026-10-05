@@ -78,6 +78,9 @@ def owner_view(factory, entity_id, *, offset=0, limit=50):
         for o in obligations:
             if basis[o['obligation_id']].status!='posted' or o['opening'] or o['obligation_class']=='STRATEGIC':continue
             for a in o['attributions']:economics.append(dict(obligation_id=o['obligation_id'],work_area_id=a['work_area_id'],amount=a['amount'],currency=o['currency'],direction=o['direction']))
+        from .harvest import HarvestService
+        from .capture import BorrowedUow
+        attention.extend(HarvestService(lambda:BorrowedUow(uow)).overview(entity_id)['attention'])
         return dict(entity_id=str(entity_id), entity_name=entity.name, reference_class=entity.reference_class,
             cutover_date=str(entity.finance_cutover_date), references=references,
             as_of_date=today, work_areas=areas, business_balances={c:{k:f'{v:.2f}' for k,v in b.items()} for c,b in grouped.items()},

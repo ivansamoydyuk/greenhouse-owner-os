@@ -1879,6 +1879,304 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest:
+    get:
+      summary: Overview
+      operationId: overview_v1_entities__entity_id__harvest_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/reports:
+    post:
+      summary: Report
+      operationId: report_v1_entities__entity_id__harvest_reports_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/batches:
+    post:
+      summary: Batch
+      operationId: batch_v1_entities__entity_id__harvest_batches_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements:
+    post:
+      summary: Settlement
+      operationId: settlement_v1_entities__entity_id__harvest_settlements_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettlementInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}:
+    get:
+      summary: Get
+      operationId: get_v1_entities__entity_id__harvest_settlements__settlement_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/post:
+    post:
+      summary: Post
+      operationId: post_v1_entities__entity_id__harvest_settlements__settlement_id__post_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettlementPost'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/reverse:
+    post:
+      summary: Reverse
+      operationId: reverse_v1_entities__entity_id__harvest_settlements__settlement_id__reverse_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReverseCommand'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/evidence/{evidence_id}:
+    get:
+      summary: Evidence
+      operationId: evidence_v1_entities__entity_id__harvest_evidence__evidence_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: evidence_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Evidence Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -2288,10 +2586,32 @@ components:
       title: HTTPValidationError
     ObligationCreateBody:
       properties:
-        obligation_class: *id001
-        economic_source: *id002
-        description: *id003
-        attributions: *id004
+        obligation_class:
+          type: string
+          enum:
+          - OPERATIONAL
+          - STRATEGIC
+          title: Obligation Class
+          default: OPERATIONAL
+        economic_source:
+          type: string
+          enum:
+          - manual_other
+          - harvest_depot
+          title: Economic Source
+          default: manual_other
+        description:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Description
+        attributions:
+          items:
+            $ref: '#/components/schemas/AttributionInput'
+          type: array
+          title: Attributions
+          default: []
         entity_id:
           type: string
           format: uuid
@@ -3001,6 +3321,404 @@ components:
       - work_area_id
       - amount
       title: AttributionInput
+    AdvanceUse:
+      properties:
+        advance_id:
+          type: string
+          format: uuid
+          title: Advance Id
+        amount:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Amount
+      additionalProperties: false
+      type: object
+      required:
+      - advance_id
+      - amount
+      title: AdvanceUse
+    BatchInput:
+      properties:
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        label:
+          type: string
+          maxLength: 250
+          minLength: 1
+          title: Label
+        report_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Report Ids
+          default: []
+        link_evidence:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Link Evidence
+        original_greenhouse:
+          anyOf:
+          - type: string
+            maxLength: 250
+          - type: 'null'
+          title: Original Greenhouse
+      additionalProperties: false
+      type: object
+      required:
+      - event_date
+      - label
+      - link_evidence
+      title: BatchInput
+    EvidenceInput:
+      properties:
+        existing_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Existing Id
+        source:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Source
+        source_reference:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Source Reference
+        raw_text:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Raw Text
+        filename:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Filename
+        mime_type:
+          anyOf:
+          - type: string
+            enum:
+            - image/jpeg
+            - image/png
+            - application/pdf
+          - type: 'null'
+          title: Mime Type
+        file_base64:
+          anyOf:
+          - type: string
+            maxLength: 7000000
+          - type: 'null'
+          title: File Base64
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      title: EvidenceInput
+    LineAllocation:
+      properties:
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        net_weight_kg:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,17}|(?=[\d.]{1,21}0*$)\d{0,17}\.\d{0,3}0*$)
+          title: Net Weight Kg
+        amount:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Amount
+        confirmed_count:
+          anyOf:
+          - type: integer
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Confirmed Count
+      additionalProperties: false
+      type: object
+      required:
+      - work_area_id
+      - net_weight_kg
+      - amount
+      title: LineAllocation
+    LineInput:
+      properties:
+        original_quality_name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Original Quality Name
+        net_weight_kg:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,17}|(?=[\d.]{1,21}0*$)\d{0,17}\.\d{0,3}0*$)
+          title: Net Weight Kg
+        unit_price:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Unit Price
+        stated_amount:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          - type: 'null'
+          title: Stated Amount
+        confirmed_amount:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          - type: 'null'
+          title: Confirmed Amount
+        count:
+          anyOf:
+          - type: integer
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Count
+        source_line:
+          type: string
+          maxLength: 1000
+          minLength: 1
+          title: Source Line
+        allocations:
+          items:
+            $ref: '#/components/schemas/LineAllocation'
+          type: array
+          title: Allocations
+          default: []
+      additionalProperties: false
+      type: object
+      required:
+      - original_quality_name
+      - net_weight_kg
+      - unit_price
+      - source_line
+      title: LineInput
+    ReportInput:
+      properties:
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        original_greenhouse:
+          type: string
+          maxLength: 250
+          minLength: 1
+          title: Original Greenhouse
+        work_area_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Work Area Id
+        cut_count:
+          anyOf:
+          - type: integer
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Cut Count
+        field_weight_kg:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,17}|(?=[\d.]{1,21}0*$)\d{0,17}\.\d{0,3}0*$)
+          - type: 'null'
+          title: Field Weight Kg
+        reporter:
+          type: string
+          maxLength: 250
+          minLength: 1
+          title: Reporter
+        notes:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Notes
+        evidence:
+          $ref: '#/components/schemas/EvidenceInput'
+      additionalProperties: false
+      type: object
+      required:
+      - event_date
+      - original_greenhouse
+      - reporter
+      - evidence
+      title: ReportInput
+    SettlementInput:
+      properties:
+        depot_id:
+          type: string
+          format: uuid
+          title: Depot Id
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        currency:
+          type: string
+          enum:
+          - TRY
+          - USD
+          - EUR
+          - UAH
+          title: Currency
+        due_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Due Date
+        expected_payment:
+          type: boolean
+          title: Expected Payment
+          default: true
+        batch_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Batch Ids
+          default: []
+        link_evidence:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Link Evidence
+        original_greenhouse:
+          anyOf:
+          - type: string
+            maxLength: 250
+          - type: 'null'
+          title: Original Greenhouse
+        document_number:
+          anyOf:
+          - type: string
+            maxLength: 250
+          - type: 'null'
+          title: Document Number
+        mixed:
+          type: boolean
+          title: Mixed
+          default: false
+        stated_total:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          - type: 'null'
+          title: Stated Total
+        alacak_value:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          - type: 'null'
+          title: Alacak Value
+        lines:
+          items:
+            $ref: '#/components/schemas/LineInput'
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Lines
+        evidence:
+          $ref: '#/components/schemas/EvidenceInput'
+        replacement_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Of Id
+      additionalProperties: false
+      type: object
+      required:
+      - depot_id
+      - event_date
+      - currency
+      - lines
+      - evidence
+      title: SettlementInput
+    SettlementPost:
+      properties:
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+        review_reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Review Reason
+        reviewed_issues:
+          items:
+            type: string
+          type: array
+          title: Reviewed Issues
+          default: []
+        cash_amount:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
+          title: Cash Amount
+          default: '0'
+        money_account_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Money Account Id
+        advances:
+          items:
+            $ref: '#/components/schemas/AdvanceUse'
+          type: array
+          title: Advances
+          default: []
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - confirmed
+      title: SettlementPost
   responses:
     Conflict:
       description: Version or idempotency conflict

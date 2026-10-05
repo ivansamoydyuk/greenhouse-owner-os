@@ -165,6 +165,8 @@ class AttributionRow(Base):
 
 
 class CaptureRow(Base):
+    harvest_kind: Mapped[str | None] = mapped_column(String(30))
+    harvest_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     __tablename__ = "capture_drafts"
     __table_args__ = {"schema": "core"}
     id: Mapped[uuid.UUID] = uuid_pk()

@@ -40,8 +40,11 @@ def main():
                 subprocess.run([agent,'snapshot','-i'],env=env,cwd=ROOT,check=True)
                 subprocess.run([agent,'screenshot',str(ROOT/'artifacts/agent-browser-check.png')],env=env,cwd=ROOT,check=True)
                 subprocess.run([agent,'close'],env=env,cwd=ROOT,check=True)
-            subprocess.run(['node','tests/e2e/owner.mjs'],env=env,cwd=ROOT,check=True)
-            subprocess.run(['node','tests/e2e/business.mjs'],env=env,cwd=ROOT,check=True)
+            if not os.getenv('HARVEST_E2E_ONLY'):
+                subprocess.run(['node','tests/e2e/owner.mjs'],env=env,cwd=ROOT,check=True)
+            if not os.getenv('HARVEST_E2E_ONLY'):
+                subprocess.run(['node','tests/e2e/business.mjs'],env=env,cwd=ROOT,check=True)
+            subprocess.run(['node','tests/e2e/harvest.mjs'],env=env,cwd=ROOT,check=True)
         finally:
             server.terminate()
             try:server.wait(timeout=5)

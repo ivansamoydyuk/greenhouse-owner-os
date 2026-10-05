@@ -201,3 +201,52 @@ and verifies the complete draft path, not actual microphone transcription.
 `tests/e2e/business.mjs`. All synthetic successful postings are reversed; the
 approved opening remains unpaid at 2600 TRY, money accounts zero and reconciliation
 passes. Production remains excluded.
+
+## Harvest & Depot R1 — source-owned cut-to-cash
+
+Mobile **Урожай / Депо** records independent field reports, explicitly linked loads,
+original PDF/JPEG/PNG/text evidence (maximum 5 MB), separate quality lines and
+read-only discrepancies. Grand/Sera normalize to FIRST; Yerli remains YERLI;
+İkinci/2 inci normalize to SECOND; Kava and unknown labels remain VERIFY.
+Original labels, source text, hash, actor and received time remain immutable.
+
+A reviewed depot settlement creates one authoritative sale through Finance Core:
+receivable/revenue, then normal incoming payment and/or customer advance application.
+Alacak alone never moves cash. Mixed receipts require explicit kg/amount allocation;
+unallocated sales and mixed outstanding debt remain visible without proportional
+profitability guesses. Real cash payments must be reversed separately before receipt
+reversal; source-owned applications are compensated, then the sale. Corrections link
+to a reversed original and may retain its original file without re-uploading.
+
+Migrations `20261005_0010` and `20261005_0011` follow unchanged 0001–0009. Atomic source reservation
+cannot commit as a draft: deferred reciprocal source/obligation constraints enforce
+scope, amounts, lifecycle and exact attribution. Posted evidence and Finance history
+are append-only. Recovery is forward-only: restore a verified backup separately and
+preserve/reconcile subsequent journals and source documents.
+
+Text/optional browser speech share conservative Harvest draft review. Missing years,
+prices, depot references or load links are not guessed; no capture posts automatically.
+Universal OCR, Telegram, historical import and production deployment are excluded.
+Analytics uses explicit allocations and aggregate confirmed kg/count only; currency
+positions stay separate. Read lists show the latest 100 records, all-entity attention
+and analytics cover the full selected date range; large-volume browsing is deferred.
+
+Evidence identity is scoped by `(entity_id, source, source_reference)` when a stable
+locator is supplied. Content SHA remains integrity information: equal text with
+distinct locators is distinct evidence. Exact source/content retries reuse the
+original report/receipt; changed content or reviewed business values conflict.
+Binary file SHA remains unique within the entity, even across different locators;
+re-uploading the same file as a new source is rejected. Unlocated text retains
+limited hash duplicate protection. PostgreSQL partial unique indexes and ordered
+transaction locks protect all three cases. Global capture passes its immutable ID
+as the locator. Normal mobile entry uses `owner_mobile:manual`; test environment
+classification belongs to the preview/reference metadata, not evidence provenance.
+
+Settlement evidence remains bound across reversal. Exact stale creation retries
+return the original reversed settlement; changed values without explicit correction
+conflict. A replacement must name a reversed predecessor with the same evidence,
+entity, depot and currency. A reversed child can itself be explicitly replaced.
+Migration `20261005_0012` adds insert-time lineage validation and one-root-per-evidence
+partial uniqueness; existing active-source/predecessor uniqueness stays intact.
+Evidence row locks serialize service and SQL insertion paths. No unlinked reuse of
+a historical receipt can restart sale recognition. Prior migrations remain unchanged.
