@@ -29,3 +29,12 @@ def test_harvest_openapi_matches_runtime_and_linear_migration():
     p=Path('alembic/versions/20261005_0010_harvest_depot.py')
     module_spec=importlib.util.spec_from_file_location('harvest_migration',p);m=importlib.util.module_from_spec(module_spec);module_spec.loader.exec_module(m)
     assert m.revision=='20261005_0010' and m.down_revision=='20261005_0009'
+
+
+def test_evidence_identity_migration_is_forward_only_new_head():
+    from pathlib import Path
+    import importlib.util
+    p=Path('alembic/versions/20261005_0011_evidence_identity.py')
+    spec=importlib.util.spec_from_file_location('identity_migration',p);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+    assert m.revision=='20261005_0011' and m.down_revision=='20261005_0010'
+    with pytest.raises(RuntimeError):m.downgrade()

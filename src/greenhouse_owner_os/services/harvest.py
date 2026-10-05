@@ -3,8 +3,8 @@
 Finance owns journal, allocation, advance and reversal mechanics. Field/source
 values are never repaired from a receipt, and dates never imply matching.
 """
-import base64,hashlib
-from collections import defaultdict
+import base64,hashlib,json
+from collections import defaultdict,Counter
 from datetime import datetime,date
 from decimal import Decimal
 from uuid import UUID,uuid4
@@ -67,15 +67,37 @@ class HarvestService:
             signatures={'application/pdf':b'%PDF-','image/png':b'\x89PNG\r\n\x1a\n','image/jpeg':b'\xff\xd8\xff'}
             if not raw.startswith(signatures[body.mime_type]) or len(raw)>5242880:raise ValidationError('file type or size invalid; maximum 5 MB')
         fingerprint=hashlib.sha256(raw if raw is not None else (body.raw_text if body.raw_text is not None else body.source_reference).encode()).hexdigest()
-        u.session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':'harvest-evidence:'+str(e)+fingerprint})
-        existing=u.session.scalar(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.fingerprint==fingerprint))
-        if existing:return existing
+        stable=body.source_reference is not None
+        locks=[]
+        if stable:
+            locks.append('harvest-source:'+json.dumps([str(e),body.source,body.source_reference],ensure_ascii=False))
+        if raw is not None or not stable:
+            locks.append('harvest-content:'+str(e)+('binary:' if raw is not None else 'text:')+fingerprint)
+        # Lock all relevant identities in a fixed order, across independent request keys.
+        for key in sorted(locks):
+            u.session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':key})
+        if stable:
+            existing=u.session.scalar(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.source==body.source,EvidenceRow.source_reference==body.source_reference))
+            if existing:
+                if existing.raw_text!=body.raw_text or existing.file_bytes!=raw:
+                    raise ConflictError('stable evidence source content changed; original retained')
+                return existing
+        if raw is not None:
+            if u.session.scalar(select(EvidenceRow.id).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_not(None),EvidenceRow.fingerprint==fingerprint)):
+                raise ConflictError('duplicate binary document; original evidence retained')
+        elif not stable:
+            existing=u.session.scalar(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_(None),EvidenceRow.source_reference.is_(None),EvidenceRow.fingerprint==fingerprint))
+            if existing:return existing
         r=EvidenceRow(id=uuid4(),entity_id=e,created_by=actor,fingerprint=fingerprint,file_bytes=raw,**body.model_dump(exclude={'file_base64','existing_id'}))
         u.session.add(r);u.session.flush();return r
     def report(self,e,actor,key,body):
         def run(u):
             evidence=self._evidence(u,e,actor,body.evidence)
-            if u.session.scalar(select(ReportRow.id).where(ReportRow.evidence_id==evidence.id)):raise ConflictError('duplicate worker evidence; original report retained')
+            prior=u.session.scalar(select(ReportRow).where(ReportRow.evidence_id==evidence.id))
+            if prior:
+                if body.evidence.source_reference is not None and all(getattr(prior,k)==v for k,v in body.model_dump(exclude={'evidence'}).items()):
+                    return dict(row_dict(prior),kind='report',issues=[] if prior.greenhouse_id else ['unknown_greenhouse'])
+                raise ConflictError('duplicate worker evidence or changed report; original report retained')
             gid=self._greenhouse(u,e,body.original_greenhouse)
             if body.work_area_id:self._area(u,e,body.work_area_id,gid)
             r=ReportRow(id=uuid4(),entity_id=e,created_by=actor,greenhouse_id=gid,evidence_id=evidence.id,**body.model_dump(exclude={'evidence'}))
@@ -101,7 +123,10 @@ class HarvestService:
             if not cp or cp.entity_id!=e or cp.counterparty_type not in ('depot','customer','both'):raise ValidationError('select an existing depot/customer counterparty')
             evidence=self._evidence(u,e,actor,body.evidence)
             prior=u.session.scalar(select(SettlementRow).where(SettlementRow.entity_id==e,SettlementRow.evidence_id==evidence.id,SettlementRow.status!='reversed'))
-            if prior:raise ConflictError('duplicate receipt; existing settlement '+str(prior.id))
+            if prior:
+                if body.evidence.source_reference is not None and self._same_settlement(u,prior,body):
+                    return self._settlement_view(u,prior)
+                raise ConflictError('duplicate receipt or changed settlement; existing settlement '+str(prior.id))
             if body.document_number and u.session.scalar(select(SettlementRow.id).where(SettlementRow.entity_id==e,SettlementRow.depot_id==body.depot_id,SettlementRow.document_number==body.document_number,SettlementRow.status!='reversed')):raise ConflictError('duplicate receipt number')
             if body.replacement_of_id:
                 prior=u.session.scalar(select(SettlementRow).where(SettlementRow.id==body.replacement_of_id).with_for_update())
@@ -126,6 +151,19 @@ class HarvestService:
                 u.session.flush()
             return self._settlement_view(u,r)
         return self._write(e,actor,key,'depot_draft',body.model_dump(mode='json'),run)
+    def _same_settlement(self,u,r,body):
+        # Source retries cannot silently change reviewed business values either.
+        if any(getattr(r,k)!=v for k,v in body.model_dump(exclude={'evidence','lines','batch_ids'}).items()):return False
+        bids=set(u.session.scalars(select(SettlementBatchRow.batch_id).where(SettlementBatchRow.settlement_id==r.id)))
+        if bids!=set(body.batch_ids):return False
+        lines=list(u.session.scalars(select(LineRow).where(LineRow.settlement_id==r.id)))
+        def signature(ln,allocations,amount):
+            values=tuple(getattr(ln,k) for k in sorted(type(body.lines[0]).model_fields) if k not in ('allocations','confirmed_amount'))
+            allocation_values=tuple(sorted(((str(a.work_area_id),a.net_weight_kg,a.amount,a.confirmed_count) for a in allocations)))
+            return values,amount,allocation_values
+        actual=Counter(signature(ln,list(u.session.scalars(select(AllocationRow).where(AllocationRow.line_id==ln.id))),ln.amount) for ln in lines)
+        expected=Counter(signature(ln,ln.allocations,ln.confirmed_amount if ln.confirmed_amount is not None else line_amount(ln.net_weight_kg,ln.unit_price)) for ln in body.lines)
+        return actual==expected
     def _get(self,u,e,sid,lock=False):
         q=select(SettlementRow).where(SettlementRow.id==sid,SettlementRow.entity_id==e)
         r=u.session.scalar(q.with_for_update() if lock else q)

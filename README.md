@@ -218,7 +218,7 @@ profitability guesses. Real cash payments must be reversed separately before rec
 reversal; source-owned applications are compensated, then the sale. Corrections link
 to a reversed original and may retain its original file without re-uploading.
 
-New migration `20261005_0010` follows unchanged 0001–0009. Atomic source reservation
+Migrations `20261005_0010` and `20261005_0011` follow unchanged 0001–0009. Atomic source reservation
 cannot commit as a draft: deferred reciprocal source/obligation constraints enforce
 scope, amounts, lifecycle and exact attribution. Posted evidence and Finance history
 are append-only. Recovery is forward-only: restore a verified backup separately and
@@ -230,3 +230,14 @@ Universal OCR, Telegram, historical import and production deployment are exclude
 Analytics uses explicit allocations and aggregate confirmed kg/count only; currency
 positions stay separate. Read lists show the latest 100 records, all-entity attention
 and analytics cover the full selected date range; large-volume browsing is deferred.
+
+Evidence identity is scoped by `(entity_id, source, source_reference)` when a stable
+locator is supplied. Content SHA remains integrity information: equal text with
+distinct locators is distinct evidence. Exact source/content retries reuse the
+original report/receipt; changed content or reviewed business values conflict.
+Binary file SHA remains unique within the entity, even across different locators;
+re-uploading the same file as a new source is rejected. Unlocated text retains
+limited hash duplicate protection. PostgreSQL partial unique indexes and ordered
+transaction locks protect all three cases. Global capture passes its immutable ID
+as the locator. Normal mobile entry uses `owner_mobile:manual`; test environment
+classification belongs to the preview/reference metadata, not evidence provenance.
