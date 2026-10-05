@@ -1,1 +1,1 @@
-{"name":"greenhouse-owner-os-owner-ui","private":true,"type":"module","scripts":{"test:ui":"node --test tests/frontend/core.test.mjs","test:e2e":"node tests/e2e/owner.mjs"},"devDependencies":{"playwright":"1.61.1"}}
+{"name":"greenhouse-owner-os-owner-ui","private":true,"type":"module","scripts":{"test:ui":"node --test tests/frontend/*.test.mjs","test:e2e":"node tests/e2e/owner.mjs"},"devDependencies":{"playwright":"1.61.1"}}

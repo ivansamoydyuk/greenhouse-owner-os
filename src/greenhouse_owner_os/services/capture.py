@@ -30,6 +30,9 @@ class CaptureConfirm(StrictModel):
 AREA_ALIASES={'İmamlı':('имамлы','имаммлы','imamlı','imamli'), 'Özvadi':('озвади','özvadi','ozvadi'), 'Yeşilöz':('ешилоз','ешилёз','yeşilöz','yesiloz')}
 
 def extract(text, *, counterparties=(), areas=(), accounts=(), today=None):
+    from .harvest_capture import extract_harvest
+    harvest=extract_harvest(text,counterparties=counterparties,areas=areas,today=today)
+    if harvest:return harvest
     today=today or datetime.now(ZoneInfo('Europe/Istanbul')).date()
     t=text.casefold();f={};gaps=[]
     if not text.strip():return 'UNRESOLVED',{},['Напишите событие или продиктуйте его.']
@@ -125,6 +128,8 @@ class CaptureService:
             row=uow.session.scalar(select(CaptureRow).where(CaptureRow.id==cid).with_for_update())
             if not row or row.entity_id!=entity_id:raise NotFoundError('capture not found')
             if row.version!=body.expected_version or row.state=='LINKED':raise ConflictError('capture already confirmed or version changed')
+            if row.route=='HARVEST_DEPOT':
+                return self._confirm_harvest(uow,row,entity_id,cid,actor_id,key,body,h)
             if row.route!='FINANCE':raise ValidationError('banana sale requires authoritative harvest/depot settlement')
             f=dict(body.reviewed);kind=f.pop('kind',None);received=f.pop('principal_received',False)
             if not isinstance(received,bool):raise ValidationError('strategic principal receipt requires explicit review')
@@ -168,3 +173,29 @@ class CaptureService:
             uow.audit.append(actor_id=actor_id,action='capture_confirm',entity_type='capture',entity_id=cid,before=before,after=dict(result,reviewed=body.reviewed))
             uow.idempotency.put(actor_id=actor_id,operation='capture_confirm',key=key,request_hash=h,resource_type='capture',resource_id=cid,response=result)
             uow.commit();return result
+
+    def _confirm_harvest(self,uow,row,e,cid,actor,key,body,h):
+        from .harvest import HarvestService
+        from greenhouse_owner_os.domain.harvest import ReportInput,BatchInput,SettlementInput
+        f=dict(body.reviewed);kind=f.pop('kind',None)
+        duplicate_reviewed=f.pop('duplicate_reviewed',False)
+        if any('Похожее' in g for g in row.gaps) and not duplicate_reviewed:raise ValidationError('duplicate suspicion requires explicit review')
+        f.pop('greenhouse_id',None);f.pop('direction',None)
+        evidence=dict(source='capture:'+row.source,source_reference=str(cid),raw_text=row.original_text)
+        service=HarvestService(lambda:BorrowedUow(uow))
+        if kind=='report':
+            f['evidence']=evidence
+            r=service.report(e,actor,'capture:harvest:'+str(cid),ReportInput(**f))
+        elif kind=='batch':
+            # Capture itself is permanent provenance for an explicitly reviewed load.
+            f.setdefault('link_evidence','capture:'+str(cid)+' '+row.original_text)
+            r=service.batch(e,actor,'capture:harvest:'+str(cid),BatchInput(**f))
+        elif kind=='settlement':
+            f['evidence']=evidence
+            r=service.settlement(e,actor,'capture:harvest:'+str(cid),SettlementInput(**f))
+        else:raise ValidationError('select harvest draft type')
+        before=serialize_capture(row);row.harvest_kind=kind;row.harvest_id=UUID(r['id']);row.state='LINKED';row.version+=1
+        uow.session.flush();result=dict(capture=serialize_capture(row),harvest=r,posted=False)
+        uow.audit.append(actor_id=actor,action='capture_confirm',entity_type='capture',entity_id=cid,before=before,after=dict(result,reviewed=body.reviewed))
+        uow.idempotency.put(actor_id=actor,operation='capture_confirm',key=key,request_hash=h,resource_type='capture',resource_id=cid,response=result)
+        uow.commit();return result

@@ -140,7 +140,7 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin, OpeningServiceMixin)
             uow.commit()
             return response
 
-    def post_obligation(self, *, actor_id: UUID, idempotency_key: str, obligation_id: UUID, expected_version: int) -> dict[str, Any]:
+    def post_obligation(self, *, actor_id: UUID, idempotency_key: str, obligation_id: UUID, expected_version: int, _depot_source=None) -> dict[str, Any]:
         operation = "post_obligation"
         payload = {"obligation_id": str(obligation_id), "expected_version": expected_version}
         request_hash = _hash_request(payload)
@@ -159,7 +159,7 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin, OpeningServiceMixin)
             uow.finance.assert_live_date(obligation.entity_id, obligation.event_date)
             uow.finance.assert_ledger_account_scope(obligation.offset_ledger_account_id, obligation.entity_id, obligation.currency)
             if obligation.economic_source == "harvest_depot":
-                raise ValidationError("banana sale requires authoritative harvest/depot settlement")
+                self._assert_depot_source(uow, obligation.id, _depot_source)
             if obligation.obligation_class == "STRATEGIC":
                 uow.finance.assert_strategic_basis(obligation)
             control_code = "AP_CONTROL" if obligation.direction == ObligationDirection.PAYABLE else "AR_CONTROL"
@@ -372,7 +372,7 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin, OpeningServiceMixin)
     def reverse_obligation(self, *, actor_id: UUID, idempotency_key: str, obligation_id: UUID, command: ReverseCommand):
         return self._reverse("obligation", obligation_id, actor_id, idempotency_key, command)
 
-    def _reverse(self, kind, resource_id, actor_id, key, command):
+    def _reverse(self, kind, resource_id, actor_id, key, command, _depot_source=None):
         operation = "reverse_" + kind
         request_hash = _hash_request({"id": str(resource_id), **command.model_dump(mode="json")})
         with self.uow_factory() as uow:
@@ -384,6 +384,8 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin, OpeningServiceMixin)
             record = getter(resource_id, for_update=True)
             if not record:
                 raise NotFoundError(kind + " not found")
+            if kind == 'obligation' and record.economic_source == 'harvest_depot':
+                self._assert_depot_source(uow, record.id, _depot_source)
             if record.status == RecordStatus.REVERSED:
                 raise ConflictError(kind + " already reversed")
             if record.version != command.expected_version:
@@ -498,3 +500,10 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin, OpeningServiceMixin)
         if existing["request_hash"] != request_hash:
             raise IdempotencyConflictError("idempotency key was already used with a different request")
         return existing["response"]
+
+    @staticmethod
+    def _assert_depot_source(uow, obligation_id, source_id):
+        from greenhouse_owner_os.infrastructure.harvest_models import SettlementRow
+        row=uow.session.get(SettlementRow,source_id) if source_id else None
+        if not row or row.obligation_id != obligation_id:
+            raise ValidationError('banana sale requires authoritative harvest/depot settlement')
