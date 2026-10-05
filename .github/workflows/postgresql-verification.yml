@@ -73,7 +73,7 @@ jobs:
         run: pytest tests/integration/test_postgres_opening.py -v
       - name: PostgreSQL integration and concurrency tests
         run: |
-          pytest tests/integration -v --junitxml="$RUNNER_TEMP/integration.xml"
+          timeout --signal=TERM --kill-after=10s 300s pytest tests/integration -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/integration.xml"
           python - <<'PY'
           import os
           import xml.etree.ElementTree as ET
@@ -83,7 +83,7 @@ jobs:
           PY
       - name: Complete Finance test suite
         run: |
-          pytest -v --junitxml="$RUNNER_TEMP/finance.xml"
+          timeout --signal=TERM --kill-after=10s 300s pytest -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/finance.xml"
           python - <<'PY'
           import os
           import xml.etree.ElementTree as ET
