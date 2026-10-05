@@ -8,6 +8,15 @@ from pydantic import Field,field_validator,model_validator
 from .commands import StrictModel
 
 Unit=Literal['kg','L','piece','bag','container','package']
+class ValuationCurrencyInput(StrictModel):
+    currency:Literal['TRY','USD','EUR','UAH']
+    verification:str=Field(min_length=1,max_length=2000)
+    @field_validator('verification')
+    @classmethod
+    def verified_basis(cls,v):
+        if not v.strip():raise ValueError('Укажите основание установки валюты оценки')
+        return v.strip()
+
 def exact(v):
     if not isinstance(v,str) or not re.fullmatch(r'\d{1,18}(?:\.\d{1,12})?',v) or Decimal(v)>=Decimal('1e18'):raise ValueError('Use exact decimal strings, maximum 12 decimal places')
     result=format(Decimal(v),'f')

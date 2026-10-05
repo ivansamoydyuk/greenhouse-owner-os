@@ -2786,6 +2786,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/products/{product_id}/valuation-currency:
+    post:
+      summary: Valuation Currency
+      operationId: valuation_currency_v1_entities__entity_id__inventory_products__product_id__valuation_currency_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: product_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Product Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValuationCurrencyInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -4854,6 +4897,27 @@ components:
       - base_unit
       - source
       title: ProductInput
+    ValuationCurrencyInput:
+      properties:
+        currency:
+          type: string
+          enum:
+          - TRY
+          - USD
+          - EUR
+          - UAH
+          title: Currency
+        verification:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Verification
+      additionalProperties: false
+      type: object
+      required:
+      - currency
+      - verification
+      title: ValuationCurrencyInput
   responses:
     Conflict:
       description: Version or idempotency conflict

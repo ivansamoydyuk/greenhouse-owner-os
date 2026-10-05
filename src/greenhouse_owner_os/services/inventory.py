@@ -83,6 +83,15 @@ class InventoryService:
             self._product(u,e,p)
             return rows(u,'UPDATE inventory.products SET active=:active WHERE id=:p RETURNING *',active=active,p=p)[0]
         return self._write(e,a,key,'inventory_product_active',dict(product_id=str(p),active=active),run)
+    def establish_currency(self,e,a,key,p,b):
+        def run(u):
+            product=self._product(u,e,p)
+            if product['currency'] is not None:
+                if product['currency']==b.currency:return product
+                raise ConflictError('Валюта оценки уже установлена: '+product['currency']+'. Изменение запрещено')
+            u.session.execute(text('INSERT INTO inventory.currency_establishments(product_id,currency,verification,established_by) VALUES(:p,:currency,:verification,:a)'),dict(p=p,a=a,**b.model_dump()))
+            return self._product(u,e,p)
+        return self._write(e,a,key,'inventory_valuation_currency',dict(product_id=str(p),**b.model_dump()),run)
     def location(self,e,a,key,b):
         def run(u):
             if b.work_area_id:self._area(u,e,b.work_area_id)
@@ -113,9 +122,10 @@ class InventoryService:
                     r=self._area(u,e,ln.greenhouse_id)
                     if r.kind!='greenhouse':raise ValidationError('Выберите теплицу')
                 if ln.work_area_id:self._area(u,e,ln.work_area_id,ln.greenhouse_id)
-            prior=rows(u,'SELECT * FROM inventory.events WHERE entity_id=:e AND source=:source AND locator=:loc AND kind=:kind AND replacement_of_id IS NOT DISTINCT FROM CAST(:replacement AS uuid)',e=e,source=b.evidence.source,loc=b.evidence.locator,kind=b.kind,replacement=b.replacement_of_id) if b.evidence.locator else []
+            prior=rows(u,'SELECT * FROM inventory.events WHERE entity_id=:e AND source=:source AND locator=:loc AND replacement_of_id IS NOT DISTINCT FROM CAST(:replacement AS uuid)',e=e,source=b.evidence.source,loc=b.evidence.locator,replacement=b.replacement_of_id) if b.evidence.locator else []
             if prior:
                 r=prior[0]
+                if r['kind']!=b.kind:raise ConflictError('Источник уже связан с другим видом складского события. Проверьте исходное событие; повторное движение запрещено')
                 if (r['payload'],r['evidence'],r['event_date'])!=(payload,ev,str(b.event_date) if b.event_date else None):raise ConflictError('Данные стабильного источника изменились; оригинал сохранён')
                 return self._view(u,r)
             r=rows(u,'INSERT INTO inventory.events(id,entity_id,kind,event_date,payload,evidence,source,locator,replacement_of_id,created_by) VALUES(:id,:e,:kind,:day,CAST(:payload AS jsonb),CAST(:evidence AS jsonb),:source,:loc,:replacement,:a) RETURNING *',id=uuid4(),e=e,kind=b.kind,day=b.event_date,payload=json.dumps(payload),evidence=json.dumps(ev),source=b.evidence.source,loc=b.evidence.locator,replacement=b.replacement_of_id,a=a)[0]
@@ -165,6 +175,12 @@ class InventoryService:
             if r['status']=='posted':return self._view(u,r)
             if r['status']!='draft' or r['version']!=b.expected_version:raise ConflictError('Событие уже изменено')
             if r['evidence']['verification']=='HISTORY':raise ValidationError('Исторический источник не проводится в текущие остатки')
+            if r['kind']=='receipt':
+                for ln in r['payload']['lines']:
+                    if ln['unit_cost'] is not None and ln['product_id']:
+                        currency=self._product(u,e,ln['product_id'])['currency']
+                        if currency is None:raise ValidationError('Сначала установите валюту оценки товара для прихода с известной стоимостью')
+                        if ln['currency']!=currency:raise ValidationError('Валюта цены не совпадает с валютой оценки товара: '+currency+'. Автоматический пересчёт валют не выполняется')
             r=rows(u,"UPDATE inventory.events SET status='posted',version=version+1,posted_by=:a,posted_at=clock_timestamp(),duplicate_reviewed=:duplicate WHERE id=:i RETURNING *",a=a,i=i,duplicate=b.duplicate_reviewed)[0]
             return self._view(u,r)
         return self._write(e,a,key,'inventory_post',dict(id=str(i),**b.model_dump()),run)

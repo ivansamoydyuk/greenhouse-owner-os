@@ -3,7 +3,7 @@ from datetime import date
 from fastapi import Depends,Header,Response
 from pydantic import Field
 from greenhouse_owner_os.domain.commands import StrictModel
-from greenhouse_owner_os.domain.inventory import ProductInput,ConversionInput,LocationInput,InventoryInput,InventoryPost,InventoryReverse
+from greenhouse_owner_os.domain.inventory import ProductInput,ConversionInput,LocationInput,InventoryInput,InventoryPost,InventoryReverse,ValuationCurrencyInput
 from greenhouse_owner_os.services.inventory import InventoryService
 from greenhouse_owner_os.domain.errors import NotFoundError
 import base64
@@ -22,6 +22,9 @@ def mount_inventory(app,finance,actor_provider):
     @app.post('/v1/entities/{entity_id}/inventory/products/{product_id}/active')
     def active(entity_id:UUID,product_id:UUID,body:ActiveInput,key:str=Header(alias='Idempotency-Key'),actor:UUID=Depends(actor_provider)):
         return service.active(entity_id,actor,key,product_id,body.active)
+    @app.post('/v1/entities/{entity_id}/inventory/products/{product_id}/valuation-currency')
+    def valuation_currency(entity_id:UUID,product_id:UUID,body:ValuationCurrencyInput,key:str=Header(alias='Idempotency-Key'),actor:UUID=Depends(actor_provider)):
+        return service.establish_currency(entity_id,actor,key,product_id,body)
     @app.post('/v1/entities/{entity_id}/inventory/products/{product_id}/conversions',status_code=201)
     def conversion(entity_id:UUID,product_id:UUID,body:ConversionInput,key:str=Header(alias='Idempotency-Key'),actor:UUID=Depends(actor_provider)):
         return service.conversion(entity_id,actor,key,product_id,body)
