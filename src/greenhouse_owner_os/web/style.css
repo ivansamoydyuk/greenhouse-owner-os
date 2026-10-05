@@ -3,3 +3,10 @@
 .capture{display:block;width:100%;margin:12px 0 16px;background:#c5db8f;color:#173c32}textarea{display:block;width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;resize:vertical}blockquote{margin:12px 0;padding:12px;background:#f4f5ef;border-left:3px solid #173c32;overflow-wrap:anywhere}.gaps{padding:14px 14px 14px 32px;border-radius:12px;background:#fff3da;line-height:1.6}[hidden]{display:none!important}details .menu{margin-top:12px}
 
 nav{grid-template-columns:repeat(5,minmax(0,1fr))}nav button{font-size:11px;white-space:normal} .check-row{display:flex;align-items:flex-start;gap:10px;margin:12px 0}.check-row input[type=checkbox]{width:20px;min-width:20px;height:20px}.h-allocation{padding:12px 0;border-bottom:1px solid #ddd}.harvest-actions{flex-wrap:wrap}.h-line input{min-width:0}.h-line details{margin-top:16px}
+
+nav{grid-template-columns:repeat(6,minmax(0,1fr))}nav button{padding:10px 3px;font-size:10px}blockquote{margin:14px 0;white-space:pre-wrap;overflow-wrap:anywhere}#sheet-content p,.item strong{overflow-wrap:anywhere}
+dialog .close{margin-right:0}
+
+#sheet-content .actions{flex-wrap:wrap}#sheet-content .actions button{min-width:110px}
+
+.inbox-facts{font-size:14px;margin:12px 0}.inbox-facts>div{padding:9px 0;border-bottom:1px solid var(--line)}.inbox-facts dt{color:var(--muted);font-size:12px}.inbox-facts dd{margin:4px 0;overflow-wrap:anywhere}.inbox-fact-group{padding:12px;background:#f4f5ef;border-radius:10px;margin-top:8px}

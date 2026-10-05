@@ -152,6 +152,7 @@ class CaptureService:
             finance=FinanceService(lambda:BorrowedUow(uow))
             if kind=='obligation':
                 amount=f.pop('amount',None);account=f.pop('money_account_id',None)
+                explicit_offset=f.pop('offset_ledger_account_id',None)
                 cls=f.get('obligation_class','OPERATIONAL')
                 if received and cls=='STRATEGIC':
                     try:a=uow.session.get(MoneyAccountRow,UUID(account)) if account else None
@@ -160,7 +161,7 @@ class CaptureService:
                     offset=a.ledger_account_id
                 else:
                     code='STRATEGIC_PRINCIPAL' if cls=='STRATEGIC' else ('GENERAL_EXPENSE' if f.get('direction')=='payable' else 'GENERAL_REVENUE')
-                    offset=uow.finance.get_system_ledger_account(entity_id,f.get('currency'),code)
+                    offset=UUID(explicit_offset) if explicit_offset else uow.finance.get_system_ledger_account(entity_id,f.get('currency'),code)
                 cmd=CreateObligationCommand(entity_id=entity_id,original_amount=amount,offset_ledger_account_id=offset,**f)
                 r=finance.create_obligation(actor_id=actor_id,idempotency_key='capture:'+str(cid),command=cmd)
             elif kind=='payment':

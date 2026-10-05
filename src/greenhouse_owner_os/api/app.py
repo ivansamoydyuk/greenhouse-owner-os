@@ -85,6 +85,8 @@ def create_app(*, finance_service: FinanceService, actor_provider, reference_ser
 
     from .harvest import mount_harvest
     mount_harvest(app,finance_service,actor_provider)
+    from .inbox import mount_inbox
+    mount_inbox(app,finance_service,actor_provider)
     capture_service=CaptureService(finance_service.uow_factory) if finance_service else None
 
     @app.post('/v1/entities/{entity_id}/captures',status_code=201)
