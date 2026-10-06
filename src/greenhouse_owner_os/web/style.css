@@ -16,3 +16,5 @@ dialog .close{margin-right:0}
 #nav{display:flex;overflow-x:auto;flex-wrap:nowrap}#nav button{flex:0 0 88px;min-width:88px}.actions{flex-wrap:wrap}
 
 #nav{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));overflow:visible}#nav button{min-width:0;width:100%;padding:10px 1px;font-size:9px;overflow-wrap:anywhere}
+
+.tasks-topline{flex-wrap:wrap}.tasks-topline>div{flex:1 1 180px;min-width:0}.worker-reference{flex-wrap:wrap}.worker-reference>span{flex:1 1 100%;min-width:0;overflow-wrap:anywhere}

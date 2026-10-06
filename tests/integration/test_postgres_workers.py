@@ -265,3 +265,11 @@ def test_service_identity_cannot_impersonate_another_worker(setup):
         svc.report(f.entity_id,UUID(other['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(assignment_id=a['id'],original_text='TEST impersonation',original_language='ru',locator=str(uuid4())))
     with pytest.raises(NotFoundError):
         svc.create(f.entity_id,UUID(w['actor_id']),str(uuid4()),TaskInput(**t['interpretation']).model_copy(update={'locator':str(uuid4())}))
+
+
+def test_wrk_036_sql_assignment_without_audited_action_rejects(setup):
+    f,svc,w,t=setup
+    with pytest.raises(DBAPIError):
+        with f.session_factory.begin() as session:
+            session.execute(text("INSERT INTO workers.assignments(id,entity_id,task_id,worker_id,assigned_by,language,rendered_text,translation_source,translation_version,rendering_reviewed) VALUES(:id,:e,:t,:w,:a,'ru',:raw,'original','TEST',true)"),dict(id=uuid4(),e=f.entity_id,t=t['id'],w=w['id'],a=f.actor_id,raw=t['original_instruction']))
+    assert svc.get(f.entity_id,UUID(t['id']))['assignments']==[]

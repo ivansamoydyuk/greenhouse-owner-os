@@ -88,7 +88,8 @@ CREATE TRIGGER actions_immutable BEFORE UPDATE OR DELETE ON workers.actions FOR 
 CREATE TRIGGER rules_immutable BEFORE UPDATE OR DELETE ON workers.rules FOR EACH ROW EXECUTE FUNCTION workers.immutable();
 CREATE TRIGGER links_immutable BEFORE UPDATE OR DELETE ON workers.links FOR EACH ROW EXECUTE FUNCTION workers.immutable();
 CREATE FUNCTION workers.require_owner() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
- IF NOT EXISTS(SELECT 1 FROM core.actors WHERE id=NEW.created_by AND actor_type='owner' AND active) THEN RAISE EXCEPTION 'Owner creator required' USING ERRCODE='23514'; END IF;RETURN NEW; END $$;
+ IF NOT EXISTS(SELECT 1 FROM core.actors WHERE id=NEW.created_by AND actor_type='owner' AND active) THEN RAISE EXCEPTION 'Owner creator required' USING ERRCODE='23514'; END IF;
+ IF TG_TABLE_NAME='people' AND NOT EXISTS(SELECT 1 FROM core.actors WHERE id=(to_jsonb(NEW)->>'actor_id')::uuid AND actor_type='worker' AND active) THEN RAISE EXCEPTION 'Dedicated worker actor required' USING ERRCODE='23514'; END IF;RETURN NEW; END $$;
 CREATE TRIGGER task_owner BEFORE INSERT ON workers.tasks FOR EACH ROW EXECUTE FUNCTION workers.require_owner();
 CREATE TRIGGER rule_owner BEFORE INSERT ON workers.rules FOR EACH ROW EXECUTE FUNCTION workers.require_owner();
 CREATE TRIGGER person_owner BEFORE INSERT ON workers.people FOR EACH ROW EXECUTE FUNCTION workers.require_owner();
@@ -175,6 +176,9 @@ CREATE FUNCTION workers.apply_action() RETURNS trigger LANGUAGE plpgsql AS $$ DE
  cancelled_at=CASE WHEN s='cancelled' THEN COALESCE(cancelled_at,NEW.received_at) ELSE NULL END WHERE id=t.id;
  RETURN NEW; END $$;
 CREATE TRIGGER action_effect AFTER INSERT ON workers.actions FOR EACH ROW EXECUTE FUNCTION workers.apply_action();
+CREATE FUNCTION workers.assignment_committed() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM workers.actions WHERE assignment_id=NEW.id AND kind='assign') OR EXISTS(SELECT 1 FROM workers.tasks WHERE id=NEW.task_id AND status='draft') THEN RAISE EXCEPTION 'Assignment requires its auditable lifecycle action' USING ERRCODE='23514'; END IF;RETURN NEW; END $$;
+CREATE CONSTRAINT TRIGGER assignment_committed AFTER INSERT ON workers.assignments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workers.assignment_committed();
 CREATE FUNCTION workers.guard_rule() RETURNS trigger LANGUAGE plpgsql AS $$ DECLARE p workers.rules%ROWTYPE; BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('workers-rule:'||NEW.template_id::text,0));
  IF NEW.replaces_id IS NULL THEN
