@@ -32,7 +32,7 @@ def report(s,w,t,a,*,locator=None,original='تمام شد',source_timestamp=None
     f,svc,_,_=s
     return svc.report(f.entity_id,UUID(w['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(assignment_id=a['id'],original_text=original,original_language=w['language'],source='telegram:message',locator=locator or str(uuid4()),source_timestamp=source_timestamp,normalized={'duration_minutes':35}))
 def reported(s):
-    f,svc,w,t=s;a=assign(s,w,t);act(s,w,t,'acknowledge',a);r=report(s,w,t,a);act(s,w,t,'submit_report',a,r);return a,r
+    f,svc,w,t=s;a=assign(s,w,t);act(s,w,t,'acknowledge',a);act(s,w,t,'start',a);r=report(s,w,t,a);act(s,w,t,'submit_report',a,r);return a,r
 
 def test_wrk_001_009_complete_reopen_cancel_history(setup):
     f,svc,w,t=setup
@@ -80,7 +80,7 @@ def test_wrk_015_017_019_no_domain_effects(setup,category):
     f,svc,w,t=setup
     with f.session_factory() as session:before=[session.scalar(text('SELECT count(*) FROM '+table+' WHERE entity_id=:e'),{'e':f.entity_id}) for table in ['finance.postings','inventory.movements','harvest.worker_reports']]
     b=TaskInput(**t['interpretation']).model_copy(update={'category':category,'locator':str(uuid4())});r=svc.create(f.entity_id,f.actor_id,str(uuid4()),b)
-    a=assign(setup,w,r);rep=report(setup,w,r,a);act(setup,w,r,'submit_report',a,rep);act(setup,w,r,'complete')
+    a=assign(setup,w,r);act(setup,w,r,'acknowledge',a);act(setup,w,r,'start',a);rep=report(setup,w,r,a);act(setup,w,r,'submit_report',a,rep);act(setup,w,r,'complete')
     with f.session_factory() as session:after=[session.scalar(text('SELECT count(*) FROM '+table+' WHERE entity_id=:e'),{'e':f.entity_id}) for table in ['finance.postings','inventory.movements','harvest.worker_reports']]
     assert before==after==[0,0,0]
 

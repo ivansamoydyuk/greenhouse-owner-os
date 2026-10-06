@@ -41,7 +41,7 @@ class AssignmentInput(StrictModel):
     translation_version:str=Field(default='manual-r1',min_length=1,max_length=200)
     rendering_reviewed:Literal[True]
 class ActionInput(StrictModel):
-    kind:Literal['acknowledge','start','complete','reopen','cancel','submit_report']
+    kind:Literal['acknowledge','start','complete','reopen','cancel','submit_report','review_report']
     reason:str=Field(default='',max_length=2000)
     assignment_id:UUID|None=None
     report_id:UUID|None=None

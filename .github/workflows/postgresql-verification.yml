@@ -66,8 +66,8 @@ jobs:
           from sqlalchemy import create_engine, text
           with create_engine(os.environ['DATABASE_URL']).connect() as conn:
               revisions = conn.execute(text('SELECT version_num FROM public.alembic_version')).scalars().all()
-          assert revisions == ['20261006_0020'], 'Unexpected Alembic revision'
-          print('Alembic head: 20261006_0020')
+          assert revisions == ['20261006_0021'], 'Unexpected Alembic revision'
+          print('Alembic head: 20261006_0021')
           PY
       - name: Operational API smoke and reference safety
         run: pytest tests/integration/test_postgres_readiness.py -v

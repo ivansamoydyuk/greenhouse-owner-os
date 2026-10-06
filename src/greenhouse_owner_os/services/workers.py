@@ -9,6 +9,11 @@ from greenhouse_owner_os.domain.workers import TaskInput,ReportInput
 from .finance import FinanceService,_hash_request
 from .inventory import rows
 
+def same_value(key,left,right):
+    if key in ('source_timestamp','event_at','due_at') and left is not None and right is not None:
+        return datetime.fromisoformat(left)==datetime.fromisoformat(right)
+    return left==right
+
 class WorkersService:
     def __init__(self,factory):self.factory=factory;self.finance=FinanceService(factory)
     def _write(self,e,a,key,operation,payload,fn):
@@ -77,7 +82,7 @@ class WorkersService:
         p=dict(entity_id=str(e),task_id=str(t),kind=kind,actor_id=str(a) if a else None,worker_id=str(w) if w else None,assignment_id=str(assignment) if assignment else None,report_id=str(report) if report else None,reason=reason,source=source,locator=locator,source_timestamp=source_timestamp.isoformat() if source_timestamp else None)
         old=rows(u,'SELECT * FROM workers.actions WHERE entity_id=:e AND source=:source AND locator=:locator',e=e,source=source,locator=locator)
         if old:
-            if any(old[0][k]!=v for k,v in p.items()):raise ConflictError('Сообщение изменено; нужна отдельная версия/проверка')
+            if any(not same_value(k,old[0][k],v) for k,v in p.items()):raise ConflictError('Сообщение изменено; нужна отдельная версия/проверка')
             return old[0]
         if kind in ('acknowledge','start'):
             previous=rows(u,'SELECT * FROM workers.actions WHERE assignment_id=:id AND cycle=:cycle AND kind=:kind',id=assignment,cycle=task['cycle'],kind=kind)
@@ -100,9 +105,12 @@ class WorkersService:
                 if not assignment or b.assignment_id and str(b.assignment_id)!=assignment[0]['id']:raise NotFoundError('assignment not found')
                 assignment_id=assignment[0]['id']
             else:
-                if b.kind not in ('complete','reopen','cancel'):raise ValidationError('Worker action requires scoped worker identity')
+                if b.kind not in ('complete','reopen','cancel','review_report'):raise ValidationError('Worker action requires scoped worker identity')
                 assignment_id=None
                 if b.expected_version is None or b.expected_version!=task['version']:raise ConflictError('Состояние задачи изменилось; обновите и проверьте')
+            if b.kind=='submit_report':
+                current_report=rows(u,'SELECT id FROM workers.reports WHERE id=:r AND task_id=:t AND cycle=:c AND state=\'draft\'',r=b.report_id,t=t,c=task['cycle'])
+                if not current_report and not rows(u,'SELECT id FROM workers.actions WHERE entity_id=:e AND source=:s AND locator=:l',e=e,s=b.source,l=b.locator):raise ValidationError('Отчёт уже отправлен или относится к предыдущему циклу')
             self._action(u,e,t,b.kind,None if worker_id else a,worker_id,assignment_id,b.report_id,b.reason,b.source,b.locator,b.source_timestamp)
             return self._detail(u,e,t,worker_id)
         return self._write(e,a,key,'task_action',dict(task_id=str(t),worker_id=str(worker_id) if worker_id else None,**b.model_dump(mode='json')),run)
@@ -115,7 +123,7 @@ class WorkersService:
             if not assignment:raise NotFoundError('assignment not found')
             p=b.model_dump(mode='json');old=rows(u,'SELECT * FROM workers.reports WHERE entity_id=:e AND source=:source AND locator=:locator',e=e,source=b.source,locator=b.locator)
             if old:
-                if old[0]['task_id']!=str(t) or old[0]['worker_id']!=str(w) or any(old[0][k]!=v for k,v in p.items()):raise ConflictError('Changed original report; use new message identity')
+                if old[0]['task_id']!=str(t) or old[0]['worker_id']!=str(w) or any(not same_value(k,old[0][k],v) for k,v in p.items()):raise ConflictError('Changed original report; use new message identity')
                 return old[0]
             for k in ('normalized','issues','attachments'):p[k]=json.dumps(p[k],ensure_ascii=False)
             return rows(u,'INSERT INTO workers.reports(id,entity_id,task_id,assignment_id,worker_id,cycle,original_text,original_language,normalized,issues,attachments,claim,source,locator,source_timestamp,event_at) VALUES(:id,:e,:t,:assignment_id,:w,:cycle,:original_text,:original_language,CAST(:normalized AS jsonb),CAST(:issues AS jsonb),CAST(:attachments AS jsonb),:claim,:source,:locator,:source_timestamp,:event_at) RETURNING *',id=uuid4(),e=e,t=t,w=w,cycle=task['cycle'],**p)[0]
@@ -156,7 +164,7 @@ class WorkersService:
         task['actions']=rows(u,'SELECT * FROM workers.actions WHERE task_id=:t AND (CAST(:w AS uuid) IS NULL OR worker_id IS NULL OR worker_id=CAST(:w AS uuid)) ORDER BY received_at,id',t=t,w=str(w) if w else None)
         if w:
             # Worker payload intentionally omits downstream accounting links and other assignees.
-            for k in ('interpretation','source','locator','created_by'):task.pop(k,None)
+            for k in ('interpretation','source','locator','created_by','description','gaps'):task.pop(k,None)
         else:task['links']=rows(u,'SELECT * FROM workers.links WHERE task_id=:t ORDER BY created_at',t=t)
         return task
     def get(self,e,t,w=None):
@@ -170,22 +178,23 @@ class WorkersService:
             if w:
                 worker=self._worker(u,e,w)
                 if not worker['active']:raise NotFoundError('worker inactive')
-                tasks=rows(u,'SELECT t.id,t.title,t.status,t.planned_date,t.due_at,t.category,t.greenhouse_id FROM workers.tasks t JOIN workers.assignments a ON a.task_id=t.id WHERE t.entity_id=:e AND a.worker_id=:w ORDER BY t.created_at DESC',e=e,w=w)
+                tasks=rows(u,'SELECT t.id,a.rendered_text AS title,t.status,t.planned_date,t.due_at,t.category,t.greenhouse_id FROM workers.tasks t JOIN workers.assignments a ON a.task_id=t.id WHERE t.entity_id=:e AND a.worker_id=:w ORDER BY t.created_at DESC',e=e,w=w)
                 return dict(tasks=tasks,worker=dict(id=worker['id'],display_name=worker['display_name'],language=worker['language']))
             tasks=rows(u,"SELECT t.*,COALESCE((SELECT jsonb_agg(a.worker_id) FROM workers.assignments a WHERE a.task_id=t.id),'[]'::jsonb) AS assigned_worker_ids FROM workers.tasks t WHERE entity_id=:e ORDER BY created_at DESC",e=e)
-            attention=[];now=datetime.now(timezone.utc)
+            attention=[];now=datetime.now(timezone.utc);today=now.astimezone(__import__('zoneinfo').ZoneInfo('Europe/Istanbul')).date()
             for t in tasks:
                 reasons=list(t['gaps']) if t['status']=='draft' else []
-                if t['status'] not in ('completed','cancelled') and t['due_at'] and datetime.fromisoformat(t['due_at'])<now:reasons.append('Просрочено')
+                if t['status'] not in ('completed','cancelled') and ((t['due_at'] and datetime.fromisoformat(t['due_at'])<now) or (not t['due_at'] and t['planned_date'] and t['planned_date']<today.isoformat())):reasons.append('Просрочено')
                 if t['status']=='reported':reasons.append('Отчёт требует решения владельца')
                 if t['status'] not in ('completed','cancelled') and rows(u,'SELECT id FROM workers.assignments WHERE task_id=:t AND acknowledged_at IS NULL',t=t['id']):reasons.append('Ожидает подтверждения работником')
-                if rows(u,"SELECT task_id FROM workers.reports WHERE task_id=:t AND cycle=:cycle AND state='submitted' GROUP BY task_id HAVING count(DISTINCT claim)>1",t=t['id'],cycle=t['cycle']):reasons.append('Разные заявления в отчётах: проверьте результат')
+                if rows(u,"SELECT r.id FROM workers.reports r WHERE r.task_id=:t AND r.cycle=:cycle AND r.state='submitted' AND r.claim='issue' AND NOT EXISTS(SELECT 1 FROM workers.actions a WHERE a.report_id=r.id AND a.kind='review_report')",t=t['id'],cycle=t['cycle']):reasons.append('Замечание требует проверки')
                 if t['status']=='reopened':reasons.append('Возвращено в работу')
-                late=rows(u,"SELECT r.id FROM workers.reports r WHERE r.task_id=:t AND (r.state='draft' OR (r.received_at>COALESCE(CAST(:completed AS timestamptz),r.received_at) AND CAST(:completed AS timestamptz) IS NOT NULL))",t=t['id'],completed=t['completed_at'])
-                if late:reasons.append('Новый или поздний отчёт требует проверки')
+                late=rows(u,"SELECT r.* FROM workers.reports r WHERE r.task_id=:t AND (r.state='draft' OR r.claim IN ('note','issue') OR (r.received_at>COALESCE(CAST(:completed AS timestamptz),r.received_at) AND CAST(:completed AS timestamptz) IS NOT NULL))",t=t['id'],completed=t['completed_at'] or t['cancelled_at'])
+                if any(not rows(u,"SELECT id FROM workers.actions WHERE task_id=:t AND ((report_id=:r AND kind='review_report') OR (kind IN ('complete','reopen') AND cycle=:c AND received_at>=CAST(:stamp AS timestamptz)))",t=t['id'],r=r['id'],c=r['cycle'],stamp=r['submitted_at'] or r['received_at']) for r in late):reasons.append('Новый или поздний отчёт требует проверки')
                 if reasons:attention.append(dict(id=t['id'],title=t['title'],reasons=reasons))
             rules=rows(u,'SELECT r.* FROM workers.rules r WHERE entity_id=:e AND NOT EXISTS(SELECT 1 FROM workers.rules n WHERE n.replaces_id=r.id) ORDER BY created_at',e=e)
             today=now.astimezone(__import__('zoneinfo').ZoneInfo('Europe/Istanbul')).date()
-            for r in rules:
+            applicable=rows(u,'SELECT r.* FROM workers.rules r WHERE entity_id=:e AND effective_from<=:d AND NOT EXISTS(SELECT 1 FROM workers.rules n WHERE n.entity_id=r.entity_id AND n.template_id=r.template_id AND n.version>r.version AND n.effective_from<=:d)',e=e,d=today)
+            for r in applicable:
                 if r['active'] and r['effective_from']<=today.isoformat() and (not r['effective_to'] or r['effective_to']>=today.isoformat()) and (r['frequency']=='daily' or r['weekday']==today.weekday()) and not any(t['template_id']==r['template_id'] and t['occurrence_date']==today.isoformat() for t in tasks):attention.append(dict(id=r['id'],title='Повтор не создан',reasons=['Создайте отдельную задачу на сегодня'],rule_id=r['id']))
             return dict(tasks=tasks,workers=rows(u,'SELECT * FROM workers.people WHERE entity_id=:e ORDER BY display_name',e=e),rules=rules,attention=attention,areas=rows(u,'SELECT * FROM core.work_areas WHERE entity_id=:e ORDER BY name',e=e))

@@ -5336,6 +5336,7 @@ components:
           - reopen
           - cancel
           - submit_report
+          - review_report
           title: Kind
         reason:
           type: string
