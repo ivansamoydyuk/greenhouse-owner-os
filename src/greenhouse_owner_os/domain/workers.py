@@ -46,11 +46,17 @@ class ActionInput(StrictModel):
     assignment_id:UUID|None=None
     report_id:UUID|None=None
     expected_version:int|None=Field(default=None,gt=0)
+    expected_cycle:int|None=Field(default=None,gt=0)
     source:str=Field(default='owner:tasks-action',min_length=1,max_length=200)
     locator:str=Field(min_length=1,max_length=2000)
     source_timestamp:datetime|None=None
+    @model_validator(mode='after')
+    def aware(self):
+        if self.source_timestamp and self.source_timestamp.tzinfo is None:raise ValueError('Timestamp must include timezone')
+        return self
 class ReportInput(StrictModel):
     assignment_id:UUID
+    cycle:int=Field(gt=0)
     original_text:str=Field(min_length=1,max_length=10000)
     original_language:Language
     normalized:dict=Field(default_factory=dict)

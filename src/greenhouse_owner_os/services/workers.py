@@ -103,6 +103,7 @@ class WorkersService:
                 if b.kind not in ('acknowledge','start','submit_report'):raise ValidationError('Owner review required')
                 assignment=rows(u,'SELECT * FROM workers.assignments WHERE task_id=:t AND worker_id=:w',t=t,w=worker_id)
                 if not assignment or b.assignment_id and str(b.assignment_id)!=assignment[0]['id']:raise NotFoundError('assignment not found')
+                if b.expected_cycle!=task['cycle']:raise ConflictError('Цикл задачи изменился; обновите поручение')
                 assignment_id=assignment[0]['id']
             else:
                 if b.kind not in ('complete','reopen','cancel','review_report'):raise ValidationError('Worker action requires scoped worker identity')
@@ -126,7 +127,7 @@ class WorkersService:
                 if old[0]['task_id']!=str(t) or old[0]['worker_id']!=str(w) or any(not same_value(k,old[0][k],v) for k,v in p.items()):raise ConflictError('Changed original report; use new message identity')
                 return old[0]
             for k in ('normalized','issues','attachments'):p[k]=json.dumps(p[k],ensure_ascii=False)
-            return rows(u,'INSERT INTO workers.reports(id,entity_id,task_id,assignment_id,worker_id,cycle,original_text,original_language,normalized,issues,attachments,claim,source,locator,source_timestamp,event_at) VALUES(:id,:e,:t,:assignment_id,:w,:cycle,:original_text,:original_language,CAST(:normalized AS jsonb),CAST(:issues AS jsonb),CAST(:attachments AS jsonb),:claim,:source,:locator,:source_timestamp,:event_at) RETURNING *',id=uuid4(),e=e,t=t,w=w,cycle=task['cycle'],**p)[0]
+            return rows(u,'INSERT INTO workers.reports(id,entity_id,task_id,assignment_id,worker_id,cycle,original_text,original_language,normalized,issues,attachments,claim,source,locator,source_timestamp,event_at) VALUES(:id,:e,:t,:assignment_id,:w,:cycle,:original_text,:original_language,CAST(:normalized AS jsonb),CAST(:issues AS jsonb),CAST(:attachments AS jsonb),:claim,:source,:locator,:source_timestamp,:event_at) RETURNING *',id=uuid4(),e=e,t=t,w=w,**p)[0]
         return self._write(e,a,key,'task_report',dict(task_id=str(t),worker_id=str(w),**b.model_dump(mode='json')),run)
     def rule(self,e,a,key,b):
         def run(u):
@@ -165,7 +166,9 @@ class WorkersService:
         if w:
             # Worker payload intentionally omits downstream accounting links and other assignees.
             for k in ('interpretation','source','locator','created_by','description','gaps'):task.pop(k,None)
-        else:task['links']=rows(u,'SELECT * FROM workers.links WHERE task_id=:t ORDER BY created_at',t=t)
+        else:
+            task['can_complete']=task['status']=='reported' and bool(task['assignments']) and all(any(r['assignment_id']==a['id'] and r['cycle']==task['cycle'] and r['state']=='submitted' and r['claim']=='done' for r in task['reports']) for a in task['assignments']) and not any(r['cycle']==task['cycle'] and r['state']=='submitted' and r['claim']=='issue' and not any(x['kind']=='review_report' and x['report_id']==r['id'] for x in task['actions']) for r in task['reports'])
+            task['links']=rows(u,'SELECT * FROM workers.links WHERE task_id=:t ORDER BY created_at',t=t)
         return task
     def get(self,e,t,w=None):
         with self.factory() as u:

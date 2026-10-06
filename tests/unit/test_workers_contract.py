@@ -19,10 +19,21 @@ def test_known_current_worker_only_suggested_never_assigned():
 
 @pytest.mark.parametrize('duration',[True,-1,1.5,1441])
 def test_irrigation_duration_never_infers_volume(duration):
-    with pytest.raises(ValueError):ReportInput(assignment_id=uuid4(),original_text='report',original_language='ru',locator='1',normalized={'duration_minutes':duration})
+    with pytest.raises(ValueError):ReportInput(cycle=1,assignment_id=uuid4(),original_text='report',original_language='ru',locator='1',normalized={'duration_minutes':duration})
 
 def test_worker_openapi_contract():
     from greenhouse_owner_os.api.app import create_app
     app=create_app(finance_service=None,actor_provider=lambda:None)
     paths=app.openapi()['paths']
     assert '/v1/worker/tasks' in paths and '/v1/entities/{entity_id}/tasks/{task_id}/assignments' in paths
+
+def test_workers_openapi_artifact_matches_request_schemas():
+    import yaml
+    from pathlib import Path
+    from greenhouse_owner_os.api.app import create_app
+    runtime=create_app(finance_service=None,actor_provider=lambda:None).openapi()
+    artifact=yaml.safe_load(Path('openapi/owner_core_v1.yaml').read_text())
+    for name in ('ActionInput','greenhouse_owner_os__domain__workers__ReportInput'):
+        assert artifact['components']['schemas'][name]==runtime['components']['schemas'][name]
+    for path,value in runtime['paths'].items():
+        if '/tasks' in path or '/workers' in path or '/task-rules' in path:assert artifact['paths'][path.removeprefix('/v1')]==value

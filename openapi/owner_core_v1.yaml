@@ -5361,6 +5361,12 @@ components:
             exclusiveMinimum: 0.0
           - type: 'null'
           title: Expected Version
+        expected_cycle:
+          anyOf:
+          - type: integer
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Expected Cycle
         source:
           type: string
           maxLength: 200
@@ -5703,6 +5709,10 @@ components:
           type: string
           format: uuid
           title: Assignment Id
+        cycle:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Cycle
         original_text:
           type: string
           maxLength: 10000
@@ -5767,6 +5777,7 @@ components:
       type: object
       required:
       - assignment_id
+      - cycle
       - original_text
       - original_language
       - locator

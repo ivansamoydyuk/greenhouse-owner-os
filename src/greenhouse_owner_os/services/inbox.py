@@ -65,9 +65,10 @@ class DeterministicExtractor:
             known=[w for w in references.get('workers',()) if w.get('telegram_ref')==original.metadata.get('sender_reference') and w.get('active')]
             fields=dict(original_language=original.metadata.get('language') or (known[0]['language'] if len(known)==1 else 'ru'),claim='note')
             gaps=[]
+            if original.metadata.get('source_timestamp'):fields['source_timestamp']=original.metadata['source_timestamp']
             if len(known)==1:fields['worker_id']=known[0]['id']
             else:gaps.append('Неизвестный работник: сопоставьте текущий справочник')
-            for name in ('task_id','assignment_id'):
+            for name in ('task_id','assignment_id','cycle'):
                 if original.metadata.get(name):fields[name]=original.metadata[name]
                 else:gaps.append('Отчёт не сопоставлен с задачей / назначением')
             return dict(text=raw,route='WORKER_REPORTS',fields=fields,gaps=gaps,confidence='LOW',method='original_text')
@@ -213,7 +214,7 @@ class InboxService:
                 from .workers import WorkersService
                 from greenhouse_owner_os.domain.workers import ReportInput
                 worker_id=UUID(fields.pop('worker_id'));task_id=UUID(fields.pop('task_id'))
-                fields.update(original_text=row.raw_text,source=row.source if row.locator else 'inbox:manual',locator=row.locator or str(i))
+                fields.update(source_timestamp=row.metadata_json.get('source_timestamp') or fields.get('source_timestamp'),original_text=row.raw_text,source=row.source if row.locator else 'inbox:manual',locator=row.locator or str(i))
                 r=WorkersService(lambda:BorrowedUow(u)).report(e,a,'inbox:task-report:'+str(i),task_id,worker_id,ReportInput(**fields))
                 row.task_report_id=UUID(r['id'])
             elif row.route=='INVENTORY':

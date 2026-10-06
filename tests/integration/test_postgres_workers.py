@@ -27,10 +27,10 @@ def assign(s,w,t,*,text_value=None):
 def act(s,w,t,kind,assignment=None,report=None,reason='TEST owner decision',key=None,locator=None):
     f,svc,_,_=s;current=svc.get(f.entity_id,UUID(t['id']))
     worker=kind in ('acknowledge','start','submit_report')
-    return svc.action(f.entity_id,UUID(w['actor_id']) if worker else f.actor_id,key or str(uuid4()),UUID(t['id']),ActionInput(kind=kind,assignment_id=assignment['id'] if assignment else None,report_id=report['id'] if report else None,expected_version=None if worker else current['version'],reason=reason,source='test:worker-action' if worker else 'test:owner-action',locator=locator or str(uuid4())),worker_id=UUID(w['id']) if worker else None)
+    return svc.action(f.entity_id,UUID(w['actor_id']) if worker else f.actor_id,key or str(uuid4()),UUID(t['id']),ActionInput(kind=kind,assignment_id=assignment['id'] if assignment else None,report_id=report['id'] if report else None,expected_cycle=current['cycle'] if worker else None,expected_version=None if worker else current['version'],reason=reason,source='test:worker-action' if worker else 'test:owner-action',locator=locator or str(uuid4())),worker_id=UUID(w['id']) if worker else None)
 def report(s,w,t,a,*,locator=None,original='تمام شد',source_timestamp=None):
     f,svc,_,_=s
-    return svc.report(f.entity_id,UUID(w['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(assignment_id=a['id'],original_text=original,original_language=w['language'],source='telegram:message',locator=locator or str(uuid4()),source_timestamp=source_timestamp,normalized={'duration_minutes':35}))
+    return svc.report(f.entity_id,UUID(w['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(cycle=svc.get(f.entity_id,UUID(t['id']))['cycle'],assignment_id=a['id'],original_text=original,original_language=w['language'],source='telegram:message',locator=locator or str(uuid4()),source_timestamp=source_timestamp,normalized={'duration_minutes':35}))
 def reported(s):
     f,svc,w,t=s;a=assign(s,w,t);act(s,w,t,'acknowledge',a);act(s,w,t,'start',a);r=report(s,w,t,a);act(s,w,t,'submit_report',a,r);return a,r
 
@@ -183,7 +183,7 @@ def test_wrk_036_source_edit_conflict_report(setup):
 
 def test_wrk_022_worker_report_inbox_draft_preserves_original(setup):
     f,svc,w,t=setup;a=assign(setup,w,t);inbox=InboxService(svc.factory)
-    i=inbox.ingest(f.entity_id,f.actor_id,str(uuid4()),InboxInput(source='telegram:message',locator='chat:999',raw_text='تمام شد',metadata=dict(task_report=True,sender_reference=w['telegram_ref'],task_id=t['id'],assignment_id=a['id'],language='fa')))
+    i=inbox.ingest(f.entity_id,f.actor_id,str(uuid4()),InboxInput(source='telegram:message',locator='chat:999',raw_text='تمام شد',metadata=dict(task_report=True,sender_reference=w['telegram_ref'],task_id=t['id'],assignment_id=a['id'],language='fa',cycle=1)))
     assert i['route']=='WORKER_REPORTS'
     r=inbox.confirm(f.entity_id,UUID(i['id']),f.actor_id,str(uuid4()),InboxConfirm(expected_version=1,confirmed=True,reason='TEST review',reviewed=i['normalized']))
     task=svc.get(f.entity_id,UUID(t['id']));assert task['status']=='assigned' and task['reports'][0]['id']==r['task_report_id'] and task['reports'][0]['state']=='draft' and task['reports'][0]['original_text']=='تمام شد'
@@ -192,19 +192,19 @@ def test_telegram_identity_retries_edits_unknown_worker(setup):
     f,svc,w,t=setup;a=assign(setup,w,t)
     from greenhouse_owner_os.services.telegram_tasks import TelegramTasksAdapter,TelegramMessage
     adapter=TelegramTasksAdapter(svc,f.actor_id);stamp=datetime(2026,10,6,6,tzinfo=timezone.utc)
-    message=TelegramMessage(1,100,20,w['telegram_ref'],'تمام شد',stamp)
+    message=TelegramMessage(1,100,20,w['telegram_ref'],'تمام شد',stamp,cycle=1)
     r=adapter.receive(f.entity_id,UUID(t['id']),message)
     assert adapter.receive(f.entity_id,UUID(t['id']),message)['id']==r['id']
-    with pytest.raises(ConflictError):adapter.receive(f.entity_id,UUID(t['id']),TelegramMessage(2,100,20,w['telegram_ref'],'edited',stamp))
-    other=adapter.receive(f.entity_id,UUID(t['id']),TelegramMessage(3,100,21,w['telegram_ref'],'تمام شد',stamp));assert other['id']!=r['id']
-    unknown=adapter.receive(f.entity_id,UUID(t['id']),TelegramMessage(4,100,22,'unknown','message',stamp));assert unknown['route']=='WORKER_REPORTS' and unknown['validation']['missing_fields']
+    with pytest.raises(ConflictError):adapter.receive(f.entity_id,UUID(t['id']),TelegramMessage(2,100,20,w['telegram_ref'],'edited',stamp,cycle=1))
+    other=adapter.receive(f.entity_id,UUID(t['id']),TelegramMessage(3,100,21,w['telegram_ref'],'تمام شد',stamp,cycle=1));assert other['id']!=r['id']
+    unknown=adapter.receive(f.entity_id,UUID(t['id']),TelegramMessage(4,100,22,'unknown','message',stamp,cycle=1));assert unknown['route']=='WORKER_REPORTS' and unknown['validation']['missing_fields']
 
 def test_wrk_026_true_cross_entity_and_other_worker_rejected(setup):
     f,svc,w,t=setup;a=assign(setup,w,t)
     worker_b=svc.worker(f.entity_id,f.actor_id,str(uuid4()),WorkerInput(display_name='TEST Worker B',source='test:worker'))
     with pytest.raises(NotFoundError):svc.get(f.entity_id,UUID(t['id']),UUID(worker_b['id']))
     with pytest.raises(NotFoundError):svc.get(uuid4(),UUID(t['id']))
-    with pytest.raises(NotFoundError):svc.report(f.entity_id,UUID(worker_b['actor_id']),str(uuid4()),UUID(t['id']),UUID(worker_b['id']),ReportInput(assignment_id=a['id'],original_text='bad',original_language='ru',locator='bad'))
+    with pytest.raises(NotFoundError):svc.report(f.entity_id,UUID(worker_b['actor_id']),str(uuid4()),UUID(t['id']),UUID(worker_b['id']),ReportInput(cycle=svc.get(f.entity_id,UUID(t['id']))['cycle'],assignment_id=a['id'],original_text='bad',original_language='ru',locator='bad'))
     with pytest.raises(ValidationError):svc.assign(f.entity_id,f.actor_id,str(uuid4()),UUID(t['id']),AssignmentInput(worker_id=w['id'],language='ru',rendered_text='changed original',translation_source='original',rendering_reviewed=True))
 
 def test_owner_complete_vs_new_report_is_valid_serialized_state(setup):
@@ -262,7 +262,7 @@ def test_service_identity_cannot_impersonate_another_worker(setup):
     with pytest.raises(NotFoundError):
         svc.action(f.entity_id,UUID(other['actor_id']),str(uuid4()),UUID(t['id']),ActionInput(kind='acknowledge',assignment_id=a['id'],locator=str(uuid4())),worker_id=UUID(w['id']))
     with pytest.raises(NotFoundError):
-        svc.report(f.entity_id,UUID(other['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(assignment_id=a['id'],original_text='TEST impersonation',original_language='ru',locator=str(uuid4())))
+        svc.report(f.entity_id,UUID(other['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(cycle=svc.get(f.entity_id,UUID(t['id']))['cycle'],assignment_id=a['id'],original_text='TEST impersonation',original_language='ru',locator=str(uuid4())))
     with pytest.raises(NotFoundError):
         svc.create(f.entity_id,UUID(w['actor_id']),str(uuid4()),TaskInput(**t['interpretation']).model_copy(update={'locator':str(uuid4())}))
 

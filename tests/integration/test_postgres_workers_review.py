@@ -15,7 +15,7 @@ def second(s):
 def test_non_done_claim_cannot_complete(setup,claim):
     f,svc,w,t=setup;a=assign(setup,w,t)
     act(setup,w,t,'acknowledge',a);act(setup,w,t,'start',a)
-    r=svc.report(f.entity_id,UUID(w['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(assignment_id=a['id'],original_text='TEST observation',original_language='ru',claim=claim,locator=str(uuid4())))
+    r=svc.report(f.entity_id,UUID(w['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(cycle=1,assignment_id=a['id'],original_text='TEST observation',original_language='ru',claim=claim,locator=str(uuid4())))
     act(setup,w,t,'submit_report',a,r)
     with pytest.raises(ValidationError):act(setup,w,t,'complete')
 
@@ -83,7 +83,7 @@ def test_terminal_and_reopen_races(setup,race):
 
 def test_note_submission_and_review_clear_attention(setup):
     f,svc,w,t=setup;a=assign(setup,w,t)
-    r=svc.report(f.entity_id,UUID(w['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(assignment_id=a['id'],claim='note',original_text='TEST note',original_language='ru',locator='note'))
+    r=svc.report(f.entity_id,UUID(w['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(cycle=1,assignment_id=a['id'],claim='note',original_text='TEST note',original_language='ru',locator='note'))
     act(setup,w,t,'submit_report',a,r)
     assert svc.get(f.entity_id,UUID(t['id']))['status']=='assigned'
     act(setup,w,t,'review_report',report=r)
@@ -91,7 +91,7 @@ def test_note_submission_and_review_clear_attention(setup):
 
 def test_issue_requires_explicit_review_before_all_done_acceptance(setup):
     f,svc,w,t=setup;a=assign(setup,w,t);done(setup,w,t,a)
-    r=svc.report(f.entity_id,UUID(w['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(assignment_id=a['id'],claim='issue',original_text='TEST issue',original_language='ru',locator='issue'))
+    r=svc.report(f.entity_id,UUID(w['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(cycle=1,assignment_id=a['id'],claim='issue',original_text='TEST issue',original_language='ru',locator='issue'))
     act(setup,w,t,'submit_report',a,r)
     with pytest.raises(ValidationError):act(setup,w,t,'complete')
     act(setup,w,t,'review_report',report=r)
@@ -107,11 +107,11 @@ def test_late_report_explicit_review_preserves_terminal_timestamp(setup):
 
 def test_telegram_direct_report_race(setup):
     f,svc,w,t=setup;a=assign(setup,w,t);stamp=datetime.now(timezone.utc)
-    event=TelegramMessage(123,7,8,w['telegram_ref'],'TEST report',stamp)
+    event=TelegramMessage(123,7,8,w['telegram_ref'],'TEST report',stamp,cycle=1)
     adapter=TelegramTasksAdapter(svc,f.actor_id)
     with ThreadPoolExecutor(max_workers=2) as pool:
         x=pool.submit(adapter.receive,f.entity_id,UUID(t['id']),event)
-        y=pool.submit(svc.report,f.entity_id,UUID(w['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(assignment_id=a['id'],original_text=event.text,original_language=w['language'],source='telegram:message',locator='7:8',source_timestamp=stamp))
+        y=pool.submit(svc.report,f.entity_id,UUID(w['actor_id']),str(uuid4()),UUID(t['id']),UUID(w['id']),ReportInput(cycle=1,assignment_id=a['id'],original_text=event.text,original_language=w['language'],source='telegram:message',locator='7:8',source_timestamp=stamp))
         assert x.result()['id']==y.result()['id']
     assert svc.get(f.entity_id,UUID(t['id']))['status']=='assigned'
 
@@ -191,12 +191,12 @@ def test_direct_sql_recurrence_replace_generate_race(setup):
     f,svc,w,t=setup;rule=svc.rule(f.entity_id,f.actor_id,str(uuid4()),RuleInput(task=TaskInput(**t['interpretation']),frequency='daily',effective_from=date(2026,10,1)))
     import json
     from threading import Barrier
-    barrier=Barrier(2);payload=TaskInput(**t['interpretation']).model_copy(update=dict(source='recurrence',locator='sql-occurrence',planned_date=date(2026,10,10))).model_dump(mode='json')
+    barrier=Barrier(2);payload=TaskInput(**t['interpretation']).model_copy(update=dict(source='recurrence',locator=rule['template_id']+':2026-10-10',planned_date=date(2026,10,10))).model_dump(mode='json')
     def generate():
         try:
             with f.session_factory.begin() as session:
                 barrier.wait(timeout=10)
-                session.execute(text("INSERT INTO workers.tasks(entity_id,owner_language,title,original_instruction,description,category,priority,planned_date,source,locator,interpretation,created_by,rule_id,template_id,occurrence_date) VALUES(:e,'ru',:title,:raw,:description,:category,'normal','2026-10-10','recurrence','sql-occurrence',CAST(:p AS jsonb),:a,:rule,:template,'2026-10-10')"),dict(e=f.entity_id,a=f.actor_id,title=payload['title'],raw=payload['original_instruction'],description=payload['description'],category=payload['category'],p=json.dumps(payload),rule=rule['id'],template=rule['template_id']))
+                session.execute(text("INSERT INTO workers.tasks(entity_id,owner_language,title,original_instruction,description,category,priority,planned_date,source,locator,interpretation,created_by,rule_id,template_id,occurrence_date) VALUES(:e,'ru',:title,:raw,:description,:category,'normal','2026-10-10','recurrence',:locator,CAST(:p AS jsonb),:a,:rule,:template,'2026-10-10')"),dict(e=f.entity_id,a=f.actor_id,title=payload['title'],raw=payload['original_instruction'],description=payload['description'],category=payload['category'],p=json.dumps(payload),locator=payload['locator'],rule=rule['id'],template=rule['template_id']))
             return True
         except DBAPIError:return False
     def replace():
