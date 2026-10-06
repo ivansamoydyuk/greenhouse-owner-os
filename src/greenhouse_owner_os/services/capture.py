@@ -35,7 +35,10 @@ class CaptureConfirm(StrictModel):
 
 AREA_ALIASES={'İmamlı':('имамлы','имаммлы','imamlı','imamli'), 'Özvadi':('озвади','özvadi','ozvadi'), 'Yeşilöz':('ешилоз','ешилёз','yeşilöz','yesiloz')}
 
-def extract(text, *, counterparties=(), areas=(), accounts=(), today=None):
+def extract(text, *, counterparties=(), areas=(), accounts=(), products=(), locations=(), today=None):
+    from .inventory_capture import extract_inventory
+    inventory=extract_inventory(text,products=products,locations=locations,areas=areas,today=today)
+    if inventory:return inventory
     from .harvest_capture import extract_harvest
     harvest=extract_harvest(text,counterparties=counterparties,areas=areas,today=today)
     if harvest:return harvest
@@ -122,7 +125,8 @@ class CaptureService:
             content_key='capture-content:'+str(entity_id)+hashlib.sha256(body.text.strip().encode()).hexdigest()
             uow.session.execute(sql_text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':content_key})
             q=lambda model:list(uow.session.scalars(select(model).where(model.entity_id==entity_id)))
-            route,fields,gaps=extract(body.text,counterparties=q(CounterpartyRow),areas=q(WorkAreaRow),accounts=q(MoneyAccountRow))
+            from .inventory import rows
+            route,fields,gaps=extract(body.text,counterparties=q(CounterpartyRow),areas=q(WorkAreaRow),accounts=q(MoneyAccountRow),products=rows(uow,"SELECT * FROM inventory.products WHERE entity_id=:e",e=entity_id),locations=rows(uow,"SELECT * FROM inventory.locations WHERE entity_id=:e",e=entity_id))
             fingerprint=hashlib.sha256(body.text.strip().encode()).hexdigest()
             if uow.session.scalar(select(CaptureRow.id).where(CaptureRow.entity_id==entity_id,CaptureRow.fingerprint==fingerprint)):
                 gaps.append('Похожее сообщение уже сохранено. Проверьте, что это другое событие.')
@@ -152,6 +156,8 @@ class CaptureService:
                 uow.audit.append(actor_id=actor_id,action='capture_confirm_reuse',entity_type='capture',entity_id=cid,before=None,after=result)
                 uow.commit();return result
             if row.version!=body.expected_version:raise ConflictError('capture version changed')
+            if row.route=='INVENTORY':
+                return self._confirm_inventory(uow,row,entity_id,cid,actor_id,key,body,h)
             if row.route=='HARVEST_DEPOT':
                 return self._confirm_harvest(uow,row,entity_id,cid,actor_id,key,body,h)
             if row.route!='FINANCE':raise ValidationError('banana sale requires authoritative harvest/depot settlement')
@@ -222,5 +228,19 @@ class CaptureService:
         before=serialize_capture(row);row.confirmed_review=body.reviewed;row.harvest_kind=kind;row.harvest_id=UUID(r['id']);row.state='LINKED';row.version+=1
         uow.session.flush();result=dict(capture=serialize_capture(row),harvest=r,posted=False)
         uow.audit.append(actor_id=actor,action='capture_confirm',entity_type='capture',entity_id=cid,before=before,after=dict(result,reviewed=body.reviewed))
+        uow.idempotency.put(actor_id=actor,operation='capture_confirm',key=key,request_hash=h,resource_type='capture',resource_id=cid,response=result)
+        uow.commit();return result
+
+    def _confirm_inventory(self,uow,row,e,cid,actor,key,body,h):
+        from .inventory import InventoryService
+        from greenhouse_owner_os.domain.inventory import InventoryInput
+        f=dict(body.reviewed);duplicate=f.pop('duplicate_reviewed',False)
+        if any('Похожее' in g for g in row.gaps) and not duplicate:raise ValidationError('Проверьте возможный дубль')
+        f['evidence']=dict(source=row.source_namespace or 'capture:'+row.source,locator=row.source_reference or str(cid),raw_text=row.original_text)
+        r=InventoryService(lambda:BorrowedUow(uow)).create(e,actor,'capture:inventory:'+str(cid),InventoryInput(**f))
+        if r['status']!='draft':raise ConflictError('Исходное событие уже проведено; используйте коррекцию')
+        before=serialize_capture(row);row.confirmed_review=body.reviewed;row.inventory_kind=r['kind'];row.inventory_id=UUID(r['id']);row.state='LINKED';row.version+=1
+        uow.session.flush();result=dict(capture=serialize_capture(row),inventory=r,posted=False)
+        uow.audit.append(actor_id=actor,action='capture_confirm',entity_type='capture',entity_id=cid,before=before,after=result)
         uow.idempotency.put(actor_id=actor,operation='capture_confirm',key=key,request_hash=h,resource_type='capture',resource_id=cid,response=result)
         uow.commit();return result

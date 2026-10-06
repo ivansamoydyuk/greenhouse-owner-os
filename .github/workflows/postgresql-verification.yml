@@ -2,7 +2,7 @@ name: PostgreSQL verification
 
 on:
   push:
-    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1]
+    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1, 04-fertilizers-inventory-r1]
   workflow_dispatch:
 
 permissions:
@@ -64,8 +64,8 @@ jobs:
           from sqlalchemy import create_engine, text
           with create_engine(os.environ['DATABASE_URL']).connect() as conn:
               revisions = conn.execute(text('SELECT version_num FROM public.alembic_version')).scalars().all()
-          assert revisions == ['20261005_0015'], 'Unexpected Alembic revision'
-          print('Alembic head: 20261005_0015')
+          assert revisions == ['20261006_0018'], 'Unexpected Alembic revision'
+          print('Alembic head: 20261006_0018')
           PY
       - name: Operational API smoke and reference safety
         run: pytest tests/integration/test_postgres_readiness.py -v

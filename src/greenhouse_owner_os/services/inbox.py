@@ -64,7 +64,7 @@ class DeterministicExtractor:
         today=(original.received_at or datetime.now(timezone.utc)).astimezone(ZoneInfo('Europe/Istanbul')).date()
         route,fields,gaps=extract(raw,today=today,**references)
         if route=='UNRESOLVED' and re.search(r'(?i)\b(инструкция|полив|вентиляция|ремонт|договор)\b',raw):route='DOCUMENTS'
-        confidence='HIGH' if route in ('FINANCE','HARVEST_DEPOT') and fields.get('kind') else 'LOW'
+        confidence='HIGH' if route in ('FINANCE','HARVEST_DEPOT','INVENTORY') and fields.get('kind') else 'LOW'
         return dict(text=raw,route=route,fields=fields,gaps=gaps,confidence=confidence,method='owner_transcription' if original.file_base64 else 'original_text')
 
 def serialize(row):
@@ -124,9 +124,10 @@ class InboxService:
             duplicate=u.session.scalar(select(InboxRow).where(InboxRow.entity_id==e,InboxRow.fingerprint==fingerprint).order_by(InboxRow.created_at,InboxRow.id).limit(1))
             q=lambda model:list(u.session.scalars(select(model).where(model.entity_id==e)))
             try:
-                output=self.extractor.extract(body,dict(counterparties=q(CounterpartyRow),areas=q(WorkAreaRow),accounts=q(MoneyAccountRow)))
+                from .inventory import rows as inventory_rows
+                output=self.extractor.extract(body,dict(counterparties=q(CounterpartyRow),areas=q(WorkAreaRow),accounts=q(MoneyAccountRow),products=inventory_rows(u,"SELECT * FROM inventory.products WHERE entity_id=:e",e=e),locations=inventory_rows(u,"SELECT * FROM inventory.locations WHERE entity_id=:e",e=e)))
                 reject_floats(output)
-                if output['route'] not in ('FINANCE','HARVEST_DEPOT','DOCUMENTS','UNRESOLVED') or not isinstance(output['fields'],dict):raise ValueError('Invalid extractor result')
+                if output['route'] not in ('FINANCE','HARVEST_DEPOT','DOCUMENTS','UNRESOLVED','INVENTORY') or not isinstance(output['fields'],dict):raise ValueError('Invalid extractor result')
             except Exception:
                 # Provider errors must not lose the original or expose private
                 # provider exception/credentials. Review remains non-posting.
@@ -187,9 +188,19 @@ class InboxService:
                 return serialize(row)
             if row.version!=body.expected_version or row.state in ('REJECTED','CONFLICT'):raise ConflictError('Item is finalized or source conflicts; original retained')
             if row.duplicate_of_id and not body.duplicate_reviewed:raise ValidationError('Explicit duplicate review required')
-            if row.route not in ('FINANCE','HARVEST_DEPOT'):raise ValidationError('Unknown document requires verified domain classification; no draft created')
+            if row.route not in ('FINANCE','HARVEST_DEPOT','INVENTORY'):raise ValidationError('Unknown document requires verified domain classification; no draft created')
             fields=dict(body.reviewed)
-            if row.route=='FINANCE':
+            if row.route=='INVENTORY':
+                from .inventory import InventoryService
+                from greenhouse_owner_os.domain.inventory import InventoryInput
+                evidence=dict(source=row.source if row.locator else 'inbox:manual',locator=row.locator or str(i),raw_text=row.raw_text)
+                if row.file_bytes:
+                    evidence.update(file_base64=base64.b64encode(row.file_bytes).decode(),filename=row.filename,mime_type=row.mime_type)
+                fields['evidence']=evidence
+                r=InventoryService(lambda:BorrowedUow(u)).create(e,a,'inbox:inventory:'+str(i),InventoryInput(**fields))
+                if r['status']!='draft':raise ConflictError('Исходный складской документ уже проведён; используйте коррекцию')
+                row.inventory_id=UUID(r['id'])
+            elif row.route=='FINANCE':
                 # Existing Capture creates only a draft. The owner must select
                 # economic basis for obligations, never an inferred expense.
                 if fields.get('kind')=='obligation':

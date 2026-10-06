@@ -1,8 +1,8 @@
-name: Harvest & Depot isolated review preview
+name: Inventory isolated review preview
 
 on:
   pull_request:
-    types: [opened, reopened]
+    types: [opened, reopened, synchronize]
     branches: [01-architecture-database]
   workflow_dispatch:
 
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   preview:
-    if: github.head_ref == '03-harvest-depot-r1' || github.ref_name == '03-harvest-depot-r1'
+    if: github.head_ref == '04-fertilizers-inventory-r1' || github.ref_name == '04-fertilizers-inventory-r1'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -82,6 +82,10 @@ jobs:
               assert client.get('/').status_code==200
               assert client.get('/assets/app.js').status_code==200
               assert client.get('/assets/harvest.js').status_code==200
+              assert client.get('/assets/inventory.js').status_code==200
+              inventory=client.get('/v1/entities/'+eid+'/inventory').json()
+              assert inventory['stock']==[] and inventory['events']==[] and inventory['opening_state']=='UNINITIALIZED_VERIFY'
+              assert inventory['invariants']['ok']
               harvest=client.get('/v1/entities/'+eid+'/harvest').json()
               assert harvest['settlements']==[] and harvest['reports']==[]
               assert overview['balances']['TRY']['receivable']=='0.00'
@@ -90,10 +94,10 @@ jobs:
           print('External HTTPS authenticated preview smoke PASS; zero cash, Serkan unpaid 2600 TRY, reconciliation PASS')
           PY
           printf 'URL: %s\nAccess key: %s\nTEST PREVIEW ONLY. Opening Serkan AP 2600 TRY remains unpaid.\nExpires after 35 minutes of review time; runner database is then destroyed.\n' "$preview_url" "$PREVIEW_SECRET" > artifacts/preview-access.txt
-          printf '### Isolated Harvest & Depot preview\n\n%s\n\nAccess key: download the private **owner-harvest-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
+          printf '### Isolated Inventory preview\n\n%s\n\nAccess key: download the private **owner-inventory-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
-          name: owner-harvest-review-access
+          name: owner-inventory-review-access
           path: artifacts/preview-access.txt
           retention-days: 1
       - name: Owner review window (35 minutes, ephemeral data)
