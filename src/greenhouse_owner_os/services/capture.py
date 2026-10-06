@@ -35,7 +35,10 @@ class CaptureConfirm(StrictModel):
 
 AREA_ALIASES={'İmamlı':('имамлы','имаммлы','imamlı','imamli'), 'Özvadi':('озвади','özvadi','ozvadi'), 'Yeşilöz':('ешилоз','ешилёз','yeşilöz','yesiloz')}
 
-def extract(text, *, counterparties=(), areas=(), accounts=(), products=(), locations=(), today=None):
+def extract(text, *, counterparties=(), areas=(), accounts=(), products=(), locations=(), workers=(), today=None):
+    from .tasks_capture import extract_task
+    task=extract_task(text,areas=areas,workers=workers,today=today)
+    if task:return task
     from .inventory_capture import extract_inventory
     inventory=extract_inventory(text,products=products,locations=locations,areas=areas,today=today)
     if inventory:return inventory
@@ -126,7 +129,7 @@ class CaptureService:
             uow.session.execute(sql_text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':content_key})
             q=lambda model:list(uow.session.scalars(select(model).where(model.entity_id==entity_id)))
             from .inventory import rows
-            route,fields,gaps=extract(body.text,counterparties=q(CounterpartyRow),areas=q(WorkAreaRow),accounts=q(MoneyAccountRow),products=rows(uow,"SELECT * FROM inventory.products WHERE entity_id=:e",e=entity_id),locations=rows(uow,"SELECT * FROM inventory.locations WHERE entity_id=:e",e=entity_id))
+            route,fields,gaps=extract(body.text,workers=rows(uow,"SELECT * FROM workers.people WHERE entity_id=:e",e=entity_id),counterparties=q(CounterpartyRow),areas=q(WorkAreaRow),accounts=q(MoneyAccountRow),products=rows(uow,"SELECT * FROM inventory.products WHERE entity_id=:e",e=entity_id),locations=rows(uow,"SELECT * FROM inventory.locations WHERE entity_id=:e",e=entity_id))
             fingerprint=hashlib.sha256(body.text.strip().encode()).hexdigest()
             if uow.session.scalar(select(CaptureRow.id).where(CaptureRow.entity_id==entity_id,CaptureRow.fingerprint==fingerprint)):
                 gaps.append('Похожее сообщение уже сохранено. Проверьте, что это другое событие.')
@@ -156,6 +159,8 @@ class CaptureService:
                 uow.audit.append(actor_id=actor_id,action='capture_confirm_reuse',entity_type='capture',entity_id=cid,before=None,after=result)
                 uow.commit();return result
             if row.version!=body.expected_version:raise ConflictError('capture version changed')
+            if row.route=='TASKS':
+                return self._confirm_task(uow,row,entity_id,cid,actor_id,key,body,h)
             if row.route=='INVENTORY':
                 return self._confirm_inventory(uow,row,entity_id,cid,actor_id,key,body,h)
             if row.route=='HARVEST_DEPOT':
@@ -244,3 +249,17 @@ class CaptureService:
         uow.audit.append(actor_id=actor,action='capture_confirm',entity_type='capture',entity_id=cid,before=before,after=result)
         uow.idempotency.put(actor_id=actor,operation='capture_confirm',key=key,request_hash=h,resource_type='capture',resource_id=cid,response=result)
         uow.commit();return result
+
+    def _confirm_task(self,u,row,e,cid,a,key,body,h):
+        from .workers import WorkersService
+        from greenhouse_owner_os.domain.workers import TaskInput
+        f=dict(body.reviewed)
+        for k in ('duplicate_reviewed','suggested_worker_ids','recurrence_suggestion','kind'):f.pop(k,None)
+        if any('Похожее' in g for g in row.gaps) and not body.reviewed.get('duplicate_reviewed'):raise ValidationError('Explicit duplicate review required')
+        f.update(original_instruction=row.original_text,source=row.source_namespace or 'capture:'+row.source,locator=row.source_reference or str(cid))
+        r=WorkersService(lambda:BorrowedUow(u)).create(e,a,'capture:tasks:'+str(cid),TaskInput(**f))
+        row.task_id=UUID(r['id']);row.confirmed_review=body.reviewed;row.state='LINKED';row.version+=1
+        u.session.flush();result=dict(capture=serialize_capture(row),task=r,posted=False)
+        u.audit.append(actor_id=a,action='capture_confirm',entity_type='capture',entity_id=cid,before=None,after=result)
+        u.idempotency.put(actor_id=a,operation='capture_confirm',key=key,request_hash=h,resource_type='capture',resource_id=cid,response=result)
+        u.commit();return result

@@ -58,7 +58,29 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
         if not hmac.compare_digest(request.cookies.get('preview_session',''),cookie_value):
             raise HTTPException(401,'preview login required')
         return actor
-    app=create_app(finance_service=finance,reference_service=refs,actor_provider=owner)
+    worker_sessions={}
+    def worker_identity(request:Request):
+        from greenhouse_owner_os.services.inventory import rows
+        token=request.headers.get('authorization','').removeprefix('Bearer ')
+        session=worker_sessions.get(token)
+        if not session:raise HTTPException(401,'Worker session required')
+        e,w,a,expiry=session
+        if time.monotonic()>expiry:raise HTTPException(401,'Worker session expired')
+        with factory() as u:
+            if not rows(u,'SELECT id FROM workers.people WHERE id=:w AND entity_id=:e AND active',w=w,e=e):raise HTTPException(401,'Worker inactive')
+        return e,w,a
+    app=create_app(finance_service=finance,reference_service=refs,actor_provider=owner,worker_provider=worker_identity)
+    @app.post('/preview/workers/{worker_id}/session')
+    def worker_session(worker_id:UUID,actor_id=Depends(owner)):
+        from greenhouse_owner_os.services.inventory import rows
+        with factory() as u:
+            rs=rows(u,'SELECT * FROM workers.people WHERE id=:w AND entity_id=:e AND active',w=worker_id,e=eid)
+            if not rs:raise HTTPException(404,'Worker not found')
+            w=rs[0]
+        token=secrets.token_urlsafe(48)
+        worker_sessions[token]=(eid,worker_id,UUID(w['actor_id']),time.monotonic()+3600)
+        return {'token':token,'worker_id':str(worker_id),'expires_in':3600,'environment':'TEST_PREVIEW'}
+
     attempts={}
 
     @app.middleware('http')
@@ -107,6 +129,9 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
 
     web=Path(__file__).parent/'web'
     app.mount('/assets',StaticFiles(directory=web),name='assets')
+    @app.get('/worker')
+    def worker_page():return FileResponse(web/'worker.html')
+
     @app.get('/')
     def index():return FileResponse(web/'index.html')
     return app

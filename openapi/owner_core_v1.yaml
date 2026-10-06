@@ -10,13 +10,8 @@ servers:
 paths:
   /entities/{entity_id}/finance-overview:
     get:
-      operationId: getOwnerFinanceOverview
-      summary: Read-only entity-scoped owner projection from one PostgreSQL snapshot
-      description: Live balances derive from Finance views. Drafts and historical
-        candidates are excluded from totals. Obligations and advances include separate
-        lifecycle status; operations are paginated across all Finance R1 kinds, newest
-        created first. No repair or write is performed. Preview authentication is
-        an adapter concern.
+      summary: Finance Overview
+      operationId: finance_overview_v1_entities__entity_id__finance_overview_get
       parameters:
       - name: entity_id
         in: path
@@ -24,136 +19,66 @@ paths:
         schema:
           type: string
           format: uuid
+          title: Entity Id
       - name: offset
         in: query
+        required: false
         schema:
           type: integer
-          minimum: 0
           maximum: 10000
+          minimum: 0
           default: 0
+          title: Offset
       - name: limit
         in: query
+        required: false
         schema:
           type: integer
-          minimum: 1
           maximum: 100
+          minimum: 1
           default: 50
+          title: Limit
       responses:
         '200':
-          description: Consistent owner overview; all monetary values are exact decimal
-            strings
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
           content:
             application/json:
               schema:
-                type: object
-                required:
-                - entity_id
-                - entity_name
-                - reference_class
-                - cutover_date
-                - references
-                - balances
-                - accounts
-                - obligations
-                - advances
-                - operations
-                - offset
-                - limit
-                - has_more
-                - history_policy
-                properties:
-                  entity_id:
-                    type: string
-                    format: uuid
-                  entity_name:
-                    type: string
-                  reference_class:
-                    type: string
-                    enum:
-                    - OWNER_VERIFIED
-                    - TEST_PREVIEW
-                  cutover_date:
-                    type: string
-                    format: date
-                  references:
-                    type: array
-                    items:
-                      type: object
-                  balances:
-                    type: object
-                    additionalProperties:
-                      type: object
-                      additionalProperties:
-                        type: string
-                        pattern: ^-?[0-9]+\.[0-9]{2}$
-                  accounts:
-                    type: array
-                    items:
-                      type: object
-                      required:
-                      - money_account_id
-                      - entity_id
-                      - currency
-                      - balance
-                      properties:
-                        money_account_id:
-                          type: string
-                          format: uuid
-                        entity_id:
-                          type: string
-                          format: uuid
-                        currency:
-                          type: string
-                        balance:
-                          type: string
-                  obligations:
-                    type: array
-                    items:
-                      type: object
-                  advances:
-                    type: array
-                    items:
-                      type: object
-                  operations:
-                    type: array
-                    items:
-                      type: object
-                  offset:
-                    type: integer
-                  limit:
-                    type: integer
-                  has_more:
-                    type: boolean
-                  history_policy:
-                    type: string
-                    const: NON_POSTING
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/Validation'
+                $ref: '#/components/schemas/HTTPValidationError'
   /obligations:
     post:
-      operationId: createObligationDraft
-      summary: Create obligation draft; no financial effect
+      summary: Create Obligation
+      operationId: create_obligation_v1_obligations_post
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ObligationCreate'
+              $ref: '#/components/schemas/ObligationCreateBody'
       responses:
         '201':
-          description: Draft created
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Obligation'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/Validation'
+                $ref: '#/components/schemas/HTTPValidationError'
   /obligations/{id}:
     get:
       operationId: getObligation
@@ -194,28 +119,33 @@ paths:
           $ref: '#/components/responses/Validation'
   /payments:
     post:
-      operationId: createPaymentDraft
-      summary: Create settlement payment draft and proposed allocations; no financial
-        effect
+      summary: Create Payment
+      operationId: create_payment_v1_payments_post
       parameters:
-      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PaymentCreate'
+              $ref: '#/components/schemas/PaymentCreateBody'
       responses:
         '201':
-          description: Draft created
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Payment'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/Validation'
+                $ref: '#/components/schemas/HTTPValidationError'
   /payments/{id}/post:
     post:
       operationId: postPayment
@@ -325,7 +255,8 @@ paths:
           $ref: '#/components/responses/NotFound'
   /entities/{entity_id}/balances:
     get:
-      operationId: currencyBalances
+      summary: Balances
+      operationId: balances_v1_entities__entity_id__balances_get
       parameters:
       - name: entity_id
         in: path
@@ -333,26 +264,19 @@ paths:
         schema:
           type: string
           format: uuid
+          title: Entity Id
       responses:
         '200':
-          description: Balances keyed by currency; never a combined FX total
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
           content:
             application/json:
               schema:
-                type: object
-                required:
-                - entity_id
-                - balances
-                properties:
-                  entity_id:
-                    type: string
-                    format: uuid
-                  balances:
-                    type: object
-                    additionalProperties:
-                      type: object
-                      additionalProperties:
-                        type: string
+                $ref: '#/components/schemas/HTTPValidationError'
   /transfers:
     post:
       summary: Create Transfer
@@ -1944,7 +1868,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ReportInput'
+              $ref: '#/components/schemas/greenhouse_owner_os__domain__harvest__ReportInput'
       responses:
         '201':
           description: Successful Response
@@ -2819,6 +2743,489 @@ paths:
               $ref: '#/components/schemas/ValuationCurrencyInput'
       responses:
         '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/tasks:
+    get:
+      summary: Overview
+      operationId: overview_v1_entities__entity_id__tasks_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      summary: Create
+      operationId: create_v1_entities__entity_id__tasks_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/workers:
+    post:
+      summary: Worker
+      operationId: worker_v1_entities__entity_id__workers_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/workers/{worker_id}/active:
+    post:
+      summary: Active
+      operationId: active_v1_entities__entity_id__workers__worker_id__active_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: worker_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Worker Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActiveInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/tasks/{task_id}:
+    get:
+      summary: Get
+      operationId: get_v1_entities__entity_id__tasks__task_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Task Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/tasks/{task_id}/assignments:
+    post:
+      summary: Assign
+      operationId: assign_v1_entities__entity_id__tasks__task_id__assignments_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Task Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/tasks/{task_id}/actions:
+    post:
+      summary: Action
+      operationId: action_v1_entities__entity_id__tasks__task_id__actions_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Task Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/task-rules:
+    post:
+      summary: Rule
+      operationId: rule_v1_entities__entity_id__task_rules_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/task-rules/{rule_id}/occurrences:
+    post:
+      summary: Occurrence
+      operationId: occurrence_v1_entities__entity_id__task_rules__rule_id__occurrences_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Rule Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OccurrenceInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/tasks/{task_id}/links:
+    post:
+      summary: Link
+      operationId: link_v1_entities__entity_id__tasks__task_id__links_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Task Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/tasks:
+    get:
+      summary: Worker Tasks
+      operationId: worker_tasks_v1_worker_tasks_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /worker/tasks/{task_id}:
+    get:
+      summary: Worker Get
+      operationId: worker_get_v1_worker_tasks__task_id__get
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Task Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/tasks/{task_id}/actions:
+    post:
+      summary: Worker Action
+      operationId: worker_action_v1_worker_tasks__task_id__actions_post
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Task Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/tasks/{task_id}/reports:
+    post:
+      summary: Worker Report
+      operationId: worker_report_v1_worker_tasks__task_id__reports_post
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Task Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/greenhouse_owner_os__domain__workers__ReportInput'
+      responses:
+        '201':
           description: Successful Response
           content:
             application/json:
@@ -4918,6 +5325,451 @@ components:
       - currency
       - verification
       title: ValuationCurrencyInput
+    ActionInput:
+      properties:
+        kind:
+          type: string
+          enum:
+          - acknowledge
+          - start
+          - complete
+          - reopen
+          - cancel
+          - submit_report
+          title: Kind
+        reason:
+          type: string
+          maxLength: 2000
+          title: Reason
+          default: ''
+        assignment_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignment Id
+        report_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Report Id
+        expected_version:
+          anyOf:
+          - type: integer
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Expected Version
+        source:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Source
+          default: owner:tasks-action
+        locator:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Locator
+        source_timestamp:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Source Timestamp
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - locator
+      title: ActionInput
+    AssignmentInput:
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+          title: Worker Id
+        rendered_text:
+          type: string
+          maxLength: 10000
+          minLength: 1
+          title: Rendered Text
+        language:
+          type: string
+          enum:
+          - ru
+          - tr
+          - fa
+          - uz
+          title: Language
+        translation_source:
+          type: string
+          enum:
+          - original
+          - owner_reviewed_translation
+          title: Translation Source
+          default: original
+        translation_version:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Translation Version
+          default: manual-r1
+        rendering_reviewed:
+          type: boolean
+          const: true
+          title: Rendering Reviewed
+      additionalProperties: false
+      type: object
+      required:
+      - worker_id
+      - rendered_text
+      - language
+      - rendering_reviewed
+      title: AssignmentInput
+    LinkInput:
+      properties:
+        domain:
+          type: string
+          enum:
+          - inventory
+          - harvest
+          - finance
+          - inbox
+          title: Domain
+        target_id:
+          type: string
+          format: uuid
+          title: Target Id
+      additionalProperties: false
+      type: object
+      required:
+      - domain
+      - target_id
+      title: LinkInput
+    OccurrenceInput:
+      properties:
+        occurrence_date:
+          type: string
+          format: date
+          title: Occurrence Date
+      additionalProperties: false
+      type: object
+      required:
+      - occurrence_date
+      title: OccurrenceInput
+    RuleInput:
+      properties:
+        task:
+          $ref: '#/components/schemas/TaskInput'
+        frequency:
+          type: string
+          enum:
+          - daily
+          - weekly
+          title: Frequency
+        weekday:
+          anyOf:
+          - type: integer
+            maximum: 6.0
+            minimum: 0.0
+          - type: 'null'
+          title: Weekday
+        effective_from:
+          type: string
+          format: date
+          title: Effective From
+        effective_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effective To
+        active:
+          type: boolean
+          title: Active
+          default: true
+        replaces_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replaces Id
+      additionalProperties: false
+      type: object
+      required:
+      - task
+      - frequency
+      - effective_from
+      title: RuleInput
+    TaskInput:
+      properties:
+        owner_language:
+          type: string
+          enum:
+          - ru
+          - tr
+          - fa
+          - uz
+          title: Owner Language
+          default: ru
+        title:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Title
+        original_instruction:
+          type: string
+          maxLength: 10000
+          minLength: 1
+          title: Original Instruction
+        description:
+          type: string
+          maxLength: 10000
+          minLength: 1
+          title: Description
+        category:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Category
+          default: general
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        work_area_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Work Area Id
+        priority:
+          type: string
+          enum:
+          - normal
+          - high
+          - urgent
+          title: Priority
+          default: normal
+        planned_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Planned Date
+        due_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Due At
+        source:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Source
+          default: owner:tasks
+        locator:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Locator
+        source_timestamp:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Source Timestamp
+        gaps:
+          items:
+            type: string
+          type: array
+          maxItems: 100
+          title: Gaps
+      additionalProperties: false
+      type: object
+      required:
+      - title
+      - original_instruction
+      - description
+      - locator
+      title: TaskInput
+    WorkerInput:
+      properties:
+        display_name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Display Name
+        native_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Native Name
+        language:
+          type: string
+          enum:
+          - ru
+          - tr
+          - fa
+          - uz
+          title: Language
+          default: ru
+        contact:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Contact
+        telegram_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Telegram Ref
+        notes:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notes
+        source:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - display_name
+      - source
+      title: WorkerInput
+    greenhouse_owner_os__domain__harvest__ReportInput:
+      properties:
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        original_greenhouse:
+          type: string
+          maxLength: 250
+          minLength: 1
+          title: Original Greenhouse
+        work_area_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Work Area Id
+        cut_count:
+          anyOf:
+          - type: integer
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Cut Count
+        field_weight_kg:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,17}|(?=[\d.]{1,21}0*$)\d{0,17}\.\d{0,3}0*$)
+          - type: 'null'
+          title: Field Weight Kg
+        reporter:
+          type: string
+          maxLength: 250
+          minLength: 1
+          title: Reporter
+        notes:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Notes
+        evidence:
+          $ref: '#/components/schemas/EvidenceInput'
+      additionalProperties: false
+      type: object
+      required:
+      - event_date
+      - original_greenhouse
+      - reporter
+      - evidence
+      title: ReportInput
+    greenhouse_owner_os__domain__workers__ReportInput:
+      properties:
+        assignment_id:
+          type: string
+          format: uuid
+          title: Assignment Id
+        original_text:
+          type: string
+          maxLength: 10000
+          minLength: 1
+          title: Original Text
+        original_language:
+          type: string
+          enum:
+          - ru
+          - tr
+          - fa
+          - uz
+          title: Original Language
+        normalized:
+          additionalProperties: true
+          type: object
+          title: Normalized
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        attachments:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          maxItems: 10
+          title: Attachments
+        claim:
+          type: string
+          enum:
+          - done
+          - issue
+          - note
+          title: Claim
+          default: done
+        source:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Source
+          default: worker:mobile
+        locator:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Locator
+        source_timestamp:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Source Timestamp
+        event_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Event At
+      additionalProperties: false
+      type: object
+      required:
+      - assignment_id
+      - original_text
+      - original_language
+      - locator
+      title: ReportInput
   responses:
     Conflict:
       description: Version or idempotency conflict

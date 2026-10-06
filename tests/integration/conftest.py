@@ -48,6 +48,7 @@ def _reset_and_migrate(database_url: str) -> None:
     require_disposable_database(database_url, os.getenv('APP_ENV'))
     engine = create_engine(database_url, future=True)
     with engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA IF EXISTS workers CASCADE"))
         conn.execute(text("DROP SCHEMA IF EXISTS inventory CASCADE"))
         conn.execute(text("DROP SCHEMA IF EXISTS harvest CASCADE"))
         conn.execute(text("DROP SCHEMA IF EXISTS audit CASCADE"))
