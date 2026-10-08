@@ -238,6 +238,73 @@ try {
     }
   }
 
+  // Replacing an already-open queue dialog with a fresh review and editor
+  // must move focus into the new content. No edit is saved or confirmed here.
+  await page.setViewportSize({width: 390, height: 844});
+  await navigateOwner(page, 'review');
+  const fixtureProposal = fixtures.proposals[0];
+  await sheet().locator(`[data-proposal="${fixtureProposal}"] [data-r2-open]`).click();
+  await sheet().getByRole('heading', {name: 'Проверить действие', exact: true}).waitFor();
+  await dialogLayout('queue-to-fresh-review-focus');
+  await sheet().locator('#r2-edit').click();
+  await sheet().getByRole('heading', {name: 'Исправить карточку', exact: true}).waitFor();
+  await dialogLayout('fresh-review-to-editor-focus');
+  const editorTargets = await sheet().locator('button,input,select,textarea,a[href],summary')
+    .evaluateAll(nodes => nodes.filter(node => !node.disabled && window.isVisibleOwnerControl(node)).length);
+  for (let step = 0; step < editorTargets + 2; step++) {
+    await page.keyboard.press('Tab');
+    assert.equal(await sheet().evaluate(dialog => dialog.contains(document.activeElement)), true, 'Tab remains inside the replacement editor');
+  }
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await sheet().evaluate(dialog => dialog.contains(document.activeElement)), true, 'Reverse Tab remains inside the replacement editor');
+  await page.keyboard.press('Escape'); await sheet().waitFor({state: 'hidden'});
+  assert.equal(await page.evaluate(() => document.querySelector('#app').contains(document.activeElement)
+    || document.activeElement === document.querySelector('#nav [aria-current=page]')), true, 'Dismissed editor restores focus to its Review surface');
+  const untouchedProposal = await checkedApi(owner + `/confirmations/${fixtureProposal}/preview`);
+  assert.equal(untouchedProposal.version, proposals.find(proposal => proposal.id === fixtureProposal).version, 'Focus checks must not save or confirm a proposal');
+
+  // Presentation-only stress fixture: intercept the Home response without
+  // posting or revising any amount. Real season analytics remain untouched.
+  // Screenshots are deliberately separated and visibly marked TEST synthetic.
+  await navigateOwner(page, 'home');
+  const realReceivableText = await page.locator('.owner-receivable .big').innerText();
+  const stress = {
+    amount: '999999999999999999.99',
+    display: '999 999 999 999 999 999,99 TRY',
+    entity: 'TEST · СИНТЕТИЧЕСКИЙ ТЕСТ ВЁРСТКИ · сумма и названия только для проверки интерфейса',
+    task: 'TEST · Проверить давление после продолжительного полива в дальней теплице, записать показания каждого датчика и сверить результат с сохранённым поручением владельца',
+    exception: 'TEST · Работник сообщил о незавершённой проверке системы полива в дальней теплице: требуется уточнить причину и внимательно проверить исходный отчёт перед решением',
+  };
+  const homePattern = '**/owner/home';
+  await page.route(homePattern, async route => {
+    const response = await route.fetch(), actual = await response.json();
+    await route.fulfill({response, json: {
+      ...actual,
+      finance: {...actual.finance, entity_name: stress.entity,
+        balances: {...actual.finance.balances, TRY: {...actual.finance.balances.TRY, receivable: stress.amount}}},
+      tasks: [{id: '00000000-0000-4000-8000-000000000001', version: 1, title: stress.task, planned_date: null}],
+      task_count: 1,
+      worker_exceptions: [{id: '00000000-0000-4000-8000-000000000002', title: stress.exception}],
+    }});
+  });
+  try {
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({width, height: 844});
+      await page.locator('#refresh').click(); await ready();
+      assert.equal(await page.locator('.owner-receivable .big').innerText(), stress.display, 'Large TRY amount must retain every exact decimal digit');
+      await page.locator('#app').getByText(stress.entity, {exact: true}).waitFor();
+      assert.ok((await page.locator('.owner-task').innerText()).includes(stress.task), 'Long task text must remain complete');
+      assert.equal(await page.locator('.worker-exception strong').innerText(), stress.exception, 'Long worker exception must remain complete');
+      await layout(`${width}/TEST-synthetic-stress-home`);
+      await screenshot('TEST-synthetic-stress-home', width);
+    }
+  } finally {
+    await page.unroute(homePattern);
+    await page.locator('#refresh').click(); await ready();
+  }
+  assert.equal(await page.locator('.owner-receivable .big').innerText(), realReceivableText, 'Removing the presentation fixture restores the actual Home amount');
+  assert.deepEqual((await checkedApi(owner + '/home')).finance.balances, before.finance.balances, 'Synthetic stress amount never reaches the database');
+
   // A slow older navigation cannot move focus back or open Review over More.
   await navigateOwner(page, 'home');
   let releaseOld, oldEntered, financeReads = 0, queueReads = 0;
@@ -307,7 +374,7 @@ try {
   assert.deepEqual((await checkedApi(prefix + '/inventory')).stock, initialStock, 'Draft receipt must not move stock');
   assert.deepEqual(await page.evaluate(() => window.ownerUiFaults), []);
   assert.deepEqual(errors, [], 'Unexpected console or runtime errors');
-  await fs.writeFile(`${artifacts}/owner-modern-ui.json`, JSON.stringify({ok: true, widths: [320, 390, 768, 1280], screenshots, fixtureIds: {task: fixtures.task.id, harvest: fixtures.harvest.id, inventoryDraft: fixtures.inventory.id, proposals: fixtures.proposals}, financeUnchanged: true, stockUnchanged: true, errors}, null, 2));
+  await fs.writeFile(`${artifacts}/owner-modern-ui.json`, JSON.stringify({ok: true, widths: [320, 390, 768, 1280], screenshots, presentationStress: {synthetic: true, amount: stress.amount, display: stress.display, databaseAmountsChanged: false, widths: [320, 390, 768, 1280]}, fixtureIds: {task: fixtures.task.id, harvest: fixtures.harvest.id, inventoryDraft: fixtures.inventory.id, proposals: fixtures.proposals}, financeUnchanged: true, stockUnchanged: true, errors}, null, 2));
   console.log('PASS modern owner UI: four-route navigation + More + history/reload, source-first photo/text/PDF previews, queue, operational modules, 320/390/768/1280, 44px named controls, dock clearance, scrollable dialogs, Escape/focus, loading/error recovery, unchanged Finance/stock');
 } catch (error) {
   await page.screenshot({path: `${artifacts}/owner-modern-failure.png`, fullPage: true}).catch(() => {});

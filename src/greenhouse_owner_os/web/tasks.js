@@ -4,7 +4,7 @@ const actionNames={assign:'Назначено',acknowledge:'Получение �
 const domainNames={inventory:'Внесение удобрений',harvest:'Отчёт о срезе',finance:'Финансовая операция',inbox:'Входящий документ'};
 const categoryNames={general:'Общее',irrigation:'Полив',ventilation:'Вентиляция',harvest:'Срез урожая',cleanup:'Расчистка',inspection:'Проверка',fertilizer:'Удобрения',repair:'Ремонт',transport:'Перевозка'};
 const weekdays=['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
-export const languageNames={ru:'Русский',tr:'Türkçe',fa:'دری / فارسی',uz:'O‘zbekcha'};
+export const languageNames={ru:'Русский',tr:'Türkçe',fa:'دری / Дари',uz:'O‘zbekcha'};
 export function tasksUI({api,openSheet,reload,getData,getEntity,notice}){
  const $=s=>document.querySelector(s),path=id=>`/v1/entities/${getEntity()}/tasks${id?'/'+id:''}`;
  const input=(id,label,value='',type='text')=>`<label for="${id}">${label}</label><input id="${id}" type="${type}" value="${e(value)}">`;
