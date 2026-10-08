@@ -17,7 +17,7 @@ try{
  const api=async(path)=>{const r=await context.request.get(base+root+path);assert.equal(r.status(),200);return r.json();};
  const post=async(path,body)=>{const r=await context.request.post(base+path,{data:body,headers:{'Idempotency-Key':crypto.randomUUID()}});assert.ok([200,201].includes(r.status()),await r.text());return r.json();};
  const captureText=async(text)=>{await page.locator('[data-r2-mode=text]').click();await sheet().getByLabel('Текст / расшифровка').fill(text);await click('Сохранить источник');await sheet().waitFor({state:'hidden'});};
- const openProposal=async(p)=>{await page.locator('#owner-queue').click();await page.locator(`[data-proposal="${p.id}"]`).getByRole('button',{name:'Проверить карточку',exact:true}).click();};
+ const openProposal=async(p)=>{await page.locator('#owner-queue').click();await page.locator(`[data-proposal="${p.id}"]`).getByRole('button',{name:'Проверить карточку',exact:true}).click();await sheet().getByRole('heading',{name:'Проверить действие',exact:true}).waitFor();};
  const before=await api('/home');
  await page.locator('[data-r2-mode=text]').click();await sheet().getByLabel('Текст / расшифровка').fill('Сегодня полить İmamlı.');await click('Сохранить источник');await sheet().waitFor({state:'hidden'});
  await page.locator('#owner-queue').click();await sheet().getByText('Моя задача · Готово к подтверждению',{exact:false}).first().waitFor();
