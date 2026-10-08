@@ -64,6 +64,7 @@ def test_real_gorgun_photo_scoped_quality_and_season_weighting(inv):
     home=inv['c'].get(f"/v1/entities/{inv['e']}/owner/home").json();season=home['season'][0]
     assert Decimal(season['kg'])==175 and Decimal(season['average_price'])==Decimal(3000)/175
     assert Decimal(season['average_bunch_weight'])==10 and season['count_coverage_complete'] is False
+    assert season['count_basis']=='CONFIRMED_DEPOT_LINES' and datetime.fromisoformat(home['as_of']).tzinfo is not None
     assert home['finance']['balances']['TRY']['cash']=='0.00'
     assert home['finance']['balances']['TRY']['receivable']=='3000.00'
     with inv['preview'][0]() as db:
