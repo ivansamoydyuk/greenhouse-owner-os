@@ -90,6 +90,12 @@ class OwnerCaptureService:
             if not s or s.entity_id!=e or s.source!='owner:r2':raise NotFoundError('Источник не найден')
             return self._capture_view(u,s)
 
+    def sources(self,e,a,offset=0):
+        with self.factory() as u:
+            self.owner(u,e,a)
+            items=list(u.session.scalars(select(InboxRow).where(InboxRow.entity_id==e,InboxRow.source=='owner:r2').order_by(InboxRow.received_at.desc(),InboxRow.id).offset(offset).limit(51)))
+            return dict(items=[self._capture_view(u,s) for s in items[:50]],next_offset=offset+50 if len(items)>50 else None)
+
     def original(self,e,a,i):
         with self.factory() as u:
             self.owner(u,e,a);s=u.session.get(InboxRow,i)
@@ -155,8 +161,18 @@ class OwnerCaptureService:
             return [(kind,dict(event_date=f.get('event_date') or s['day'].isoformat(),lines=f['lines'],notes=raw[:2000]),{'event_date':{'category':'INFERENCE','basis':'capture_date'}})]
         depot=self._depot_text(raw,refs_kw['counterparties'])
         if depot:
-            return [('DEPOT_RECEIPT',depot,{'lines':{'category':'SOURCE FACT','pages':out.get('pages',[])},'qualities':{'category':'INFERENCE','basis':'depot_scoped_unverified_candidate'}})]
+            learned=[]
+            if depot['depot_id']:
+                for idx,line in enumerate(depot['lines']):
+                    mapping=rows(u,'SELECT * FROM harvest.depot_quality_mappings WHERE depot_id=:d AND original_label=:l ORDER BY version DESC LIMIT 1',d=depot['depot_id'],l=line['original_quality_name'].casefold())
+                    if mapping:depot['qualities'][idx]=mapping[0]['quality'];learned.append(mapping[0])
+            if learned:provenance['qualities']={'category':'LEARNED DEFAULT','accepted_mapping_versions':learned}
+            return [('DEPOT_RECEIPT',depot,{'lines':{'category':'SOURCE FACT','pages':out.get('pages',[])},'qualities':provenance.get('qualities',{'category':'INFERENCE','basis':'depot_scoped_unverified_candidate'})})]
+        direct_expense=bool(re.search(r'(?i)(купил|потратил|расход|заправил)',raw) and re.search(r'(?i)(бензин|топлив|fuel|benzin|мелоч)',raw))
+        if direct_expense:route='FINANCE';f['kind']='direct_expense'
         if route=='FINANCE' and f.get('kind'):
+            if f.get('direction') in ('in','receivable') or f.get('obligation_class')=='STRATEGIC':
+                return [('UNRESOLVED',dict(note='Для входящей оплаты / стратегического события используйте точный ручной режим. '+raw[:1500]),{})]
             amount=f.get('amount')
             if not amount:
                 n=re.findall(r'(?<![\w.+-])(\d+(?:[ \u00a0]\d{3})*(?:[,.]\d{1,2})?)(?!\w)',raw)
@@ -164,7 +180,7 @@ class OwnerCaptureService:
             payload=dict(amount=amount,currency=f.get('currency','TRY'),event_date=f.get('event_date') or s['day'].isoformat(),
                          counterparty_id=f.get('counterparty_id'),description=raw[:2000],due_date=f.get('due_date'),money_account_id=f.get('money_account_id'))
             for k,v in payload.items():provenance[k]={'category':'UNKNOWN' if v is None else 'INFERENCE' if k in ('event_date','currency','counterparty_id','money_account_id') else 'SOURCE FACT','source_text':raw}
-            return [('PAYMENT' if f['kind']=='payment' else 'PAYABLE',payload,provenance)]
+            return [('DIRECT_EXPENSE' if direct_expense else 'PAYMENT' if f['kind']=='payment' else 'PAYABLE',payload,provenance)]
         if re.search(r'(?i)(fatura|invoice|счёт поставщика)',raw):
             # Invoice is not evidence that goods arrived or cash was paid.
             return [('PAYABLE',dict(description=raw[:2000],event_date=s['day'].isoformat()),{}),('INVOICE_MATCH',dict(note=raw[:2000]),{})]
@@ -263,7 +279,10 @@ class OwnerCaptureService:
             if not fields['lines']:missing.append('Нечитаемые строки: внесите по оригиналу')
             if len(fields['qualities'])!=len(fields['lines']) or any(q is None for q in fields['qualities']) or not fields['quality_reviewed']:missing.append('Подтвердите качества именно этого депо')
             if not fields['arithmetic_reviewed']:missing.append('Проверьте строки и сумму; Alacak не является оплатой')
+            basis['quality_mappings']=rows(u,'SELECT DISTINCT ON(original_label) original_label,version,quality FROM harvest.depot_quality_mappings WHERE depot_id=:d ORDER BY original_label,version DESC',d=fields.get('depot_id'))
             basis['existing_receipts']=rows(u,'SELECT id,version,status FROM harvest.depot_settlements WHERE entity_id=:e AND evidence_id IN (SELECT id FROM harvest.evidence WHERE fingerprint=(SELECT fingerprint FROM core.inbox_items WHERE id=:s))',e=e,s=p['inbox_id'])
+            basis['confirmed_source_receipts']=rows(u,"SELECT p.id,p.version FROM core.proposed_actions p JOIN core.inbox_items i ON i.id=p.inbox_id WHERE p.entity_id=:e AND p.action_type='DEPOT_RECEIPT' AND p.state='POSTED' AND i.fingerprint=(SELECT fingerprint FROM core.inbox_items WHERE id=:s)",e=e,s=p['inbox_id'])
+            if any(r['status']=='posted' for r in basis['existing_receipts']) or basis['confirmed_source_receipts']:missing.append('Этот оригинал уже принят: откройте существующий чек')
         elif kind=='INVOICE_MATCH':
             required('receipt_id','Ранее подтверждённый приход')
             receipt=scoped('inventory.events',fields.get('receipt_id'))
@@ -304,13 +323,14 @@ class OwnerCaptureService:
         def run(u):
             p=self._proposal(u,e,i,True)
             if p['version']!=b.expected_version or p['state'] in ('POSTED','CONFIRMED_NONPOSTING'):raise ConflictError('Карточка изменилась; обновите её')
+            if p['state']=='REJECTED' and action!='REOPEN':raise ConflictError('Предложение отклонено; восстановите новой ревизией')
             if action=='EDIT' or action=='REOPEN':
                 payload=b.payload if action=='EDIT' else self._view(u,p)['revision']['payload']
                 return self._revision(u,p,payload,{k:{'category':'OWNER INPUT'} for k in payload},a,action)
-            if p['state']=='REJECTED':raise ConflictError('Предложение отклонено; восстановите новой ревизией')
+            previous=self._view(u,p)['revision']
+            revised=self._revision(u,p,previous['payload'],previous['provenance'],a,action,warnings=previous['missing'])
             state='DEFERRED' if action=='DEFER' else 'REJECTED'
             rows(u,'UPDATE core.proposed_actions SET state=:s,deferred_at=CASE WHEN :s=\'DEFERRED\' THEN clock_timestamp() ELSE deferred_at END,updated_at=clock_timestamp() WHERE id=:i RETURNING id',s=state,i=i)
-            self._audit(u,p,a,action,p['version'],dict(reason=b.reason))
             return self._view(u,self._proposal(u,e,i))
         return self._write(e,a,key,'owner_'+action.lower(),dict(id=str(i),**b.model_dump(mode='json')),run)
 
@@ -326,6 +346,10 @@ class OwnerCaptureService:
             kind=p['action_type'];payload=rev['payload']
             if kind in ('STOCK_RECEIPT','STOCK_APPLICATION','INVOICE_MATCH'):
                 u.session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended('inventory:'||CAST(:e AS text),0))"),{'e':str(e)})
+            if kind=='DEPOT_RECEIPT':
+                if payload.get('depot_id'):u.session.execute(text('SELECT id FROM core.counterparties WHERE id=:d FOR UPDATE'),{'d':payload['depot_id']})
+                fingerprint=u.session.get(InboxRow,UUID(p['inbox_id'])).fingerprint
+                u.session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:identity,0))'),{'identity':f'owner-depot-original:{e}:{fingerprint}'})
             if payload.get('obligation_id'):u.finance.get_obligation(UUID(payload['obligation_id']),for_update=True)
             if payload.get('money_account_id'):u.finance.lock_money_accounts([UUID(payload['money_account_id'])])
             # Lock mutable references before taking the fresh preview basis.
@@ -408,6 +432,12 @@ class OwnerCaptureService:
             u.session.flush();d=svc.get(e,UUID(d['id']))
             issues=d.get('issues',[])
             r=svc.post(e,a,key+':post',UUID(d['id']),SettlementPost(expected_version=d['version'],confirmed=True,reviewed_issues=tuple(issues),review_reason='Owner reviewed R2 receipt arithmetic and scoped qualities'))
+            if f['remember_quality_mapping']:
+                for idx,line in enumerate(f['lines']):
+                    label=line['original_quality_name'].casefold();q=f['qualities'][idx]
+                    prior=rows(u,'SELECT version,quality FROM harvest.depot_quality_mappings WHERE depot_id=:d AND original_label=:l ORDER BY version DESC LIMIT 1',d=f['depot_id'],l=label)
+                    if not prior or prior[0]['quality']!=q:
+                        rows(u,'INSERT INTO harvest.depot_quality_mappings(entity_id,depot_id,original_label,version,quality,proposal_id,accepted_by) VALUES(:e,:d,:l,:v,:q,:p,:a) RETURNING version',e=e,d=f['depot_id'],l=label,v=prior[0]['version']+1 if prior else 1,q=q,p=p['id'],a=a)
             return r,dict(settlement_id=r['id']),False
         raise ValidationError('Для этого действия пока доступен ручной режим; источник сохранён')
 

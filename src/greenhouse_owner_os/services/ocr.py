@@ -7,6 +7,7 @@ import csv
 import io
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 class RecognitionFailure(Exception):
@@ -16,6 +17,7 @@ class LocalOCR:
     version = 'local-tesseract-tur-eng-v1'
     provider = 'local'
     def recognize(self, content, mime):
+        deadline=time.monotonic()+120
         from PIL import Image, ImageOps
         Image.MAX_IMAGE_PIXELS = 25000000
         with tempfile.TemporaryDirectory(prefix='owner-ocr-') as td:
@@ -42,6 +44,7 @@ class LocalOCR:
                 candidates=[]
                 with Image.open(path) as im:
                     for angle in (0,90,180,270):
+                        if time.monotonic()>=deadline:raise RecognitionFailure('recognition_timeout')
                         derivative=root/'derivative.png';im.rotate(angle,expand=True).save(derivative)
                         tsv=self._run(['tesseract',str(derivative),'stdout','-l','tur+eng','--psm','6','tsv'],timeout=20)
                         words=[r for r in csv.DictReader(io.StringIO(tsv),delimiter='\t') if r.get('text','').strip() and r.get('conf','-1')!='-1']

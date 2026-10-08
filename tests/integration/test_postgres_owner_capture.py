@@ -27,6 +27,80 @@ def test_source_is_committed_before_preparation(inv):
     assert svc.queue(UUID(inv['e']),a)['items'][0]['state']=='NEEDS_INPUT'
     with sf() as db:assert db.scalar(text('SELECT count(*) FROM core.confirmation_effects WHERE entity_id=:e'),dict(e=inv['e']))==0
 
+def test_real_gorgun_photo_scoped_quality_and_season_weighting(inv):
+    import base64
+    from decimal import Decimal
+    from tests.ocr_corpus import document
+    depot=send(inv['c'],f"/entities/{inv['e']}/counterparties",dict(name='Görgün',role='depot',source='test:representative'))
+    image,mime=document(0)
+    s=source(inv,None,mode='photo',filename='TEST-representative.png',mime_type=mime,file_base64=base64.b64encode(image).decode())
+    p=queue(inv)[0];assert p['action_type']=='DEPOT_RECEIPT'
+    f=p['revision']['payload'];assert f['qualities']==['HIGHEST','FIRST','SECOND']
+    assert [l['original_quality_name'] for l in f['lines']]==['Grand','Birinci','İkinci']
+    assert f['alacak_value']=='3000' and p['revision']['missing']
+    f['quality_reviewed']=f['arithmetic_reviewed']=True
+    f['remember_quality_mapping']=True
+    f['lines'][0]['count']=10
+    p=revise(inv,p,f);assert p['state']=='READY'
+    r=confirm(inv,p);assert r['effect']['status']=='posted'
+    assert {l['normalized_quality'] for l in r['effect']['lines']}=={'HIGHEST','FIRST','SECOND'}
+    assert confirm(inv,p,key='receipt-again')==r
+    home=inv['c'].get(f"/v1/entities/{inv['e']}/owner/home").json();season=home['season'][0]
+    assert Decimal(season['kg'])==175 and Decimal(season['average_price'])==Decimal(3000)/175
+    assert Decimal(season['average_bunch_weight'])==10 and season['count_coverage_complete'] is False
+    assert home['finance']['balances']['TRY']['cash']=='0.00'
+    assert home['finance']['balances']['TRY']['receivable']=='3000.00'
+    with inv['preview'][0]() as db:
+        assert db.scalar(text('SELECT count(*) FROM harvest.depot_quality_mappings WHERE depot_id=:d'),dict(d=depot['id']))==3
+    # New capture identity of the same physical original must not create a second sale.
+    source(inv,None,mode='photo',filename='TEST-copy.png',mime_type=mime,file_base64=base64.b64encode(image).decode())
+    duplicate=queue(inv)[0];f=duplicate['revision']['payload'];f['quality_reviewed']=f['arithmetic_reviewed']=True
+    duplicate=revise(inv,duplicate,f);assert duplicate['state']=='NEEDS_INPUT'
+    confirm(inv,duplicate,expected=422)
+
+def test_payment_adapter_exact_one_effect_and_changed_debt_stale(inv):
+    source(inv,'Должен за ремонт.');p=queue(inv)[0]
+    # Deterministic financial route; supply the exact reviewed party and amount.
+    if p['action_type']!='PAYABLE':
+        source(inv,'Должен Серкану 7 000 за ремонт.');p=next(p for p in queue(inv) if p['action_type']=='PAYABLE')
+    p=revise(inv,p,dict(amount='7000',currency='TRY',event_date='2026-10-08',counterparty_id=inv['cp'],description='TEST ремонт'))
+    debt=confirm(inv,p)['effect']
+    source(inv,'Заплатил Серкану 5 000');p=next(p for p in queue(inv) if p['action_type']=='PAYMENT')
+    assert p['state']=='NEEDS_INPUT'
+    f=dict(amount='5000',currency='TRY',event_date='2026-10-08',counterparty_id=inv['cp'],money_account_id=inv['cash'],payment_purpose='debt',obligation_id=debt['id'],description='TEST ремонт')
+    p=revise(inv,p,f);r=confirm(inv,p);assert confirm(inv,p,key='payment-retry')==r
+    assert r['effect']['status']=='posted'
+    assert inv['preview'][3].reconcile(entity_id=UUID(inv['e']))['ok']
+
+def test_supplier_siblings_remain_independent(inv):
+    source(inv,'Fatura KNO3 100 kg');ps=queue(inv);pay=next(p for p in ps if p['action_type']=='PAYABLE');match=next(p for p in ps if p['action_type']=='INVOICE_MATCH')
+    pay=revise(inv,pay,dict(amount='7000',counterparty_id=inv['cp'],event_date='2026-10-08',description='TEST invoice'))
+    confirm(inv,pay);assert next(p for p in queue(inv) if p['id']==match['id'])['state']==match['state']
+    with inv['preview'][0]() as db:assert db.scalar(text('SELECT count(*) FROM inventory.events WHERE entity_id=:e'),dict(e=inv['e']))==0
+
+def test_provider_failure_original_survives(inv):
+    class Failed:
+        def recognize(self,*args):raise TimeoutError('TEST provider timeout')
+    sf,a,_,_,_=inv['preview'];svc=OwnerCaptureService(lambda:SqlAlchemyUnitOfWork(sf),recognizer=Failed())
+    import base64
+    from tests.ocr_corpus import document
+    image,mime=document(0);b=CaptureSource(client_capture_id=uuid4(),captured_at=datetime.now(timezone.utc),mode='photo',filename='TEST.png',mime_type=mime,file_base64=base64.b64encode(image).decode())
+    s=svc.capture(UUID(inv['e']),a,'provider-failure',b);svc.process(UUID(s['id']))
+    assert svc.source(UUID(inv['e']),a,UUID(s['id']))['state']=='FAILED'
+    assert svc.original(UUID(inv['e']),a,UUID(s['id']))[0]==image
+
+def test_anonymous_direct_expense_exact_journal_and_reversal(inv):
+    source(inv,'Купил бензин за 500 TRY.');p=queue(inv)[0];assert p['action_type']=='DIRECT_EXPENSE'
+    p=revise(inv,p,dict(amount='500',currency='TRY',event_date='2026-10-08',money_account_id=inv['cash'],description='TEST топливо'))
+    r=confirm(inv,p);assert confirm(inv,p,key='expense-retry')==r
+    assert r['effect']['counterparty_id'] is None
+    home=inv['c'].get(f"/v1/entities/{inv['e']}/owner/home").json()
+    assert home['finance']['balances']['TRY']['cash']=='-500.00' and home['finance']['balances']['TRY']['payable']=='0.00'
+    assert home['finance']['advances']==[]
+    reversed=send(inv['c'],f"/entities/{inv['e']}/owner/direct-expenses/{r['effect']['id']}/reverse",dict(expected_version=1,event_date='2026-10-08',reason='TEST correction'),expected=200)
+    assert reversed['status']=='reversed' and inv['preview'][3].reconcile(entity_id=UUID(inv['e']))['ok']
+    assert inv['c'].get(f"/v1/entities/{inv['e']}/owner/home").json()['finance']['balances']['TRY']['cash']=='0.00'
+
 def test_neutral_and_worker_future_route_do_not_become_finance(inv):
     source(inv,'Непонятное сообщение');p=queue(inv)[0];assert p['action_type']=='UNRESOLVED'
     source(inv,'Завтра Асыф Газипаша починит плёнку в Özvadi.');ps=queue(inv)
@@ -57,11 +131,12 @@ def test_defer_reject_edit_revision_and_age_preserved(inv):
     source(inv);p=queue(inv)[0];start=p['first_unresolved_at'];root=f"/entities/{inv['e']}/owner/confirmations/{p['id']}"
     d=send(inv['c'],root+'/defer',dict(expected_version=p['version']),expected=200)
     assert d['state']=='DEFERRED' and d['first_unresolved_at']==start
-    r=send(inv['c'],root+'/reject',dict(expected_version=p['version']),expected=200)
+    r=send(inv['c'],root+'/reject',dict(expected_version=d['version']),expected=200)
     assert r['state']=='REJECTED';confirm(inv,p,expected=409)
-    opened=send(inv['c'],root+'/reopen',dict(expected_version=p['version']),expected=200)
-    assert opened['version']==p['version']+1 and opened['first_unresolved_at']==start
-    with inv['preview'][0]() as db:assert db.scalar(text('SELECT count(*) FROM core.proposal_revisions WHERE proposal_id=:p'),dict(p=p['id']))==2
+    send(inv['c'],root+'/revise',dict(expected_version=p['version'],payload=p['revision']['payload']),expected=409)
+    opened=send(inv['c'],root+'/reopen',dict(expected_version=r['version']),expected=200)
+    assert opened['version']==r['version']+1 and opened['first_unresolved_at']==start
+    with inv['preview'][0]() as db:assert db.scalar(text('SELECT count(*) FROM core.proposal_revisions WHERE proposal_id=:p'),dict(p=p['id']))==4
 
 def test_source_uuid_retry_and_changed_original_conflict(inv):
     body=dict(client_capture_id=str(uuid4()),captured_at='2026-10-08T12:00:00+03:00',text='Просто текст')

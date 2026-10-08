@@ -67,6 +67,7 @@ class DepotProposal(StrictModel):
     lines: list[LineInput] = Field(default_factory=list, max_length=100)
     qualities: list[Literal['HIGHEST','FIRST','SECOND'] | None] = Field(default_factory=list,max_length=100)
     quality_reviewed: bool = False
+    remember_quality_mapping: bool = False
     arithmetic_reviewed: bool = False
     stated_total: str | None = None
     alacak_value: str | None = None

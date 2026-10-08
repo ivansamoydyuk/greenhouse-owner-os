@@ -53,6 +53,15 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
     eid=UUID(profile['entity']['id'])
     from greenhouse_owner_os.services.dimensions import provision_owner_dimensions
     provision_owner_dimensions(factory,eid,actor,profile['opening']['id'])
+    if os.getenv('R2_REVIEW_FIXTURES')=='1':
+        # Explicit TEST references only; no stock, cash, debt or real worker seeded.
+        fixture_client=TestClient(setup_app)
+        def fixture(path,payload,key):
+            response=fixture_client.post('/v1/entities/'+str(eid)+path,json=payload,headers={'Idempotency-Key':'test:r2-preview:'+key})
+            if response.status_code not in (200,201):raise RuntimeError('R2 preview reference setup failed')
+        fixture('/inventory/products',dict(name='TEST KNO3',aliases=['KNO3'],base_unit='kg',currency='TRY',source='test:r2-review-fixture'),'product')
+        fixture('/inventory/locations',dict(name='İmamlı',source='test:r2-review-fixture'),'location')
+        fixture('/counterparties',dict(name='Görgün',role='depot',source='test:r2-review-fixture'),'depot')
     cookie_value=secrets.token_urlsafe(48)
     def owner(request:Request):
         if not hmac.compare_digest(request.cookies.get('preview_session',''),cookie_value):

@@ -12,6 +12,7 @@ branch_labels = depends_on = None
 def upgrade():
     op.execute(SQL)
     op.execute(EXTRA)
+    op.execute(HARDEN)
 
 def downgrade():
     raise RuntimeError('Forward-only evidence migration: use documented separate-backup recovery')
@@ -223,4 +224,68 @@ CREATE FUNCTION core.r2_task_scope() RETURNS trigger LANGUAGE plpgsql AS $$
  THEN RAISE EXCEPTION 'Owner task identity immutable' USING ERRCODE='23514'; END IF;
  RETURN NEW; END $$;
 CREATE TRIGGER owner_task_scope BEFORE INSERT OR UPDATE ON core.owner_tasks FOR EACH ROW EXECUTE FUNCTION core.r2_task_scope();
+"""
+
+HARDEN = r"""
+CREATE FUNCTION finance.r2_expense_identity() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Expense evidence retained' USING ERRCODE='23514'; END IF;
+ IF (NEW.id,NEW.entity_id,NEW.proposal_id,NEW.amount,NEW.currency,NEW.event_date,NEW.money_account_id,NEW.counterparty_id,NEW.description,NEW.posting_id,NEW.created_by,NEW.created_at)
+ IS DISTINCT FROM (OLD.id,OLD.entity_id,OLD.proposal_id,OLD.amount,OLD.currency,OLD.event_date,OLD.money_account_id,OLD.counterparty_id,OLD.description,OLD.posting_id,OLD.created_by,OLD.created_at)
+ OR OLD.status<>'posted' OR NEW.status<>'reversed' OR NEW.version<>OLD.version+1
+ OR NEW.reversal_posting_id IS NULL OR NOT core.r2_owner(NEW.entity_id,NEW.reversed_by) OR length(btrim(NEW.reversal_reason))=0
+ THEN RAISE EXCEPTION 'Expense original immutable / invalid reversal' USING ERRCODE='23514'; END IF;
+ RETURN NEW; END $$;
+CREATE TRIGGER expense_identity BEFORE UPDATE OR DELETE ON finance.direct_expenses FOR EACH ROW EXECUTE FUNCTION finance.r2_expense_identity();
+CREATE TABLE harvest.depot_quality_mappings (
+ entity_id uuid NOT NULL REFERENCES core.entities(id), depot_id uuid NOT NULL REFERENCES core.counterparties(id),
+ original_label text NOT NULL CHECK(length(btrim(original_label)) BETWEEN 1 AND 100), version int NOT NULL CHECK(version>0),
+ quality text NOT NULL CHECK(quality IN ('HIGHEST','FIRST','SECOND')), proposal_id uuid NOT NULL REFERENCES core.proposed_actions(id),
+ accepted_by uuid NOT NULL REFERENCES core.actors(id), accepted_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(depot_id,original_label,version));
+CREATE TRIGGER depot_mapping_immutable BEFORE UPDATE OR DELETE ON harvest.depot_quality_mappings FOR EACH ROW EXECUTE FUNCTION core.r2_immutable();
+CREATE FUNCTION harvest.r2_mapping_scope() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NOT core.r2_owner(NEW.entity_id,NEW.accepted_by)
+ OR NOT EXISTS(SELECT 1 FROM core.counterparties WHERE id=NEW.depot_id AND entity_id=NEW.entity_id AND counterparty_type IN ('depot','customer','both'))
+ OR NOT EXISTS(SELECT 1 FROM core.proposed_actions WHERE id=NEW.proposal_id AND entity_id=NEW.entity_id AND action_type='DEPOT_RECEIPT')
+ THEN RAISE EXCEPTION 'Depot mapping scope/authority mismatch' USING ERRCODE='23514'; END IF;
+ RETURN NEW; END $$;
+CREATE TRIGGER depot_mapping_scope BEFORE INSERT ON harvest.depot_quality_mappings FOR EACH ROW EXECUTE FUNCTION harvest.r2_mapping_scope();
+CREATE FUNCTION core.r2_finality() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE p core.proposed_actions; effect core.confirmation_effects;
+BEGIN
+ SELECT * INTO p FROM core.proposed_actions WHERE id=NEW.id;
+ IF NOT EXISTS(SELECT 1 FROM core.proposal_revisions WHERE proposal_id=p.id AND version=p.version)
+ THEN RAISE EXCEPTION 'Current revision required' USING ERRCODE='23514'; END IF;
+ IF p.state IN ('POSTED','CONFIRMED_NONPOSTING') THEN
+ SELECT * INTO effect FROM core.confirmation_effects WHERE proposal_id=p.id;
+ IF effect.proposal_id IS NULL OR effect.version<>p.version OR NOT CASE p.action_type
+ WHEN 'PAYABLE' THEN effect.obligation_id IS NOT NULL WHEN 'PAYMENT' THEN effect.payment_id IS NOT NULL
+ WHEN 'DIRECT_EXPENSE' THEN effect.direct_expense_id IS NOT NULL
+ WHEN 'STOCK_RECEIPT' THEN effect.inventory_id IS NOT NULL WHEN 'STOCK_APPLICATION' THEN effect.inventory_id IS NOT NULL
+ WHEN 'DEPOT_RECEIPT' THEN effect.settlement_id IS NOT NULL WHEN 'PERSONAL_TASK' THEN effect.owner_task_id IS NOT NULL
+ WHEN 'WORKER_TASK' THEN effect.worker_task_id IS NOT NULL WHEN 'INVOICE_MATCH' THEN effect.invoice_match_id IS NOT NULL ELSE false END
+ THEN RAISE EXCEPTION 'Typed owner effect required' USING ERRCODE='23514'; END IF;
+ END IF;
+ RETURN NEW; END $$;
+CREATE CONSTRAINT TRIGGER proposal_finality AFTER INSERT OR UPDATE ON core.proposed_actions
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION core.r2_finality();
+CREATE FUNCTION core.r2_link_scope() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NOT core.r2_owner(NEW.entity_id,NEW.reviewed_by)
+ OR NOT EXISTS(SELECT 1 FROM core.proposed_actions p WHERE p.id=NEW.proposal_id AND p.entity_id=NEW.entity_id)
+ THEN RAISE EXCEPTION 'Review link authority/scope mismatch' USING ERRCODE='23514'; END IF;
+ IF TG_TABLE_NAME='invoice_receipt_links' THEN
+ IF NOT EXISTS(SELECT 1 FROM core.inbox_items WHERE id=NEW.inbox_id AND entity_id=NEW.entity_id)
+ OR NOT EXISTS(SELECT 1 FROM inventory.events WHERE id=NEW.receipt_id AND entity_id=NEW.entity_id AND kind='receipt' AND status='posted')
+ OR NEW.finance_obligation_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM finance.obligations WHERE id=NEW.finance_obligation_id AND entity_id=NEW.entity_id AND status='posted')
+ THEN RAISE EXCEPTION 'Invoice receipt scope/state mismatch' USING ERRCODE='23514'; END IF;
+ ELSE
+ IF NOT EXISTS(SELECT 1 FROM harvest.depot_settlements WHERE id=NEW.settlement_id AND entity_id=NEW.entity_id)
+ THEN RAISE EXCEPTION 'Quality receipt scope mismatch' USING ERRCODE='23514'; END IF;
+ END IF;
+ RETURN NEW; END $$;
+CREATE TRIGGER invoice_link_scope BEFORE INSERT ON core.invoice_receipt_links FOR EACH ROW EXECUTE FUNCTION core.r2_link_scope();
+CREATE TRIGGER quality_link_scope BEFORE INSERT ON harvest.receipt_quality_reviews FOR EACH ROW EXECUTE FUNCTION core.r2_link_scope();
 """

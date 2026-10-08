@@ -18,6 +18,9 @@ def mount_owner_capture(app,finance,actor_provider):
     @app.get(root+'/captures/{item_id}')
     def source(entity_id:UUID,item_id:UUID,actor:UUID=Depends(actor_provider)):
         return service.source(entity_id,actor,item_id)
+    @app.get(root+'/captures')
+    def sources(entity_id:UUID,offset:int=Query(0,ge=0,le=10000),actor:UUID=Depends(actor_provider)):
+        return service.sources(entity_id,actor,offset)
     @app.get(root+'/captures/{item_id}/original')
     def original(entity_id:UUID,item_id:UUID,actor:UUID=Depends(actor_provider)):
         data,mime=service.original(entity_id,actor,item_id)
