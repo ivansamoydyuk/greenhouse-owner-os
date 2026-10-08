@@ -48,7 +48,8 @@ export function proposalSummary(p,data={},withOpen=true){
     if(kind==='PAYMENT'){
       const debt=find('finance.obligations',f.obligation_id,finance.obligations||[]);
       facts+=fact('Погашаемый долг',debt?`${debt.description||'Долг'} · ${ref(debt.counterparty_id)} · ${exactMoney(debt.original_amount,debt.currency)}`:f.obligation_id||'Не выбран');
-      facts+=fact('Остаток долга до оплаты',exactMoney(basis.debt_remaining??debt?.remaining_amount,f.currency));
+      const remaining=typeof basis.debt_remaining==='object'?basis.debt_remaining?.remaining_amount:basis.debt_remaining;
+      facts+=fact('Остаток долга до оплаты',exactMoney(remaining??debt?.remaining_amount,f.currency));
     }else{
       facts+=(f.attributions||[]).map(a=>fact('Теплица / участок',`${area(a.work_area_id)} · ${exactMoney(a.amount,f.currency)}`)).join('');
       if(!f.attributions?.length)facts+=fact('Распределение','GENERAL · без указанной теплицы');

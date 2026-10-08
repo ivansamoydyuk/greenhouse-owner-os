@@ -15,7 +15,7 @@ test('physical stock confirmation names product, exact quantity/unit/location an
  assert.ok(!html.includes('data-r2-open'));assert.ok(!html.includes('<original>'));
 });
 test('finance description cannot hide party, debt, account, explicit currency or effects',()=>{
- const html=proposalSummary(proposal('PAYMENT',{amount:'500.00',currency:'TRY',description:'Оплата за ремонт',counterparty_id:'party',money_account_id:'cash',obligation_id:'debt'}, {'debt_remaining':'2100.00'}),data,false);
+ const html=proposalSummary(proposal('PAYMENT',{amount:'500.00',currency:'TRY',description:'Оплата за ремонт',counterparty_id:'party',money_account_id:'cash',obligation_id:'debt'}, {'debt_remaining':{obligation_id:'debt',original_amount:'2600.00',settled_amount:'500.00',remaining_amount:'2100.00',currency:'TRY'}}),data,false);
  for(const text of ['Оплата за ремонт','Серкан','Cash TR','Ремонт трубы','2 100,00 TRY','только выбранный долг'])assert.ok(html.includes(text),text);
  const uah=proposalSummary(proposal('PAYABLE',{amount:'1000.00',currency:'UAH',counterparty_id:'party',attributions:[]}),data);
  assert.ok(uah.includes('1 000,00 UAH'));assert.ok(uah.includes('GENERAL'));assert.ok(!uah.includes('1 000,00 TRY'));
@@ -52,4 +52,10 @@ test('worker handoff language follows selected verified worker and never an old 
  assert.deepEqual(workerProposal(payload,workers),{...payload,language:'tr'});
  assert.equal(workerProposal({...payload,worker_id:'missing'},workers).language,null);
  assert.equal(workerProposal({...payload,worker_id:'a',language:null},workers).language,'fa');
+});
+
+test('payment review reads exact remaining amount from the real PostgreSQL balance-row snapshot',()=>{
+ const basis={debt_remaining:{obligation_id:'debt',original_amount:'999999999999999999.99',settled_amount:'0.01',remaining_amount:'999999999999999999.98',currency:'TRY'}};
+ const html=proposalSummary(proposal('PAYMENT',{amount:'1.00',currency:'TRY',counterparty_id:'party',obligation_id:'debt'},basis),data,false);
+ assert.ok(html.includes('999 999 999 999 999 999,98 TRY'));assert.ok(!html.includes('[object Object]'));assert.ok(!html.includes('2 100,00 TRY'));
 });
