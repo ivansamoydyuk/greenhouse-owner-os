@@ -1,3 +1,25 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#173c32"><title>Финансы · Greenhouse Owner OS</title><link rel="icon" href="/assets/favicon.svg"><link rel="stylesheet" href="/assets/style.css"></head>
-<body><div class="preview-strip">ТЕСТОВЫЙ PREVIEW · операции здесь не являются фактическими</div><header><a href="/" class="brand">◈ <span>GREENHOUSE <small>OWNER OS</small></span></a><button id="refresh" class="quiet" aria-label="Обновить">↻</button></header><main id="app"><p role="status">Загрузка финансов…</p></main><nav id="nav" aria-label="Разделы"><button data-page="home">Главная</button><button data-page="overview">Обзор</button><button data-page="debts">Долги</button><button data-page="operations">Операции</button><button data-page="harvest">Урожай / Депо</button><button data-page="inventory">Удобрения / Запасы</button><button data-page="tasks">Работники / Задачи</button><button data-page="inbox">Входящие</button><button data-page="parties">Контрагенты</button></nav><dialog id="sheet" aria-labelledby="sheet-title"><div id="sheet-content"></div></dialog><dialog id="confirmation" aria-labelledby="confirm-title"><form method="dialog"><h2 id="confirm-title">Подтверждение</h2><div id="confirm-content"></div><div class="actions"><button value="cancel" class="secondary">Назад</button><button value="confirm" class="primary" id="confirm-button">Подтвердить</button></div></form></dialog><div id="notice" role="status" aria-live="polite"></div><script type="module" src="/assets/app.js"></script></body></html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#173c32">
+  <title>Greenhouse Owner OS</title>
+  <link rel="icon" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#app">К содержимому</a>
+  <div class="preview-strip"><span class="preview-dot" aria-hidden="true"></span>ТЕСТОВЫЙ PREVIEW · только тестовые операции</div>
+  <header class="app-header">
+    <a href="#home" class="brand" aria-label="Greenhouse Owner OS · Главная"><span class="brand-mark" aria-hidden="true">G</span><span>Greenhouse<small>OWNER OS</small></span></a>
+    <button id="refresh" class="quiet icon-button" aria-label="Обновить данные"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7V3m0 4h-4M4 17v4m0-4h4M5 8a8 8 0 0 1 14-2l1 1M4 17l1 1a8 8 0 0 0 14-2"/></svg></button>
+  </header>
+  <main id="app" tabindex="-1"><div class="loading-state" role="status"><span class="loading-dot" aria-hidden="true"></span><p>Открываем рабочий обзор…</p></div></main>
+  <div id="owner-dock" class="owner-dock" hidden><nav id="nav" aria-label="Разделы"></nav></div>
+  <dialog id="sheet" aria-labelledby="sheet-title"><div id="sheet-content"></div></dialog>
+  <dialog id="confirmation" aria-labelledby="confirm-title"><form method="dialog"><h2 id="confirm-title">Подтверждение</h2><div id="confirm-content"></div><div class="actions"><button value="cancel" class="secondary">Назад</button><button value="confirm" class="primary" id="confirm-button">Подтвердить</button></div></form></dialog>
+  <div id="notice" role="status" aria-live="polite"></div>
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>

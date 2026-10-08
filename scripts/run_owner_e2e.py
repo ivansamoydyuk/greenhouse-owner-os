@@ -37,6 +37,7 @@ def main():
             subprocess.run(['node','tests/e2e/owner-r2-ui-fencing.mjs'],env=env,cwd=ROOT,check=True)
             if os.getenv('R2_E2E_ONLY'):
                 subprocess.run(['node','tests/e2e/owner-r2.mjs'],env=env,cwd=ROOT,check=True)
+                subprocess.run(['node','tests/e2e/owner-modern-ui.mjs'],env=env,cwd=ROOT,check=True)
                 return
             if os.getenv('AGENT_BROWSER'):
                 agent=os.environ['AGENT_BROWSER']
@@ -56,6 +57,7 @@ def main():
             subprocess.run(['node','tests/e2e/inventory.mjs'],env=env,cwd=ROOT,check=True)
             subprocess.run(['node','tests/e2e/workers.mjs'],env=env,cwd=ROOT,check=True)
             subprocess.run(['node','tests/e2e/owner-r2.mjs'],env=env,cwd=ROOT,check=True)
+            subprocess.run(['node','tests/e2e/owner-modern-ui.mjs'],env=env,cwd=ROOT,check=True)
         finally:
             server.terminate()
             try:server.wait(timeout=5)

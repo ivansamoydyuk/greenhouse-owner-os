@@ -2,22 +2,22 @@ name: Owner isolated review preview
 
 on:
   push:
-    branches: [06-owner-ux-r2-capture-confirmation]
+    branches: [06-owner-ux-r2-capture-confirmation, 06-owner-ui-r2-modern-dashboard]
   pull_request:
     types: [opened, reopened, synchronize]
-    branches: [01-architecture-database]
+    branches: [01-architecture-database, 06-owner-ux-r2-capture-confirmation]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: owner-finance-isolated-review
+  group: owner-isolated-review-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   preview:
-    if: github.head_ref == '08-workers-tasks-r1' || github.ref_name == '08-workers-tasks-r1' || github.head_ref == '06-owner-ux-r2-capture-confirmation' || github.ref_name == '06-owner-ux-r2-capture-confirmation'
+    if: github.head_ref == '08-workers-tasks-r1' || github.ref_name == '08-workers-tasks-r1' || github.head_ref == '06-owner-ux-r2-capture-confirmation' || github.ref_name == '06-owner-ux-r2-capture-confirmation' || github.head_ref == '06-owner-ui-r2-modern-dashboard' || github.ref_name == '06-owner-ui-r2-modern-dashboard'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -106,7 +106,7 @@ jobs:
           print('External HTTPS authenticated preview smoke PASS; zero cash, Serkan unpaid 2600 TRY, reconciliation PASS')
           PY
           printf 'URL: %s\nAccess key: %s\nTEST PREVIEW ONLY. Opening Serkan AP 2600 TRY remains unpaid.\nExpires after 35 minutes of review time; runner database is then destroyed.\n' "$preview_url" "$PREVIEW_SECRET" > artifacts/preview-access.txt
-          printf '### Isolated Workers & Tasks preview\n\n%s\n\nAccess key: download the private **owner-workers-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
+          printf '### Isolated Owner UI preview\n\n%s\n\nAccess key: download the private **owner-workers-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: owner-workers-review-access

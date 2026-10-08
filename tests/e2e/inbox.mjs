@@ -1,3 +1,4 @@
+import {navigateOwner} from './navigation.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {chromium} from 'playwright';
@@ -11,12 +12,12 @@ let eid,root,initial,financeItem;
 async function view(){return api(`/v1/entities/${eid}/finance-overview?limit=100`);}
 async function add(text,locator,file){await page.getByRole('button',{name:'+ Добавить',exact:true}).click();if(text)await sheet().getByLabel('Текст сообщения / расшифровка документа').fill(text);if(locator)await sheet().getByLabel('Ссылка или номер источника (если есть)').fill(locator);if(file)await sheet().locator('#inbox-file').setInputFiles(file);await click('Сохранить и проверить');await sheet().getByRole('heading',{name:'Проверка входящего',exact:true}).waitFor();}
 try{
- await page.goto(base);await page.getByLabel('Ключ доступа').fill(process.env.PREVIEW_SECRET);await page.getByRole('button',{name:'Открыть Finance',exact:true}).click();await page.getByRole('heading',{name:'Моя теплица',exact:true}).waitFor();await page.locator('#nav').getByRole('button',{name:'Обзор',exact:true}).click();await page.getByRole('heading',{name:'Финансы',exact:true}).waitFor();
+ await page.goto(base);await page.getByLabel('Ключ доступа').fill(process.env.PREVIEW_SECRET);await page.getByRole('button',{name:'Открыть Finance',exact:true}).click();await page.getByRole('heading',{name:'Моя теплица',exact:true}).waitFor();await navigateOwner(page,'overview');await page.getByRole('heading',{name:'Финансы',exact:true}).waitFor();
  // The signed-out bootstrap intentionally receives 401; record all console
  // errors during the authenticated owner workflows.
  page.on('console',x=>{if(x.type()==='error')errors.push(x.text());});
  eid=(await api('/preview/config')).entity_id;root=`/v1/entities/${eid}/inbox`;initial=await view();
- await page.locator('[data-page=inbox]').click();await page.getByRole('heading',{name:'Входящие',exact:true}).waitFor();
+ await navigateOwner(page,'inbox');await page.getByRole('heading',{name:'Входящие',exact:true}).waitFor();
  await add('Сегодня заплатил Серкану 2600 лир из Cash TR','TEST:manual:1');
  let queue=await api(root);financeItem=queue.items[0];
  assert.equal(financeItem.normalized.amount,'2600');await click('Проверить поля и создать черновик');await sheet().getByRole('heading',{name:'Проверить сообщение',exact:true}).waitFor();
@@ -27,7 +28,7 @@ try{
  const capture=await api(`/v1/entities/${eid}/captures/${confirmed.capture_id}`),payment=await api('/v1/payments/'+capture.finance_id);assert.equal(payment.status,'draft');
  console.log('PASS A/D: Inbox text -> owner review -> Finance draft, no automatic posting; stable retry reuses source and draft');
 
- const depot=await api(`/v1/entities/${eid}/counterparties`,{name:'TEST Inbox Depot',role:'depot',source:'test:inbox-e2e'});await page.getByRole('button',{name:'Обновить',exact:true}).click();
+ const depot=await api(`/v1/entities/${eid}/counterparties`,{name:'TEST Inbox Depot',role:'depot',source:'test:inbox-e2e'});await page.locator('#refresh').click();
  await add('Сегодня депо TEST Inbox Depot Grand 100 кг по 40 лир','TEST:depot:1',{name:'depot.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7 TEST Inbox original')});
  const receiptItem=(await api(root)).items[0];await click('Проверить поля и создать черновик');await sheet().getByLabel('Депо',{exact:true}).selectOption(depot.id);await sheet().getByLabel('Alacak (не оплата)',{exact:true}).fill('4000');
  await click('Сохранить и проверить черновик');await sheet().getByRole('heading',{name:'Расчёт депо',exact:true}).waitFor();await sheet().getByText('Черновик',{exact:true}).waitFor();
@@ -44,7 +45,7 @@ try{
  await add('', 'TEST:binary-only:1',{name:'scan.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7 TEST no transcription')});
  assert.equal(await sheet().locator('#inbox-review').count(),0);await sheet().getByText('Текст отсутствует',{exact:true}).waitFor();await close();
  for(const width of [320,390,768,1280]){
-  await page.setViewportSize({width,height:844});await page.locator('[data-page=inbox]').click();await page.getByRole('heading',{name:'Входящие',exact:true}).waitFor();
+  await page.setViewportSize({width,height:844});await navigateOwner(page,'inbox');await page.getByRole('heading',{name:'Входящие',exact:true}).waitFor();
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Inbox overflow '+width);await page.screenshot({path:`artifacts/inbox-${width}.png`,fullPage:true,animations:'disabled'});
   await page.locator(`[data-inbox="${receiptItem.id}"]`).click();await sheet().getByRole('heading',{name:'Проверка входящего',exact:true}).waitFor();await page.screenshot({path:`artifacts/inbox-detail-${width}.png`,fullPage:true,animations:'disabled'});assert.ok(await sheet().evaluate(n=>n.scrollWidth<=n.clientWidth+1),JSON.stringify(await sheet().evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth,elements:[...n.querySelectorAll('*')].filter(x=>x.getBoundingClientRect().right>n.getBoundingClientRect().right+1).map(x=>({tag:x.tagName,text:x.innerText?.slice(0,60),width:x.getBoundingClientRect().width}))})))+' Inbox detail overflow '+width);await page.screenshot({path:`artifacts/inbox-detail-${width}.png`,fullPage:true,animations:'disabled'});await close();
  }

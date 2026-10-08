@@ -2,7 +2,7 @@ name: PostgreSQL verification
 
 on:
   push:
-    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1, 04-fertilizers-inventory-r1, 08-workers-tasks-r1, 06-owner-ux-r2-capture-confirmation]
+    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1, 04-fertilizers-inventory-r1, 08-workers-tasks-r1, 06-owner-ux-r2-capture-confirmation, 06-owner-ui-r2-modern-dashboard]
   workflow_dispatch:
 
 permissions:
@@ -33,6 +33,8 @@ jobs:
       R2_E2E_ONLY: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.15'
@@ -76,6 +78,8 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.15'
@@ -126,7 +130,7 @@ jobs:
           import os
           import xml.etree.ElementTree as ET
           cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'integration.xml')).findall('.//testcase')
-          assert len(cases) >= 522, 'PostgreSQL tests did not execute'
+          assert len(cases) >= 569, 'PostgreSQL tests did not execute'
           assert not any(case.find('skipped') is not None for case in cases), 'PostgreSQL tests skipped'
           workers = [case for case in cases if 'test_postgres_workers' in case.get('classname', '')]
           assert len(workers) >= 125, 'Workers adversarial gate did not execute'
@@ -138,7 +142,7 @@ jobs:
           import os
           import xml.etree.ElementTree as ET
           cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'finance.xml')).findall('.//testcase')
-          assert len(cases) >= 659, 'Complete regression suite did not execute'
+          assert len(cases) >= 745, 'Complete regression suite did not execute'
           assert not any(case.find('skipped') is not None for case in cases), 'Finance tests skipped'
           PY
       - name: Verify artifacts
