@@ -129,7 +129,7 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
 
     @app.get('/preview/config')
     def config(actor_id=Depends(owner)):
-        return {'entity_id':str(eid),'environment':'TEST_PREVIEW','actual_operations':False,'r2_fixtures':os.getenv('R2_REVIEW_FIXTURES')=='1','feature_sha':os.getenv('GITHUB_SHA')}
+        return {'entity_id':str(eid),'environment':'TEST_PREVIEW','actual_operations':False,'r2_fixtures':os.getenv('R2_REVIEW_FIXTURES')=='1','feature_sha':os.getenv('OWNER_PREVIEW_FEATURE_SHA',os.getenv('GITHUB_SHA'))}
 
     @app.get('/preview/fixtures/gorgun.png')
     def representative_receipt(actor_id=Depends(owner)):

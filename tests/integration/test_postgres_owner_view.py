@@ -38,7 +38,9 @@ def test_owner_projection_pagination(preview):
     assert not {o['id'] for o in first['operations']} & {o['id'] for o in second['operations']}
 
 
-def test_guarded_preview_auth_cookie_origin_owner_opening_and_health(migrated_database):
+def test_guarded_preview_auth_cookie_origin_owner_opening_and_health(migrated_database,monkeypatch):
+    monkeypatch.setenv('GITHUB_SHA','f'*40)
+    monkeypatch.setenv('OWNER_PREVIEW_FEATURE_SHA','e'*40)
     secret='test-preview-secret-at-least-24-chars'
     app=build_preview(migrated_database,secret,environment='test')
     c=TestClient(app)
@@ -51,6 +53,7 @@ def test_guarded_preview_auth_cookie_origin_owner_opening_and_health(migrated_da
     login=c.post('/preview/login',json={'secret':secret})
     assert login.status_code==200 and 'HttpOnly' in login.headers['set-cookie'] and 'SameSite=strict' in login.headers['set-cookie']
     eid=c.get('/preview/config').json()['entity_id']
+    assert c.get('/preview/config').json()['feature_sha']=='e'*40
     view=c.get(f'/v1/entities/{eid}/finance-overview').json()
     assert view['balances']['TRY']['payable']=='2600.00'
     assert view['balances']['TRY']['cash']=='0.00'

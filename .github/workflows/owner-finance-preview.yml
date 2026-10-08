@@ -33,6 +33,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       APP_ENV: test
+      OWNER_PREVIEW_FEATURE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
       TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
     steps:
@@ -71,13 +72,16 @@ jobs:
           done
           curl --fail --retry 8 --retry-delay 2 "$preview_url/health"
           python - <<'PY'
-          import os, httpx
+          import os, httpx, subprocess
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==os.environ['OWNER_PREVIEW_FEATURE_SHA']
           origin=os.environ['PREVIEW_PUBLIC_ORIGIN']
           with httpx.Client(base_url=origin,timeout=30) as client:
               assert client.get('/preview/config').status_code==401
               response=client.post('/preview/login',json={'secret':os.environ['PREVIEW_SECRET']},headers={'Origin':origin})
               assert response.status_code==200 and 'Secure' in response.headers['set-cookie']
-              eid=client.get('/preview/config').json()['entity_id']
+              config=client.get('/preview/config').json()
+              assert config['feature_sha']==os.environ['OWNER_PREVIEW_FEATURE_SHA']
+              eid=config['entity_id']
               overview=client.get('/v1/entities/'+eid+'/finance-overview').json()
               assert overview['balances']['TRY']['payable']=='2600.00'
               assert overview['balances']['TRY']['cash']=='0.00'
