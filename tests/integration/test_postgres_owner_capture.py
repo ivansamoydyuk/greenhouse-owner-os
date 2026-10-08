@@ -23,8 +23,10 @@ def test_source_is_committed_before_preparation(inv):
     s=svc.capture(UUID(inv['e']),a,'save',CaptureSource(client_capture_id=uuid4(),captured_at=datetime.now(timezone.utc),text='Заплатил Серкану 5 000'))
     assert s['state']=='SERVER_SAVED' and s['proposals']==[]
     assert svc.source(UUID(inv['e']),a,UUID(s['id']))['server_saved']
+    assert svc.queue(UUID(inv['e']),a)['preparing']==1 and svc.queue(UUID(inv['e']),a)['items']==[]
     svc.process(UUID(s['id']))
     assert svc.queue(UUID(inv['e']),a)['items'][0]['state']=='NEEDS_INPUT'
+    assert svc.queue(UUID(inv['e']),a)['preparing']==0
     with sf() as db:assert db.scalar(text('SELECT count(*) FROM core.confirmation_effects WHERE entity_id=:e'),dict(e=inv['e']))==0
 
 def test_daily_reminder_dedupe_and_exact_boundary(inv,monkeypatch):

@@ -15,7 +15,7 @@ async function pendingDelete(key){const db=await pendingStore();return new Promi
 function fileData(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(Error('Не удалось прочитать файл'));r.readAsDataURL(file);});}
 
 export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced}){
-  let syncing=false,sessionGeneration=0,pollTimer;
+  let syncing=false,sessionGeneration=0,pollTimer,queueTimer;
   const $=s=>document.querySelector(s),root=()=>`/v1/entities/${getEntity()}/owner`,home=()=>getData()?.owner;
   const scope=()=>home()?`${getEntity()}:${home().owner_id}`:null;
   const guard=fn=>async(...args)=>{try{await fn(...args);}catch(err){notice(err.message);}};
@@ -85,7 +85,16 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced}
     };
   }
   function card(p){const f=p.revision.payload;return `<article class="card owner-proposal ${p.reminder_eligible?'overdue':''}" data-proposal="${e(p.id)}"><small>${titles[p.action_type]} · ${statuses[p.state]}</small><h2>${e(f.title||f.description||party(f.counterparty_id||f.depot_id)||'Событие')}</h2>${f.amount?`<strong class="amount">${money(f.amount,f.currency)}</strong>`:''}<p>${e(f.event_date||f.planned_date||'Дата пока не выбрана')}</p>${f.money_account_id?`<small>Счёт: ${e(party(f.money_account_id))}</small>`:''}${p.revision.missing.map(m=>`<p class="bad">${e(m)}</p>`).join('')}<button data-r2-open="${e(p.id)}">Проверить карточку</button></article>`;}
-  async function queue(offset=0){const r=await api(root()+`/confirmations?offset=${offset}`);openSheet('Неподтверждённые',`<p class="note">Каждая карточка — отдельное действие. Сохранённый источник ещё не означает оплату, долг или приход.</p>${r.items.map(card).join('')||'<p class="empty">Все карточки разобраны</p>'}${r.next_offset!==null?`<button id="r2-next">Следующие карточки →</button>`:''}`);$('#r2-next')?.addEventListener('click',guard(()=>queue(r.next_offset)));document.querySelectorAll('[data-r2-open]').forEach(b=>b.onclick=guard(()=>review(b.dataset.r2Open)));}
+  async function queue(offset=0,expected=null,remaining=60){
+    const generation=sessionGeneration,sc=scope(),r=await api(root()+`/confirmations?offset=${offset}`);
+    if(generation!==sessionGeneration||sc!==scope()||expected&&($('#r2-queue-refresh')!==expected||!$('#sheet').open))return;
+    clearTimeout(queueTimer);
+    openSheet('Неподтверждённые',`<p class="note">Каждая карточка — отдельное действие. Сохранённый источник ещё не означает оплату, долг или приход.</p>${r.preparing?'<p role="status">Источник сохранён. Готовим карточки; можно записать следующее событие.</p>':''}${r.items.map(card).join('')||(!r.preparing?'<p class="empty">Все карточки разобраны</p>':'')}<button id="r2-queue-refresh">Обновить карточки</button>${r.next_offset!==null?`<button id="r2-next">Следующие карточки →</button>`:''}`);
+    const refresh=$('#r2-queue-refresh');refresh.onclick=guard(()=>queue(offset));
+    $('#r2-next')?.addEventListener('click',guard(()=>queue(r.next_offset)));
+    document.querySelectorAll('[data-r2-open]').forEach(b=>b.onclick=guard(()=>review(b.dataset.r2Open)));
+    if(r.preparing&&remaining>0)queueTimer=setTimeout(()=>{if($('#r2-queue-refresh')===refresh&&$('#sheet').open&&navigator.onLine)queue(offset,refresh,remaining-1).catch(()=>{});},2000);
+  }
   async function review(id){
     const p=await api(root()+`/confirmations/${id}/preview`),f=p.revision.payload,kind=p.action_type;
     let summary=`<p class="eyebrow">${titles[kind]} · ${statuses[p.state]}</p>${card(p)}`;
@@ -115,6 +124,6 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced}
     }catch(err){$('#r2-edit-status').textContent=err.message;}finally{b.disabled=false;}};
   }
   window.addEventListener('online',guard(sync));document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')sync().catch(()=>{});});
-  function logout(){sessionGeneration++;clearTimeout(pollTimer);if($('#owner-capture-bar'))$('#owner-capture-bar').hidden=true;document.body.classList.remove('has-owner-capture');}
+  function logout(){sessionGeneration++;clearTimeout(pollTimer);clearTimeout(queueTimer);if($('#owner-capture-bar'))$('#owner-capture-bar').hidden=true;document.body.classList.remove('has-owner-capture');}
   return {render,bind,mount,capture,queue,sync,logout};
 }

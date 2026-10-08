@@ -341,9 +341,11 @@ class OwnerCaptureService:
 
     def queue(self,e,a,offset=0,limit=50):
         with self.factory() as u:
+            u.session.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'))
             self.owner(u,e,a)
             ps=rows(u,"SELECT * FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED') ORDER BY priority,first_unresolved_at,id OFFSET :o LIMIT :l",e=e,o=offset,l=limit+1)
-            return dict(items=[self._view(u,p) for p in ps[:limit]],next_offset=offset+limit if len(ps)>limit else None)
+            preparing=rows(u,"SELECT count(*) n FROM core.processing_jobs WHERE entity_id=:e AND state IN ('QUEUED','RUNNING')",e=e)[0]['n']
+            return dict(items=[self._view(u,p) for p in ps[:limit]],preparing=preparing,next_offset=offset+limit if len(ps)>limit else None)
 
     def preview(self,e,a,i):
         with self.factory() as u:self.owner(u,e,a);return self._view(u,self._proposal(u,e,i))
