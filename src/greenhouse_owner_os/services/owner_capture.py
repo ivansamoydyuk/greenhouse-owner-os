@@ -445,8 +445,8 @@ class OwnerCaptureService:
             tasks=rows(u,"SELECT * FROM core.owner_tasks WHERE entity_id=:e AND owner_id=:a AND state='TO_DO' ORDER BY planned_date NULLS LAST,created_at LIMIT 3",e=e,a=a)
             count=rows(u,"SELECT count(*) n,count(*) FILTER(WHERE first_unresolved_at<clock_timestamp()-interval '36 hours') overdue FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED')",e=e)[0]
             task_count=rows(u,"SELECT count(*) n FROM core.owner_tasks WHERE entity_id=:e AND owner_id=:a AND state='TO_DO'",e=e,a=a)[0]['n']
-            return dict(id=str(e),finance=v,season_start=str(date(year,10,1)),season_end=str(date(year+1,10,1)),season=season,tasks=tasks,task_count=task_count,confirmations=count,
-                        worker_exceptions=rows(u,"SELECT t.id,t.title FROM workers.tasks t WHERE t.entity_id=:e AND EXISTS(SELECT 1 FROM workers.reports r WHERE r.task_id=t.id AND r.claim='issue') LIMIT 3",e=e))
+            return dict(id=str(e),owner_id=str(a),finance=v,season_start=str(date(year,10,1)),season_end=str(date(year+1,10,1)),season=season,tasks=tasks,task_count=task_count,confirmations=count,
+                        worker_exceptions=rows(u,"SELECT t.id,t.title FROM workers.tasks t WHERE t.entity_id=:e AND t.status NOT IN ('completed','cancelled') AND EXISTS(SELECT 1 FROM workers.reports r WHERE r.task_id=t.id AND r.cycle=t.cycle AND r.state='submitted' AND r.claim='issue' AND NOT EXISTS(SELECT 1 FROM workers.actions a WHERE a.report_id=r.id AND a.kind='review_report')) ORDER BY t.planned_date NULLS LAST,t.id LIMIT 3",e=e))
 
     def counterparty(self,e,a,key,b):
         from .references import ReferenceService

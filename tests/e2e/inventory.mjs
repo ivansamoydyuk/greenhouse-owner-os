@@ -16,7 +16,7 @@ async function save(){await click('Сохранить складской чер�
 async function post(){await click('Провести физическое событие');await page.locator('#confirmation').getByRole('button',{name:'Подтвердить',exact:true}).click();await sheet().getByRole('heading',{name:/ · Проведено/}).waitFor();}
 async function reverse(r){await close();await page.locator(`[data-ievent="${r.id}"]`).first().click();await click('Отменить событие');await sheet().getByLabel('Причина отмены').fill('TEST E2E cleanup');await click('Подтвердить отмену');await sheet().getByRole('heading',{name:/ · Отменено/}).waitFor();}
 try{
- await page.goto(base);await page.getByLabel('Ключ доступа').fill(process.env.PREVIEW_SECRET);await page.getByRole('button',{name:'Открыть Finance',exact:true}).click();await page.getByRole('heading',{name:'Финансы',exact:true}).waitFor();
+ await page.goto(base);await page.getByLabel('Ключ доступа').fill(process.env.PREVIEW_SECRET);await page.getByRole('button',{name:'Открыть Finance',exact:true}).click();await page.getByRole('heading',{name:'Моя теплица',exact:true}).waitFor();await page.locator('#nav').getByRole('button',{name:'Обзор',exact:true}).click();await page.getByRole('heading',{name:'Финансы',exact:true}).waitFor();
  page.on('console',x=>{if(x.type()==='error'&&!/status of (422|409)/.test(x.text()))errors.push(x.text());});
  eid=(await api('/preview/config')).entity_id;root=`/v1/entities/${eid}/inventory`;initial=(await api(`/v1/entities/${eid}/finance-overview`)).balances;
  g=(await api(`/v1/entities/${eid}/finance-overview`)).work_areas.find(x=>x.name==='İmamlı');

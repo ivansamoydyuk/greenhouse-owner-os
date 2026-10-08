@@ -18,3 +18,15 @@ dialog .close{margin-right:0}
 #nav{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));overflow:visible}#nav button{min-width:0;width:100%;padding:10px 1px;font-size:9px;overflow-wrap:anywhere}
 
 .tasks-topline{flex-wrap:wrap}.tasks-topline>div{flex:1 1 180px;min-width:0}.worker-reference{flex-wrap:wrap}.worker-reference>span{flex:1 1 100%;min-width:0;overflow-wrap:anywhere}
+
+/* Source capture remains within thumb reach without covering navigation/content. */
+.has-owner-capture main{padding-bottom:220px}.has-owner-capture #nav{bottom:calc(64px + env(safe-area-inset-bottom));grid-template-columns:repeat(9,minmax(0,1fr))}
+.owner-capture-bar{position:fixed;bottom:0;left:0;right:0;z-index:4;display:flex;gap:8px;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:#173c32}
+.owner-capture-bar button{flex:1;min-height:48px;background:#e8efdb;color:#173c32;font-weight:700}
+.owner-home{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.owner-home>*{margin:0;min-width:0}
+.owner-home small{display:block;overflow-wrap:anywhere}.owner-receivable{grid-column:1/-1}.owner-payable strong{font-size:22px}.owner-queue-link{text-align:left;display:grid;gap:8px;color:#173c32}.owner-queue-link strong{font-size:32px}.overdue{border:2px solid #a32f20!important;background:#fff5ed}
+.owner-task{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:12px 0;border-bottom:1px solid #cad5c5}.owner-task span{min-width:0;overflow-wrap:anywhere}.owner-task button{flex-shrink:0;min-height:44px}
+.r2-fields{display:grid;gap:14px}.r2-fields label{font-size:14px}.r2-fields input,.r2-fields select{margin-top:6px}.owner-proposal h2{overflow-wrap:anywhere}
+#sheet-content table{width:100%;font-size:12px;border-collapse:collapse;table-layout:fixed}#sheet-content th,#sheet-content td{padding:6px 2px;overflow-wrap:anywhere;text-align:left}
+.has-owner-capture #notice{bottom:200px}button,a[role=button],summary{min-height:44px}.owner-home .row{flex-wrap:wrap}
+@media(max-width:620px){.owner-home{grid-template-columns:1fr;gap:12px}.owner-home .hero{padding:24px 18px}.has-owner-capture #nav{grid-template-columns:repeat(5,minmax(0,1fr));padding:4px 8px}.has-owner-capture #nav button{min-height:44px;font-size:10px}.has-owner-capture main{padding:18px 12px 240px}dialog{scroll-padding-bottom:24px}.r2-fields>button{position:sticky;bottom:0;box-shadow:0 -8px 12px white}}

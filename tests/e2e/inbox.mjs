@@ -11,7 +11,7 @@ let eid,root,initial,financeItem;
 async function view(){return api(`/v1/entities/${eid}/finance-overview?limit=100`);}
 async function add(text,locator,file){await page.getByRole('button',{name:'+ Добавить',exact:true}).click();if(text)await sheet().getByLabel('Текст сообщения / расшифровка документа').fill(text);if(locator)await sheet().getByLabel('Ссылка или номер источника (если есть)').fill(locator);if(file)await sheet().locator('#inbox-file').setInputFiles(file);await click('Сохранить и проверить');await sheet().getByRole('heading',{name:'Проверка входящего',exact:true}).waitFor();}
 try{
- await page.goto(base);await page.getByLabel('Ключ доступа').fill(process.env.PREVIEW_SECRET);await page.getByRole('button',{name:'Открыть Finance',exact:true}).click();await page.getByRole('heading',{name:'Финансы',exact:true}).waitFor();
+ await page.goto(base);await page.getByLabel('Ключ доступа').fill(process.env.PREVIEW_SECRET);await page.getByRole('button',{name:'Открыть Finance',exact:true}).click();await page.getByRole('heading',{name:'Моя теплица',exact:true}).waitFor();await page.locator('#nav').getByRole('button',{name:'Обзор',exact:true}).click();await page.getByRole('heading',{name:'Финансы',exact:true}).waitFor();
  // The signed-out bootstrap intentionally receives 401; record all console
  // errors during the authenticated owner workflows.
  page.on('console',x=>{if(x.type()==='error')errors.push(x.text());});

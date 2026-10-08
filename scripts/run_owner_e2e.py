@@ -50,6 +50,7 @@ def main():
                 subprocess.run(['node','tests/e2e/inbox.mjs'],env=env,cwd=ROOT,check=True)
             subprocess.run(['node','tests/e2e/inventory.mjs'],env=env,cwd=ROOT,check=True)
             subprocess.run(['node','tests/e2e/workers.mjs'],env=env,cwd=ROOT,check=True)
+            subprocess.run(['node','tests/e2e/owner-r2.mjs'],env=env,cwd=ROOT,check=True)
         finally:
             server.terminate()
             try:server.wait(timeout=5)
