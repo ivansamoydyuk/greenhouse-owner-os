@@ -22,6 +22,7 @@ def main():
     _reset_and_migrate(os.environ['TEST_DATABASE_URL'])
     env={**os.environ,'PYTHONPATH':str(ROOT/'src'),'PREVIEW_SECRET':secrets.token_urlsafe(32),
          'PREVIEW_PORT':'4173','PREVIEW_BIND':'127.0.0.1','PREVIEW_URL':'http://127.0.0.1:4173'}
+    if os.getenv('R2_E2E_ONLY'):env['R2_REVIEW_FIXTURES']='1'
     (ROOT/'artifacts').mkdir(exist_ok=True)
     with (ROOT/'artifacts/preview.log').open('w') as log:
         server=subprocess.Popen([sys.executable,'-m','greenhouse_owner_os.preview'],env=env,cwd=ROOT,stdout=log,stderr=log)
@@ -33,6 +34,9 @@ def main():
                 except httpx.HTTPError:pass
                 time.sleep(.1)
             else:raise RuntimeError('preview readiness timed out')
+            if os.getenv('R2_E2E_ONLY'):
+                subprocess.run(['node','tests/e2e/owner-r2.mjs'],env=env,cwd=ROOT,check=True)
+                return
             if os.getenv('AGENT_BROWSER'):
                 agent=os.environ['AGENT_BROWSER']
                 options=['--executable-path',os.environ['CHROME_PATH']] if os.getenv('CHROME_PATH') else []
