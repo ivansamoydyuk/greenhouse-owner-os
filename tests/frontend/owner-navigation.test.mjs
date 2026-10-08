@@ -121,3 +121,17 @@ test('closed native disclosures exclude content with stale rectangles but retain
     else globalThis.getComputedStyle = previous;
   }
 });
+
+
+import {revealOwnerControl} from '../e2e/navigation.mjs';
+test('disclosure helper waits for refresh and newly attached target before discovering ancestors', async()=>{
+ const steps=[];let ready=false,attached=false,open=false;
+ const disclosure={evaluate:async()=>open,locator:()=>({click:async()=>{assert.ok(ready&&attached);steps.push('native-summary-click');open=true;}})};
+ const control={
+  page:()=>({waitForFunction:async()=>{steps.push('owner-ready');ready=true;}}),
+  waitFor:async({state})=>{assert.ok(ready);steps.push(state);if(state==='attached')attached=true;if(state==='visible')assert.ok(open);},
+  locator:()=>({count:async()=>{assert.ok(ready&&attached,'An absent pre-refresh target must never report zero ancestors');steps.push('discover-ancestors');return 1;},nth:()=>disclosure})
+ };
+ assert.equal(await revealOwnerControl(control),control);
+ assert.deepEqual(steps,['owner-ready','attached','discover-ancestors','native-summary-click','discover-ancestors','visible']);
+});

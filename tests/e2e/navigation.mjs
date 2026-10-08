@@ -39,6 +39,10 @@ export async function navigateOwner(page, route) {
 // The legacy manual flow is intentionally available under progressive
 // disclosure. Open its real disclosure before using it; do not force-click.
 export async function revealOwnerControl(control) {
+  // Query-only locator operations do not honor inertness. Wait for the real
+  // owner-ready boundary and target attachment before discovering ancestors.
+  await control.page().waitForFunction(() => document.querySelector('#app')?.getAttribute('aria-busy') === 'false');
+  await control.waitFor({state: 'attached'});
   // A refreshed module may close its disclosures again. Open every ancestor,
   // outermost first, using the same visible summaries as the owner.
   const ancestors = control.locator('xpath=ancestor::details');
@@ -48,6 +52,7 @@ export async function revealOwnerControl(control) {
       await disclosure.locator(':scope > summary').click();
     }
   }
+  await control.waitFor({state: 'visible'});
   return control;
 }
 
