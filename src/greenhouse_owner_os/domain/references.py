@@ -48,7 +48,7 @@ class MoneyAccountSetup(CurrencyReference):
 
 
 class CounterpartySetup(ReferenceCommand):
-    role: Literal['supplier', 'customer', 'depot', 'both']
+    role: Literal['supplier', 'customer', 'depot', 'both', 'unclassified']
 
 
 class BootstrapCommand(StrictModel):
