@@ -1,4 +1,5 @@
-import {navigateOwner,openManualCapture} from './navigation.mjs';
+import {navigateOwner,openManualCapture,revealOwnerControl} from './navigation.mjs';
+import {money} from '../../src/greenhouse_owner_os/web/core.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {chromium} from 'playwright';
@@ -21,7 +22,12 @@ try{
  eid=(await (await context.request.get(base+'/preview/config')).json()).entity_id;
  const initial=await view(),cp=initial.references.find(r=>r.original_name==='Серкан Ремонт насосов'),imamli=initial.work_areas.find(a=>a.name==='İmamlı'),bankUSD=initial.references.find(a=>a.original_name==='Банк USD');
  assert.equal(initial.obligations.find(o=>o.opening).attributions[0].work_area_id,imamli.id);
- await page.getByRole('heading',{name:'Стратегические обязательства',exact:true}).waitFor();
+ // Strategic principal stays available in the real advanced disclosure.
+ const strategicRow=page.locator('#app .row').filter({has:page.getByText('Стратегические обязательства',{exact:true})});
+ await revealOwnerControl(strategicRow);
+ await strategicRow.getByText('Стратегические обязательства',{exact:true}).waitFor();
+ assert.equal(await strategicRow.locator('strong').innerText(),money(initial.business_balances.TRY.strategic_payable,'TRY'));
+ assert.match(await strategicRow.locator('xpath=ancestor::details').innerText(),/отдельно от операционного расхода/);
  await capture('Серкану должен 8000 лир за ремонт насоса в Имамлы');
  assert.equal(await sheet().getByLabel('Дата события',{exact:true}).inputValue(),'');
  assert.equal(await sheet().getByLabel('Тип долга',{exact:true}).inputValue(),'OPERATIONAL');

@@ -78,3 +78,39 @@ test('dismissal during encoding prevents a stale source from saving into the act
 test('explicit route invalidation fences a delayed review before the next sheet opens',async()=>{
  const h=harness();try{await h.ui.queue();const {pending,request}=await h.clickOpen();h.ui.invalidateView();request.resolve(proposal({description:'PRIVATE STALE RESPONSE'}));await pending;assert.ok(!h.html().includes('PRIVATE STALE RESPONSE'));assert.ok(!h.html().includes('id="r2-confirm"'));}finally{h.cleanup();}
 });
+
+test('empty depot OCR rows never become a zero-valued receipt in queue or full review',()=>{
+ const p=proposal({amount:null,depot_id:'party',lines:[],qualities:[],stated_total:'1000',alacak_value:'1000',unreadable_lines:[]},{action_type:'DEPOT_RECEIPT',state:'NEEDS_INPUT'});
+ p.revision.missing=['Строки чека не прочитаны'];
+ const card=proposalCard(p,ownerData()),review=proposalSummary(p,ownerData(),false);
+ assert.match(card,/<p class="queue-card-value">UNKNOWN · итог чека<\/p>/);
+ assert.ok(card.includes('В источнике: 1 000,00 TRY'));
+ assert.ok(card.includes('Сумма UNKNOWN: строки чека не прочитаны'));
+ assert.ok(review.includes('UNKNOWN · строки чека не прочитаны'));
+ assert.ok(review.includes('UNKNOWN · нужно восстановить все строки чека'));
+ assert.ok(review.includes('1 000,00 TRY'));
+ assert.ok(review.includes('Alacak: 1000 TRY — не оплата'));
+ for(const html of [card,review])assert.ok(!html.includes('>0,00 TRY<'));
+});
+test('partially readable depot rows show only a labelled subtotal and UNKNOWN final effect',()=>{
+ const line={original_quality_name:'Grand',source_line:'Grand 0.125 0.20 0.03',net_weight_kg:'0.125',unit_price:'0.20',stated_amount:'0.03',count:1};
+ const p=proposal({amount:null,depot_id:'party',lines:[line],qualities:['HIGHEST'],stated_total:'1.00',alacak_value:'1.00',unreadable_lines:['??? <unreadable> 1 2 3']},{action_type:'DEPOT_RECEIPT',state:'NEEDS_INPUT'});
+ p.revision.missing=['Неполные строки'];
+ const card=proposalCard(p,ownerData()),review=proposalSummary(p,ownerData(),false);
+ assert.match(card,/<p class="queue-card-value">UNKNOWN · итог чека<\/p>/);
+ assert.ok(card.includes('По прочитанным строкам: 0,03 TRY · частично'));
+ assert.ok(card.includes('В источнике: 1,00 TRY'));
+ assert.ok(card.includes('Итог UNKNOWN: есть непрочитанные строки, требуется уточнение'));
+ assert.ok(review.includes('Прочитанные строки · промежуточная сумма'));
+ assert.ok(review.includes('0,03 TRY · частично'));
+ assert.ok(review.includes('UNKNOWN · нужно восстановить все строки чека'));
+ assert.ok(review.includes('??? &lt;unreadable&gt; 1 2 3'));
+ assert.ok(!review.includes('<unreadable>'));
+});
+test('complete depot rows retain the exact reviewed amount as their full effect',()=>{
+ const p=proposal({amount:null,depot_id:'party',lines:[{original_quality_name:'Grand',source_line:'Grand',net_weight_kg:'0.125',unit_price:'0.20',stated_amount:'0.03',confirmed_amount:'0.04',count:1}],qualities:['HIGHEST'],stated_total:'0.04',unreadable_lines:[]},{action_type:'DEPOT_RECEIPT'});
+ assert.match(proposalCard(p,ownerData()),/<p class="queue-card-value">0,04 TRY<\/p>/);
+ const review=proposalSummary(p,ownerData(),false);
+ assert.match(review,/<dt>Сумма продажи после подтверждения<\/dt><dd><strong>0,04 TRY<\/strong>/);
+ assert.ok(!review.includes('UNKNOWN · нужно восстановить все строки чека'));
+});

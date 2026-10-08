@@ -48,6 +48,8 @@ const effects={
 };
 const fact=(label,value)=>`<dl class="owner-fact"><dt>${e(label)}</dt><dd><strong>${e(value??'Не указано')}</strong></dd></dl>`;
 const exactMoney=(amount,currency)=>amount==null?'Не указана':money(amount,currency||'Валюта не определена');
+// A readable subtotal is never evidence of a complete receipt amount.
+const completeDepotLines=f=>!!f.lines?.length&&!f.unreadable_lines?.length;
 // The reviewed snapshot is preferred over a later Home refresh for effect facts.
 export function proposalSummary(p,data={},withOpen=true){
   const f=p.revision.payload,kind=p.action_type,basis=p.revision.basis||{},finance=data.owner?.finance||{},areas=finance.work_areas||[];
@@ -79,7 +81,11 @@ export function proposalSummary(p,data={},withOpen=true){
     if(f.separate_event_reviewed)facts+=fact('Повтор похожего текста','Владелец проверил: это отдельный чек по текстовому источнику');
     facts+=fact('Депо',ref(f.depot_id))+fact('Валюта',f.currency||'Валюта не определена')+fact('Теплица в оригинале',f.original_greenhouse||'Не указана');
     facts+=(f.lines||[]).map((l,i)=>`<section class="owner-review-line">${fact('Качество в оригинале',l.original_quality_name)}${fact('Качество именно этого депо',`${qualityNames[f.qualities?.[i]]||'Не определено'} · ${f.quality_reviewed?'проверено владельцем':'кандидат, нужна проверка'}`)}${fact('Строка источника',l.source_line)}${fact('Вес',`${l.net_weight_kg} кг`)}${fact('Цена за кг',exactMoney(l.unit_price,f.currency))}${fact('Сумма по расчёту',exactMoney(lineAmount(l.net_weight_kg,l.unit_price),f.currency))}${fact('Сумма строки в оригинале',l.stated_amount==null?'Не читается':exactMoney(l.stated_amount,f.currency))}${l.confirmed_amount!=null?fact('Проверенная сумма строки',exactMoney(l.confirmed_amount,f.currency)):''}${fact('Количество веток',l.count??'UNKNOWN · не указано')}${l.allocations?.length?l.allocations.map(a=>fact('Точное распределение',`${area(a.work_area_id)} · ${a.net_weight_kg} кг · ${exactMoney(a.amount,f.currency)} · ${a.confirmed_count??'UNKNOWN'} веток`)).join(''):'<p>Не распределено по теплицам. Оценочный вес и выручка не создаются.</p>'}</section>`).join('');
-    facts+=fact('Сумма по строкам',exactMoney(receiptTotal(f.lines||[]),f.currency))+fact('Сумма продажи после подтверждения',exactMoney(receiptEffectTotal(f.lines||[]),f.currency))+fact('Сумма источника',f.stated_total==null?'Не читается':exactMoney(f.stated_total,f.currency));
+    const complete=completeDepotLines(f),hasLines=!!f.lines?.length;
+    facts+=fact(complete?'Сумма по строкам':'Прочитанные строки · промежуточная сумма',hasLines?exactMoney(receiptTotal(f.lines),f.currency)+(complete?'':' · частично'):'UNKNOWN · строки чека не прочитаны');
+    facts+=fact('Сумма продажи после подтверждения',complete?exactMoney(receiptEffectTotal(f.lines),f.currency):'UNKNOWN · нужно восстановить все строки чека');
+    facts+=fact('Сумма источника',f.stated_total==null?'Не читается':exactMoney(f.stated_total,f.currency));
+    if(f.unreadable_lines?.length)facts+=fact('Непрочитанные строки',f.unreadable_lines.join(' · '));
     facts+=`<p>Alacak: ${e(f.alacak_value??'—')} ${e(f.currency||'Валюта не определена')} — не оплата.</p>`;
     facts+=fact('Связанные партии',(f.batch_ids||[]).map(id=>name('harvest.batches',id,basis.same_day_batches||[])).join('; ')||'Не связаны');
     if(f.batch_ids?.length)facts+=fact('Основание связи',f.link_evidence||'Не указано');
@@ -106,7 +112,11 @@ export function proposalCard(p,data={}){
   const lines=f.lines||[],context=[];
   let title=f.title||f.description||titles[kind]||'Событие',value=f.amount!=null?exactMoney(f.amount,f.currency):'';
   if(f.counterparty_id)context.push(party(f.counterparty_id));
-  if(kind==='DEPOT_RECEIPT'){title=party(f.depot_id);value=exactMoney(receiptEffectTotal(lines),f.currency);context.push(...lines.slice(0,2).map(l=>`${l.net_weight_kg??'UNKNOWN'} кг · ${l.count??'UNKNOWN'} веток`));if(f.original_greenhouse)context.push(f.original_greenhouse);}
+  if(kind==='DEPOT_RECEIPT'){
+    title=party(f.depot_id);value=completeDepotLines(f)?exactMoney(receiptEffectTotal(lines),f.currency):'UNKNOWN · итог чека';
+    if(!completeDepotLines(f)){if(lines.length)context.push(`По прочитанным строкам: ${exactMoney(receiptEffectTotal(lines),f.currency)} · частично`);if(f.stated_total!=null)context.push(`В источнике: ${exactMoney(f.stated_total,f.currency)}`);}
+    context.push(...lines.slice(0,2).map(l=>`${l.net_weight_kg??'UNKNOWN'} кг · ${l.count??'UNKNOWN'} веток`));if(f.original_greenhouse)context.push(f.original_greenhouse);
+  }
   if(kind.startsWith('STOCK_')){title=lines[0]?name('inventory.products',lines[0].product_id,data.inventory?.products||[],lines[0].original_product_name||'Товар не выбран'):titles[kind];if(title.startsWith('Не найдено')&&lines[0]?.original_product_name)title=lines[0].original_product_name+' · товар не сопоставлен';value=lines.slice(0,2).map(l=>`${l.quantity??'UNKNOWN'} ${l.unit||'единица не указана'}`).join(' · ');context.push(...lines.slice(0,2).map(l=>name('inventory.locations',l.location_id,data.inventory?.locations||[],'Склад не выбран')));}
   if(lines.length>2)context.push(`Всего строк: ${lines.length} · все в проверке`);
   if(f.greenhouse_id)context.push(area(f.greenhouse_id));
@@ -116,6 +126,7 @@ export function proposalCard(p,data={}){
   const warnings=[...(p.revision.missing||[])];
   if(kind.startsWith('STOCK_')&&lines.some(l=>l.unit_cost==null))warnings.unshift('Стоимость UNKNOWN · неизвестна, не 0');
   if(kind==='DEPOT_RECEIPT'&&lines.some(l=>l.count==null))warnings.unshift('Количество веток UNKNOWN · не указано');
+  if(kind==='DEPOT_RECEIPT'&&!completeDepotLines(f))warnings.unshift(lines.length?'Итог UNKNOWN: есть непрочитанные строки, требуется уточнение':'Сумма UNKNOWN: строки чека не прочитаны');
   const label=p.source?.filename|| (p.source?.text?'Текстовый источник':'Источник сохранён');
   return `<article class="card queue-card ${p.reminder_eligible?'overdue':''}" data-proposal="${e(p.id)}"><div class="queue-card-head"><small>${e(titles[kind]||kind)} · ${e(statuses[p.state]||p.state)}</small>${p.reminder_eligible?'<span class="badge">Старше 36 часов</span>':''}</div><h2>${e(title)}</h2>${value?`<p class="queue-card-value">${e(value)}</p>`:''}<p class="queue-card-context">${[...new Set(context)].map(e).join(' · ')}</p><p class="queue-card-effect" data-effect="${e(kind)}">${e(effects[kind]||'Нужна ручная проверка')}</p>${warnings.length?`<p class="queue-card-warning">${warnings.slice(0,2).map(e).join(' · ')}${warnings.length>2?` · Ещё ${warnings.length-2} уточнения в проверке`:''}</p>`:''}<div class="queue-card-actions"><button type="button" class="primary" data-r2-open="${e(p.id)}" aria-label="Подтвердить: проверить ${e(title)}">Подтвердить</button><button type="button" class="secondary" data-r2-edit="${e(p.id)}">Исправить</button><button type="button" class="secondary" data-r2-later="${e(p.id)}">Позже</button></div><details><summary>Источник и подробности</summary><p class="note">${e(label)}. Перед подтверждением откроется полная актуальная проверка.</p><button type="button" data-r2-evidence="${e(p.id)}">Оригинал, детали и отклонение</button></details></article>`;
 }
