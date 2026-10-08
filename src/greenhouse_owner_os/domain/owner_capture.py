@@ -73,6 +73,17 @@ class DepotProposal(StrictModel):
     stated_total: str | None = None
     alacak_value: str | None = None
     unreadable_lines: list[str] = Field(default_factory=list,max_length=100)
+    @field_validator('stated_total','alacak_value',mode='before')
+    @classmethod
+    def exact_total(cls,v):
+        import re
+        if v is not None and (not isinstance(v,str) or not re.fullmatch(r'\d{1,18}(?:\.\d{1,2})?',v)):raise ValueError('Nonnegative exact source amount required')
+        return v
+    @field_validator('batch_ids')
+    @classmethod
+    def independent_batches(cls,v):
+        if len(set(v))!=len(v):raise ValueError('Repeated batch link')
+        return v
 
 class InvoiceMatchProposal(StrictModel):
     receipt_id: UUID | None = None

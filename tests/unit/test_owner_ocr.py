@@ -25,3 +25,14 @@ def test_real_turkish_document_recognition(n):
 
 def test_provider_failure_is_explicit_not_zero():
     with pytest.raises(RecognitionFailure):LocalOCR().recognize(b'not an image','image/png')
+
+@pytest.mark.parametrize('value',[0,1.2,'-1','NaN','1,000','0.001'])
+def test_depot_critical_source_totals_reject_inexact_values(value):
+    from pydantic import ValidationError
+    from greenhouse_owner_os.domain.owner_capture import DepotProposal
+    with pytest.raises(ValidationError):DepotProposal(stated_total=value)
+
+def test_unknown_quality_line_remains_unreadable_not_discarded():
+    from greenhouse_owner_os.services.owner_capture import OwnerCaptureService
+    p=OwnerCaptureService(None)._depot_text('Grand 100 20 2000\n??? 25 10 250\nAlacak 2250',[])
+    assert p['unreadable_lines']==['??? 25 10 250'] and len(p['lines'])==1
