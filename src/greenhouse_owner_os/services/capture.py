@@ -59,10 +59,10 @@ def extract(text, *, counterparties=(), areas=(), accounts=(), products=(), loca
     elif 'должен мне' in t or 'должны мне' in t:f.update(kind='obligation',direction='receivable',obligation_class='OPERATIONAL')
     elif 'должен' in t or 'должны' in t:f.update(kind='obligation',direction='payable',obligation_class='OPERATIONAL')
     else:route='UNRESOLVED';gaps.append('Уточните событие: долг, оплата или аванс.')
-    amounts=re.findall(r'(?<![\w.+-])(\d+(?:[ \u00a0]\d{3})*(?:[,.]\d{1,2})?)\s*(лир\w*|доллар\w*|евро|try|usd|eur|₺|\$)(?!\w)',t)
+    amounts=re.findall(r'(?<![\w.+-])(\d+(?:[ \u00a0]\d{3})*(?:[,.]\d{1,2})?)\s*(лир\w*|доллар\w*|евро|грив\w*|грн|try|usd|eur|uah|₺|₴|\$)(?!\w)',t)
     if len(amounts)==1:
         value,cur=amounts[0];f['amount']=value.replace(' ','').replace('\u00a0','').replace(',','.')
-        f['currency']='TRY' if cur.startswith(('лир','try','₺')) else 'USD' if cur.startswith(('доллар','usd','$')) else 'EUR'
+        f['currency']='TRY' if cur.startswith(('лир','try','₺')) else 'USD' if cur.startswith(('доллар','usd','$')) else 'UAH' if cur.startswith(('грив','грн','uah','₴')) else 'EUR'
     else:gaps.append('Укажите одну точную сумму и валюту.')
     matches=[]
     for cp in counterparties:
@@ -108,6 +108,8 @@ class BorrowedUow:
 class CaptureService:
     def __init__(self,factory):self.factory=factory;self.finance=FinanceService(factory)
     def create(self,entity_id,actor_id,key,body):
+        if body.source_namespace in ('owner:r2','owner:r2-action'):
+            raise ConflictError('R2 source must use its individual owner confirmation cards')
         payload=dict(entity_id=str(entity_id),**body.model_dump());h=_hash_request(payload)
         with self.factory() as uow:
             uow.idempotency.lock(actor_id,'capture_create',key)

@@ -26,9 +26,21 @@ class CaptureSource(StrictModel):
             if re.search(r'[/\\\x00-\x1f\x7f]', self.filename) or self.filename in ('.','..'): raise ValueError('Unsafe filename')
         return self
 
+class ProposalAttribution(StrictModel):
+    work_area_id: UUID
+    amount: str
+    @field_validator('amount',mode='before')
+    @classmethod
+    def exact(cls,v):
+        import re
+        from decimal import Decimal
+        if not isinstance(v,str) or not re.fullmatch(r'\d{1,18}(?:\.\d{1,2})?',v) or Decimal(v)<=0:
+            raise ValueError('Positive exact attribution required')
+        return v
+
 class MoneyProposal(StrictModel):
     amount: str | None = None
-    currency: Literal['TRY','USD','EUR','UAH'] = 'TRY'
+    currency: Literal['TRY','USD','EUR','UAH'] | None = 'TRY'
     event_date: date | None = None
     counterparty_id: UUID | None = None
     money_account_id: UUID | None = None
@@ -36,6 +48,7 @@ class MoneyProposal(StrictModel):
     due_date: date | None = None
     obligation_id: UUID | None = None
     payment_purpose: Literal['debt','advance','expense'] | None = None
+    attributions: list[ProposalAttribution] = Field(default_factory=list,max_length=100)
     @field_validator('amount', mode='before')
     @classmethod
     def exact(cls,v):
@@ -48,6 +61,7 @@ class StockProposal(StrictModel):
     event_date: date | None = None
     lines: list[InventoryLine] = Field(default_factory=list, max_length=100)
     notes: str | None = Field(default=None, max_length=2000)
+    separate_event_reviewed: bool = False
 
 class TaskProposal(StrictModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
@@ -62,9 +76,11 @@ class TaskProposal(StrictModel):
 class DepotProposal(StrictModel):
     depot_id: UUID | None = None
     event_date: date | None = None
-    currency: Literal['TRY','USD','EUR','UAH'] = 'TRY'
+    currency: Literal['TRY','USD','EUR','UAH'] | None = 'TRY'
     original_greenhouse: str | None = Field(default=None,max_length=250)
     batch_ids: list[UUID] = Field(default_factory=list,max_length=100)
+    link_evidence: str | None = Field(default=None,max_length=2000)
+    separate_event_reviewed: bool = False
     lines: list[LineInput] = Field(default_factory=list, max_length=100)
     qualities: list[Literal['HIGHEST','FIRST','SECOND'] | None] = Field(default_factory=list,max_length=100)
     quality_reviewed: bool = False

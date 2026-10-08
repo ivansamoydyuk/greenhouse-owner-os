@@ -42,8 +42,9 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
     factory=lambda:SqlAlchemyUnitOfWork(sf)
     finance=FinanceService(factory)
     refs=ReferenceService(factory,environment='OWNER_VERIFIED')
-    actor=provision_authenticated_owner(sf,external_ref='test:owner-mobile-preview',
-        display_name='TEST PREVIEW Owner',environment='OWNER_VERIFIED')
+    from scripts.validate_owner_opening import TEST_PROFILE_OWNER_REF,TEST_PROFILE_OWNER_NAME
+    actor=provision_authenticated_owner(sf,external_ref=TEST_PROFILE_OWNER_REF,
+        display_name=TEST_PROFILE_OWNER_NAME,environment='OWNER_VERIFIED')
     # Reuse the reviewed, idempotent explicit owner-input API workflow. No money seed.
     from scripts.validate_owner_opening import setup_confirmed_profile
     from fastapi.testclient import TestClient

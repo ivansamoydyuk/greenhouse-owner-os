@@ -27,6 +27,19 @@ def js(v):return json.dumps(v,ensure_ascii=False,default=str)
 def now():return datetime.now(timezone.utc)
 def reminder_eligible(first_unresolved,current,state):return state not in TERMINAL and current-first_unresolved>timedelta(hours=36)
 
+def source_currency(raw):
+    """A visible daily TRY candidate must never override an explicit currency."""
+    matches=set()
+    for currency,pattern in {
+        'TRY':r'(?i)(?<!\w)(?:TRY|лир\w*|₺)(?!\w)',
+        'USD':r'(?i)(?<!\w)(?:USD|доллар\w*|\$)(?!\w)',
+        'EUR':r'(?i)(?<!\w)(?:EUR|евро|€)(?!\w)',
+        'UAH':r'(?i)(?<!\w)(?:UAH|грн|грив\w*|₴)(?!\w)',
+    }.items():
+        if re.search(pattern,raw):matches.add(currency)
+    if re.search(r'(?i)\b(?:GBP|RUB|CHF|AED|CNY|JPY|AUD|CAD|INR|руб\w*|фунт\w*)\b',raw):return None
+    return next(iter(matches)) if len(matches)==1 else None if matches else 'TRY'
+
 class OwnerCaptureService:
     def __init__(self,factory,recognizer=None):
         self.factory=factory;self.finance=FinanceService(factory);self.recognizer=recognizer or LocalOCR()
@@ -38,15 +51,20 @@ class OwnerCaptureService:
     def _write(self,e,a,key,op,payload,fn):
         if not key or len(key)>200:raise ValidationError('Stable request identity required')
         h=_hash_request(dict(entity_id=str(e),**payload))
-        with self.factory() as u:
-            self.owner(u,e,a);u.idempotency.lock(a,op,key)
-            replay=self.finance._replay_if_exists(u,a,op,key,h)
-            if replay:return replay
-            result=fn(u)
-            rid=UUID(result['id'])
-            u.audit.append(actor_id=a,action=op,entity_type='owner_capture',entity_id=rid,before=None,after=result)
-            u.idempotency.put(actor_id=a,operation=op,key=key,request_hash=h,resource_type='owner_capture',resource_id=rid,response=result)
-            u.commit();return result
+        from sqlalchemy.exc import IntegrityError
+        try:
+            with self.factory() as u:
+                self.owner(u,e,a);u.idempotency.lock(a,op,key)
+                replay=self.finance._replay_if_exists(u,a,op,key,h)
+                if replay:return replay
+                result=fn(u)
+                rid=UUID(result['id'])
+                u.audit.append(actor_id=a,action=op,entity_type='owner_capture',entity_id=rid,before=None,after=result)
+                u.idempotency.put(actor_id=a,operation=op,key=key,request_hash=h,resource_type='owner_capture',resource_id=rid,response=result)
+                u.commit();return result
+        except IntegrityError as exc:
+            message='Источник не сохранён. Проверьте данные и повторите.' if op=='owner_capture' else 'Проверка целостности не пройдена. Обновите карточку и проверьте действие; новое действие не проведено.'
+            raise ValidationError(message) from exc
 
     def capture(self,e,a,key,b):
         raw=None
@@ -82,7 +100,7 @@ class OwnerCaptureService:
         state='SERVER_SAVED' if job['state']=='QUEUED' else 'PROCESSING' if job['state']=='RUNNING' else 'FAILED' if job['state']=='FAILED' else 'NEEDS_REVIEW'
         if actions and all(p['state'] in TERMINAL for p in actions):state='CONFIRMED' if any(p['state']!='REJECTED' for p in actions) else 'REJECTED'
         elif actions and all(p['state']=='READY' for p in actions):state='READY'
-        return dict(id=str(s.id),client_capture_id=s.locator,state=state,server_saved=True,job=job,proposals=actions,
+        return dict(id=str(s.id),client_capture_id=s.locator,state=state,server_saved=True,job=job,proposals=actions,retryable=job['attempts']<3,
                     captured_at=s.received_at.isoformat(),original_name=s.filename,text=s.raw_text,duplicate_of_id=str(s.duplicate_of_id) if s.duplicate_of_id else None)
 
     def source(self,e,a,i):
@@ -107,6 +125,10 @@ class OwnerCaptureService:
         """Lease commit, external recognition, fenced result commit. No domain effect."""
         token=uuid4()
         with self.factory() as u:
+            # A crash on the final attempt cannot leave a source "preparing"
+            # forever. Exhaustion is terminal, honest and preserves the original.
+            rows(u,"UPDATE core.processing_jobs SET state='FAILED',error_code='RETRY_EXHAUSTED',lease_token=NULL,lease_until=NULL WHERE inbox_id=:i AND engine_version=:v AND attempts=3 AND state='RUNNING' AND lease_until<clock_timestamp() RETURNING id",i=i,v=ENGINE)
+            u.commit()
             job=rows(u,"SELECT * FROM core.processing_jobs WHERE inbox_id=:i AND engine_version=:v AND attempts<3 AND (state='QUEUED' OR state='FAILED' AND retry_at<=clock_timestamp() OR state='RUNNING' AND lease_until<clock_timestamp()) FOR UPDATE SKIP LOCKED",i=i,v=ENGINE)
             if not job:return
             j=job[0];rows(u,"UPDATE core.processing_jobs SET state='RUNNING',attempts=attempts+1,lease_token=:t,lease_until=clock_timestamp()+interval '15 minutes',error_code=NULL WHERE id=:id RETURNING id",t=token,id=j['id'])
@@ -122,7 +144,7 @@ class OwnerCaptureService:
                 run_id=uuid4()
                 # Retain actual OCR even when later typed normalization fails.
                 normalized=dict(text=output['text'],lines=[line for page in output.get('pages',[]) for line in page['lines']])
-                rows(u,'INSERT INTO core.extraction_runs(id,entity_id,inbox_id,job_id,attempt,provider,engine_version,input_hash,raw_output,normalized,warnings) VALUES(:id,:e,:s,:j,:n,:p,:v,:h,CAST(:raw AS jsonb),CAST(:norm AS jsonb),CAST(:w AS jsonb)) RETURNING id',id=run_id,e=source['e'],s=i,j=j['id'],n=j['attempts'],p=output['provider'],v=output['version'],h=source['fp'],raw=js(output),norm=js(normalized),w=js(output['warnings']))
+                rows(u,'INSERT INTO core.extraction_runs(id,entity_id,inbox_id,job_id,attempt,provider,engine_version,input_hash,raw_output,normalized,warnings,lease_token) VALUES(:id,:e,:s,:j,:n,:p,:v,:h,CAST(:raw AS jsonb),CAST(:norm AS jsonb),CAST(:w AS jsonb),:lease) RETURNING id',id=run_id,e=source['e'],s=i,j=j['id'],n=j['attempts'],p=output['provider'],v=output['version'],h=source['fp'],raw=js(output),norm=js(normalized),w=js(output['warnings']),lease=token)
                 u.commit()
                 j=rows(u,'SELECT * FROM core.processing_jobs WHERE id=:id FOR UPDATE',id=j['id'])[0]
                 if j['state']!='RUNNING' or j['lease_token']!=str(token):return
@@ -192,13 +214,13 @@ class OwnerCaptureService:
             if not amount:
                 n=re.findall(r'(?<![\w.+-])(\d+(?:[ \u00a0]\d{3})*(?:[,.]\d{1,2})?)(?!\w)',raw)
                 if len(n)==1:amount=n[0].replace(' ','').replace('\u00a0','').replace(',','.')
-            payload=dict(amount=amount,currency=f.get('currency','TRY'),event_date=f.get('event_date') or s['day'].isoformat(),
-                         counterparty_id=f.get('counterparty_id'),description=raw[:2000],due_date=f.get('due_date'),money_account_id=f.get('money_account_id'))
+            payload=dict(amount=amount,currency=source_currency(raw),event_date=f.get('event_date') or s['day'].isoformat(),
+                         counterparty_id=f.get('counterparty_id'),description=raw[:2000],due_date=f.get('due_date'),money_account_id=f.get('money_account_id'),attributions=f.get('attributions',[]))
             for k,v in payload.items():provenance[k]={'category':'UNKNOWN' if v is None else 'INFERENCE' if k in ('event_date','currency','counterparty_id','money_account_id') else 'SOURCE FACT','source_text':raw}
             return [('DIRECT_EXPENSE' if direct_expense else 'PAYMENT' if f['kind']=='payment' else 'PAYABLE',payload,provenance)]
         if re.search(r'(?i)(fatura|invoice|счёт поставщика)',raw):
             # Invoice is not evidence that goods arrived or cash was paid.
-            return [('PAYABLE',dict(description=raw[:2000],event_date=s['day'].isoformat()),{}),('INVOICE_MATCH',dict(note=raw[:2000]),{})]
+            return [('PAYABLE',dict(description=raw[:2000],event_date=s['day'].isoformat(),currency=source_currency(raw)),{}),('INVOICE_MATCH',dict(note=raw[:2000]),{})]
         return [('UNRESOLVED',dict(note=raw[:2000] or 'Текст не распознан. Оригинал сохранён.'),{})]
 
     def _depot_text(self,raw,parties):
@@ -233,7 +255,7 @@ class OwnerCaptureService:
         # Görgün candidates are only available when that depot is identified;
         # other depots require receipt-specific owner classification.
         if not match or 'görgün' not in match[0].name.casefold():qualities=[None for _ in lines]
-        return dict(depot_id=str(match[0].id) if len(match)==1 else None,event_date=event,lines=lines,qualities=qualities,
+        return dict(depot_id=str(match[0].id) if len(match)==1 else None,event_date=event,lines=lines,qualities=qualities,currency=source_currency(raw),
                     stated_total=number(totals[0]) if len(set(totals))==1 else None,alacak_value=number(alacak[0]) if len(alacak)==1 else None,unreadable_lines=unreadable)
 
     def _proposal(self,u,e,i,lock=False):
@@ -254,12 +276,20 @@ class OwnerCaptureService:
             if not found or found[0].get('active') is False:raise ValidationError('Справочник недоступен в этой компании')
             basis[table+':'+str(id)]=found[0];return found[0]
         if kind in ('PAYABLE','PAYMENT','DIRECT_EXPENSE'):
-            required('amount','Сумма');required('event_date','Дата')
+            required('amount','Сумма');required('event_date','Дата');required('currency','Валюта: уточните явно указанную валюту')
             if kind!='DIRECT_EXPENSE':required('counterparty_id','Кому / от кого')
             scoped('core.counterparties',fields.get('counterparty_id'))
             account=scoped('finance.money_accounts',fields.get('money_account_id'))
             if account and account['currency']!=fields['currency']:raise ValidationError('Валюта счёта не совпадает')
             if kind!='PAYABLE':required('money_account_id','Наличные / Банк')
+            if fields['attributions']:
+                if kind!='PAYABLE':missing.append('География расхода: используйте точный ручной режим')
+                seen=set();total=Decimal('0')
+                for allocation in fields['attributions']:
+                    if allocation['work_area_id'] in seen:raise ValidationError('Повторное распределение по участку')
+                    seen.add(allocation['work_area_id']);scoped('core.work_areas',allocation['work_area_id']);total+=Decimal(allocation['amount'])
+                if fields['amount'] and total>Decimal(fields['amount']):raise ValidationError('Распределение превышает сумму')
+            if fields.get('due_date') and fields.get('event_date') and fields['due_date']<fields['event_date']:missing.append('Срок оплаты раньше события')
             if kind=='PAYMENT':
                 required('payment_purpose','Назначение: долг / аванс / расход')
                 if fields.get('payment_purpose')!='debt':missing.append('Аванс / новый расход: откройте точный ручной режим')
@@ -276,58 +306,65 @@ class OwnerCaptureService:
             if kind=='STOCK_RECEIPT':
                 basis['manual_source_receipts']=rows(u,"SELECT id,version FROM inventory.events WHERE entity_id=:e AND kind='receipt' AND status='posted' AND evidence->>'source_document'=:s AND source<>'owner:r2-action' ORDER BY id",e=e,s=p['inbox_id'])
                 basis['duplicate_source_receipts']=rows(u,"SELECT p.id,p.version FROM core.proposed_actions p JOIN core.inbox_items original ON original.id=p.inbox_id JOIN core.inbox_items incoming ON incoming.id=:s WHERE p.entity_id=:e AND p.action_type='STOCK_RECEIPT' AND p.state='POSTED' AND original.id<>incoming.id AND original.fingerprint=incoming.fingerprint ORDER BY p.id",e=e,s=p['inbox_id'])
-                if basis['manual_source_receipts'] or basis['duplicate_source_receipts']:missing.append('Этот оригинал уже принят: свяжите счёт с существующим приходом')
+                original=u.session.get(InboxRow,UUID(p['inbox_id']))
+                if basis['manual_source_receipts'] or basis['duplicate_source_receipts'] and (original.file_bytes is not None or not fields['separate_event_reviewed']):missing.append('Возможный повтор: подтвердите отдельное текстовое событие или свяжите счёт с прежним приходом; один бинарный оригинал повторно не принимается')
             if not fields['lines']:missing.append('Товар и количество')
             for ln in fields['lines']:
                 for key,label in [('product_id','Товар'),('location_id','Склад'),('quantity','Количество'),('unit','Единица')]:
                     if ln.get(key) is None:missing.append(label)
                 product=scoped('inventory.products',ln.get('product_id'));scoped('inventory.locations',ln.get('location_id'))
                 if ln.get('greenhouse_id'):scoped('core.work_areas',ln['greenhouse_id'])
+                if kind=='STOCK_APPLICATION' and not ln.get('greenhouse_id'):missing.append('Теплица фактического внесения')
+                if ln.get('work_area_id'):scoped('core.work_areas',ln['work_area_id'])
                 if product and ln.get('unit') and ln['unit']!=product['base_unit']:
                     conv=rows(u,'SELECT * FROM inventory.conversions WHERE product_id=:p AND unit=:unit',p=product['id'],unit=ln['unit']);basis['conversion:'+product['id']+ln['unit']]=conv
                     if not conv:missing.append('Проверенный размер упаковки')
                 if ln.get('product_id') and ln.get('location_id'):
                     basis['stock:'+ln['product_id']+ln['location_id']]=rows(u,'SELECT * FROM inventory.stock WHERE entity_id=:e AND product_id=:p AND location_id=:l',e=e,p=ln['product_id'],l=ln['location_id'])
-                    basis['movement_sequence']=rows(u,'SELECT coalesce(max(seq),0) seq FROM inventory.movements WHERE entity_id=:e',e=e)
+                    basis['movement_sequence:'+ln['product_id']+ln['location_id']]=rows(u,'SELECT coalesce(max(seq),0) seq FROM inventory.movements WHERE entity_id=:e AND product_id=:p AND location_id=:l',e=e,p=ln['product_id'],l=ln['location_id'])
         elif kind in ('PERSONAL_TASK','WORKER_TASK'):
             required('title','Задача');scoped('core.work_areas',fields.get('greenhouse_id'))
             if kind=='WORKER_TASK':
                 required('worker_id','Работник');required('planned_date','Дата');required('greenhouse_id','Теплица')
                 worker=scoped('workers.people',fields.get('worker_id'))
+                if worker and fields.get('language')!=worker['language']:missing.append('Проверьте язык выбранного работника')
                 if worker and worker['language']!='ru' and not fields.get('rendered_text'):missing.append('Проверенный перевод: задача пока не отправляется')
         elif kind=='DEPOT_RECEIPT':
-            required('depot_id','Депо');required('event_date','Дата');scoped('core.counterparties',fields.get('depot_id'))
+            required('depot_id','Депо');required('event_date','Дата');required('currency','Валюта');scoped('core.counterparties',fields.get('depot_id'))
+            if fields['batch_ids'] and not (fields.get('link_evidence') or '').strip():missing.append('Подтвердите основание связи с выбранной партией')
             if not fields['lines']:missing.append('Нечитаемые строки: внесите по оригиналу')
             if fields['unreadable_lines']:missing.append('Неполные строки: '+ '; '.join(fields['unreadable_lines'])+' — восстановите точным ручным вводом по оригиналу')
             if len(fields['qualities'])!=len(fields['lines']) or any(q is None for q in fields['qualities']) or not fields['quality_reviewed']:missing.append('Подтвердите качества именно этого депо')
             if not fields['arithmetic_reviewed']:missing.append('Проверьте строки и сумму; Alacak не является оплатой')
-            basis['quality_mappings']=rows(u,'SELECT DISTINCT ON(original_label) original_label,version,quality FROM harvest.depot_quality_mappings WHERE depot_id=:d ORDER BY original_label,version DESC',d=fields.get('depot_id'))
+            basis['quality_mappings']=rows(u,'SELECT DISTINCT ON(original_label) original_label,version,quality FROM harvest.depot_quality_mappings WHERE depot_id=:d AND original_label IN (SELECT jsonb_array_elements_text(CAST(:labels AS jsonb))) ORDER BY original_label,version DESC',d=fields.get('depot_id'),labels=js([ln['original_quality_name'].casefold() for ln in fields['lines']]))
             basis['same_day_batches']=rows(u,'SELECT id,event_date,label FROM harvest.batches WHERE entity_id=:e AND event_date=:d ORDER BY id',e=e,d=fields.get('event_date'))
             for bid in fields['batch_ids']:
                 batch=scoped('harvest.batches',bid)
                 if batch and str(batch['event_date'])!=fields.get('event_date'):raise ValidationError('Партия не относится к дате чека')
             basis['existing_receipts']=rows(u,'SELECT id,version,status FROM harvest.depot_settlements WHERE entity_id=:e AND evidence_id IN (SELECT id FROM harvest.evidence WHERE fingerprint=(SELECT fingerprint FROM core.inbox_items WHERE id=:s))',e=e,s=p['inbox_id'])
             basis['confirmed_source_receipts']=rows(u,"SELECT p.id,p.version FROM core.proposed_actions p JOIN core.inbox_items i ON i.id=p.inbox_id WHERE p.entity_id=:e AND p.action_type='DEPOT_RECEIPT' AND p.state='POSTED' AND i.fingerprint=(SELECT fingerprint FROM core.inbox_items WHERE id=:s)",e=e,s=p['inbox_id'])
-            if any(r['status']=='posted' for r in basis['existing_receipts']) or basis['confirmed_source_receipts']:missing.append('Этот оригинал уже принят: откройте существующий чек')
+            original=u.session.get(InboxRow,UUID(p['inbox_id']))
+            if (any(r['status']=='posted' for r in basis['existing_receipts']) or basis['confirmed_source_receipts']) and (original.file_bytes is not None or not fields['separate_event_reviewed']):missing.append('Этот оригинал уже принят: откройте существующий чек или явно подтвердите отдельное текстовое событие')
         elif kind=='INVOICE_MATCH':
             required('receipt_id','Ранее подтверждённый приход')
             receipt=scoped('inventory.events',fields.get('receipt_id'))
             if receipt and (receipt['kind']!='receipt' or receipt['status']!='posted'):raise ValidationError('Выберите проведённый физический приход')
-            scoped('finance.obligations',fields.get('finance_obligation_id'))
+            obligation=scoped('finance.obligations',fields.get('finance_obligation_id'))
+            if obligation and (obligation['direction']!='payable' or obligation['status']!='posted'):raise ValidationError('Выберите проведённый долг поставщику')
         else:missing.append('Выберите точный ручной режим по сохранённому оригиналу')
         return fields,list(dict.fromkeys(missing)),basis
 
-    def _revision(self,u,p,payload,provenance,a,action,run_id=None,warnings=()):
+    def _revision(self,u,p,payload,provenance,a,action,run_id=None,warnings=(),review_reason=''):
         fields,missing,basis=self._validate(u,p,payload)
         # Every displayed field has an honest category, including nullable facts
         # and typed defaults such as TRY; missing metadata is not source truth.
         provenance={k:provenance.get(k,{'category':'UNKNOWN' if v is None else 'INFERENCE','basis':'typed_default_or_preparation'}) for k,v in fields.items()}
-        missing+=list(warnings)
+        missing=list(dict.fromkeys([*missing,*warnings]))
         v=p['version'] if action=='PREPARE' else p['version']+1
         digest=_hash_request(dict(id=p['id'],version=v,type=p['action_type'],payload=fields,basis=basis,missing=missing))
         rows(u,'INSERT INTO core.proposal_revisions(proposal_id,entity_id,version,schema_version,extraction_run_id,payload,provenance,missing,basis,preview_digest,actor_id,reason) VALUES(:i,:e,:v,1,:run,CAST(:f AS jsonb),CAST(:p AS jsonb),CAST(:m AS jsonb),CAST(:b AS jsonb),:d,:a,:reason) RETURNING version',i=p['id'],e=p['entity_id'],v=v,run=run_id,f=js(fields),p=js(provenance),m=js(missing),b=js(basis),d=digest,a=a,reason=action)
         rows(u,"UPDATE core.proposed_actions SET version=:v,state=:s,updated_at=clock_timestamp() WHERE id=:i RETURNING id",v=v,s='NEEDS_INPUT' if missing else 'READY',i=p['id'])
-        self._audit(u,p,a,action,v,dict(payload=fields,preview_digest=digest))
+        self._audit(u,p,a,action,v,dict(payload=fields,preview_digest=digest,reason=review_reason))
         return self._view(u,self._proposal(u,p['entity_id'],p['id']))
 
     def _audit(self,u,p,a,action,v,snapshot):
@@ -357,9 +394,9 @@ class OwnerCaptureService:
             if p['state']=='REJECTED' and action!='REOPEN':raise ConflictError('Предложение отклонено; восстановите новой ревизией')
             if action=='EDIT' or action=='REOPEN':
                 payload=b.payload if action=='EDIT' else self._view(u,p)['revision']['payload']
-                return self._revision(u,p,payload,{k:{'category':'OWNER INPUT'} for k in payload},a,action)
+                return self._revision(u,p,payload,{k:{'category':'OWNER INPUT'} for k in payload},a,action,review_reason=b.reason)
             previous=self._view(u,p)['revision']
-            revised=self._revision(u,p,previous['payload'],previous['provenance'],a,action,warnings=previous['missing'])
+            revised=self._revision(u,p,previous['payload'],previous['provenance'],a,action,warnings=previous['missing'],review_reason=b.reason)
             state='DEFERRED' if action=='DEFER' else 'REJECTED'
             rows(u,'UPDATE core.proposed_actions SET state=:s,deferred_at=CASE WHEN :s=\'DEFERRED\' THEN clock_timestamp() ELSE deferred_at END,updated_at=clock_timestamp() WHERE id=:i RETURNING id',s=state,i=i)
             return self._view(u,self._proposal(u,e,i))
@@ -388,7 +425,10 @@ class OwnerCaptureService:
                 if ':' in basis_key and basis_key.split(':',1)[0] in ('core.counterparties','finance.money_accounts','core.work_areas','inventory.products','inventory.locations','workers.people'):
                     table,rid=basis_key.split(':',1);u.session.execute(text('SELECT id FROM '+table+' WHERE id=:id FOR UPDATE'),dict(id=rid))
             fields,missing,basis=self._validate(u,p,payload)
-            if basis!=rev['basis']:
+            # Candidate lists inform editing; only selected references are part
+            # of authority. An unrelated new same-day batch is not stale input.
+            authoritative=lambda value:{k:v for k,v in value.items() if k!='same_day_batches'}
+            if authoritative(basis)!=authoritative(rev['basis']):
                 result=self._revision(u,p,payload,rev['provenance'],a,'STALE')
                 rows(u,"UPDATE core.proposed_actions SET state='STALE' WHERE id=:i RETURNING id",i=i)
                 return dict(result,state='STALE',stale=True)
@@ -396,7 +436,7 @@ class OwnerCaptureService:
             result,link,nonposting=self._apply(u,e,a,p,fields)
             state='CONFIRMED_NONPOSTING' if nonposting else 'POSTED'
             response=dict(id=str(i),state=state,effect=result,version=p['version'])
-            self._audit(u,p,a,'CONFIRM',p['version'],dict(preview_digest=b.preview_digest,payload=fields,effect=result))
+            self._audit(u,p,a,'CONFIRM',p['version'],dict(preview_digest=b.preview_digest,payload=rev['payload'],effect=result))
             rows(u,'UPDATE core.proposed_actions SET state=:s,updated_at=clock_timestamp() WHERE id=:i RETURNING id',s=state,i=i)
             cols={'obligation_id':None,'payment_id':None,'inventory_id':None,'settlement_id':None,'owner_task_id':None,'worker_task_id':None,'direct_expense_id':None,'invoice_match_id':None};cols.update(link)
             rows(u,'INSERT INTO core.confirmation_effects(proposal_id,entity_id,version,actor_id,preview_digest,obligation_id,payment_id,inventory_id,settlement_id,owner_task_id,worker_task_id,direct_expense_id,invoice_match_id,response) VALUES(:p,:e,:v,:a,:d,:obligation_id,:payment_id,:inventory_id,:settlement_id,:owner_task_id,:worker_task_id,:direct_expense_id,:invoice_match_id,CAST(:r AS jsonb)) RETURNING proposal_id',p=i,e=e,v=p['version'],a=a,d=b.preview_digest,r=js(response),**cols)
@@ -409,7 +449,7 @@ class OwnerCaptureService:
             from greenhouse_owner_os.domain.commands import CreateObligationCommand
             finance=FinanceService(factory)
             offset=u.finance.get_system_ledger_account(e,f['currency'],'GENERAL_EXPENSE')
-            d=finance.create_obligation(actor_id=a,idempotency_key=key,command=CreateObligationCommand(entity_id=e,counterparty_id=f['counterparty_id'],direction='payable',original_amount=f['amount'],currency=f['currency'],event_date=f['event_date'],due_date=f['due_date'],description=f['description'],offset_ledger_account_id=offset))
+            d=finance.create_obligation(actor_id=a,idempotency_key=key,command=CreateObligationCommand(entity_id=e,counterparty_id=f['counterparty_id'],direction='payable',original_amount=f['amount'],currency=f['currency'],event_date=f['event_date'],due_date=f['due_date'],description=f['description'],attributions=f['attributions'],offset_ledger_account_id=offset))
             r=finance.post_obligation(actor_id=a,idempotency_key=key+':post',obligation_id=UUID(d['id']),expected_version=d['version']);return r,dict(obligation_id=r['id']),False
         if kind=='PAYMENT':
             from greenhouse_owner_os.domain.commands import CreatePaymentCommand, AllocationInput
@@ -430,7 +470,7 @@ class OwnerCaptureService:
             from greenhouse_owner_os.domain.inventory import InventoryInput,InventoryEvidence,InventoryPost
             svc=InventoryService(factory)
             body=InventoryInput(kind='receipt' if kind=='STOCK_RECEIPT' else 'application',event_date=f['event_date'],lines=f['lines'],notes=f['notes'],evidence=InventoryEvidence(source='owner:r2-action',locator=p['id'],raw_text=s.raw_text or None,source_document=str(s.id),verification='VERIFIED'))
-            d=svc.create(e,a,key,body);r=svc.post(e,a,key+':post',UUID(d['id']),InventoryPost(expected_version=d['version'],confirmed=True));return r,dict(inventory_id=r['id']),False
+            d=svc.create(e,a,key,body);r=svc.post(e,a,key+':post',UUID(d['id']),InventoryPost(expected_version=d['version'],confirmed=True,duplicate_reviewed=f['separate_event_reviewed']));return r,dict(inventory_id=r['id']),False
         if kind=='PERSONAL_TASK':
             tid=uuid4()
             r=rows(u,"INSERT INTO core.owner_tasks(id,entity_id,owner_id,proposal_id,title,greenhouse_id,planned_date,note,state) VALUES(:id,:e,:a,:p,:t,:g,:d,:n,'TO_DO') RETURNING *",id=tid,e=e,a=a,p=p['id'],t=f['title'],g=f['greenhouse_id'],d=f['planned_date'],n=f['note'])[0]
@@ -440,7 +480,7 @@ class OwnerCaptureService:
             from .workers import WorkersService
             from greenhouse_owner_os.domain.workers import TaskInput
             d=WorkersService(factory).create(e,a,key,TaskInput(title=f['title'],original_instruction=f['original_instruction'],description=f['original_instruction'],greenhouse_id=f['greenhouse_id'],planned_date=f['planned_date'],source='owner:r2-action',locator=p['id'],source_timestamp=s.received_at))
-            return dict(d,not_sent=True),dict(worker_task_id=d['id']),True
+            return dict(d,not_sent=True,prepared_assignment={k:f[k] for k in ('worker_id','language','rendered_text')}),dict(worker_task_id=d['id']),True
         if kind=='INVOICE_MATCH':
             r=rows(u,'INSERT INTO core.invoice_receipt_links(id,entity_id,inbox_id,proposal_id,receipt_id,finance_obligation_id,reviewed_by,note) VALUES(:id,:e,:s,:p,:r,:f,:a,:n) RETURNING *',id=uuid4(),e=e,s=p['inbox_id'],p=p['id'],r=f['receipt_id'],f=f['finance_obligation_id'],a=a,n=f['note'])[0]
             return r,dict(invoice_match_id=r['id']),True
@@ -448,8 +488,8 @@ class OwnerCaptureService:
             from .harvest import HarvestService
             from greenhouse_owner_os.domain.harvest import SettlementInput,SettlementPost,EvidenceInput
             svc=HarvestService(factory)
-            body=SettlementInput(depot_id=f['depot_id'],event_date=f['event_date'],currency=f['currency'],original_greenhouse=f['original_greenhouse'],batch_ids=f['batch_ids'],stated_total=f['stated_total'],alacak_value=f['alacak_value'],lines=f['lines'],evidence=EvidenceInput(source='owner:r2-action',source_reference=p['id'],raw_text=s.raw_text or None))
-            d=svc.settlement(e,a,key,body,reviewed_qualities=f['qualities'],source_item_id=s.id)
+            body=SettlementInput(depot_id=f['depot_id'],event_date=f['event_date'],currency=f['currency'],original_greenhouse=f['original_greenhouse'],batch_ids=f['batch_ids'],link_evidence=f['link_evidence'],stated_total=f['stated_total'],alacak_value=f['alacak_value'],lines=f['lines'],evidence=EvidenceInput(source='owner:r2-action',source_reference=p['id'],raw_text=s.raw_text or None))
+            d=svc.settlement(e,a,key,body,reviewed_qualities=f['qualities'],source_item_id=s.id,distinct_source_reviewed=f['separate_event_reviewed'])
             for idx,q in enumerate(f['qualities']):
                 rows(u,'INSERT INTO harvest.receipt_quality_reviews(settlement_id,line_no,entity_id,proposal_id,quality,reviewed_by) VALUES(:s,:n,:e,:p,:q,:a) RETURNING line_no',s=d['id'],n=idx,e=e,p=p['id'],q=q,a=a)
             # Classification is inserted once, never an UPDATE of immutable lines.

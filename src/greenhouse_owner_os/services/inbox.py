@@ -108,6 +108,8 @@ class InboxService:
             u.commit();return r
 
     def ingest(self,e,a,key,body):
+        if body.source in ('owner:r2','owner:r2-action'):
+            raise ConflictError('R2 source namespace is reserved for source-first capture')
         binary=None
         if body.file_base64:
             try:binary=base64.b64decode(body.file_base64,validate=True)
@@ -168,7 +170,9 @@ class InboxService:
         return any((r.source,r.source_reference)!=(source,reference) for r in evidence)
 
     def _row(self,u,e,i,lock=False):
-        query=select(InboxRow).where(InboxRow.entity_id==e,InboxRow.id==i)
+        # R2 sources have their own scoped owner API and multi-action authority.
+        # Legacy owner-only routes must neither disclose nor re-confirm them.
+        query=select(InboxRow).where(InboxRow.entity_id==e,InboxRow.id==i,InboxRow.source!='owner:r2')
         row=u.session.scalar(query.with_for_update() if lock else query)
         if not row:raise NotFoundError('Inbox item not found')
         return row
@@ -181,7 +185,7 @@ class InboxService:
 
     def list(self,e,offset=0,limit=50):
         with self.factory() as u:
-            rows=list(u.session.scalars(select(InboxRow).where(InboxRow.entity_id==e).order_by(InboxRow.created_at.desc(),InboxRow.id).offset(offset).limit(limit+1)))
+            rows=list(u.session.scalars(select(InboxRow).where(InboxRow.entity_id==e,InboxRow.source!='owner:r2').order_by(InboxRow.created_at.desc(),InboxRow.id).offset(offset).limit(limit+1)))
             return dict(items=[serialize(r) for r in rows[:limit]],next_offset=offset+limit if len(rows)>limit else None)
 
     def original(self,e,i):

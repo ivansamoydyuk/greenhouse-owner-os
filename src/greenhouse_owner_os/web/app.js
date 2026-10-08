@@ -7,12 +7,20 @@ import {inboxUI} from './inbox.js';
 import {ownerR2} from './owner-r2.js';
 const $=s=>document.querySelector(s),app=$('#app'),sheet=$('#sheet'),confirm=$('#confirmation');
 let previewConfig={},data,entity,currency='TRY',page='home',busy=false,offset=0,selectedKind,loading=0,loadGeneration=0;const pending=new Map();
-const owner=ownerR2({api,openSheet,reload,getData:()=>data,getEntity:()=>entity,notice,advanced:()=>{page='overview';render();}});
+const owner=ownerR2({api,openSheet,reload,getData:()=>data,getEntity:()=>entity,notice,advanced:manualDestination});
 const tasks=tasksUI({api,openSheet,reload,getData:()=>data,getEntity:()=>entity,notice});
 const inventory=inventoryUI({api,openSheet,ask,reload,getData:()=>data,getEntity:()=>entity,notice});
 const harvest=harvestUI({api,openSheet,ask,reload,detail,form,getData:()=>data,getEntity:()=>entity,getCurrency:()=>currency,notice});
 const capture=globalCapture({taskReview:tasks.captureReview,inventoryReview:inventory.captureReview,harvestReview:harvest.captureReview,api,openSheet,ask,reload,detail,getData:()=>data,getEntity:()=>entity,notice});
 const inbox=inboxUI({tasks,inventory,api,openSheet,ask,reload,detail,form,getData:()=>data,getEntity:()=>entity,getCurrency:()=>currency,notice});
+function manualDestination(kind){
+ const destinations={STOCK_RECEIPT:'inventory',STOCK_APPLICATION:'inventory',INVOICE_MATCH:'inventory',DEPOT_RECEIPT:'harvest',WORKER_TASK:'tasks',PERSONAL_TASK:'tasks',PAYABLE:'overview',PAYMENT:'overview',DIRECT_EXPENSE:'overview'};
+ if(kind==='UNRESOLVED'){
+  openSheet('Выберите, что ввести вручную','<p class="note">Оригинал сохранён. Выберите подходящий раздел; само открытие раздела ничего не проводит.</p><div class="actions"><button data-manual-destination="overview">Финансы</button><button data-manual-destination="inventory">Склад / внесение</button><button data-manual-destination="harvest">Урожай / депо</button><button data-manual-destination="tasks">Задачи</button></div>');
+  document.querySelectorAll('[data-manual-destination]').forEach(b=>b.onclick=()=>{sheet.close();page=b.dataset.manualDestination;render();});return;
+ }
+ page=destinations[kind]||'overview';render();
+}
 const name=id=>data?.references.find(r=>r.id===id)?.original_name||'—';
 const refs=kind=>data.references.filter(r=>r.kind===kind);
 const accounts=()=>refs('money_account').filter(r=>r.currency===currency);

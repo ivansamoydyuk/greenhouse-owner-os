@@ -169,6 +169,8 @@ class WorkersService:
         else:
             task['can_complete']=task['status']=='reported' and bool(task['assignments']) and all(any(r['assignment_id']==a['id'] and r['cycle']==task['cycle'] and r['state']=='submitted' and r['claim']=='done' for r in task['reports']) for a in task['assignments']) and not any(r['cycle']==task['cycle'] and r['state']=='submitted' and r['claim']=='issue' and not any(x['kind']=='review_report' and x['report_id']==r['id'] for x in task['actions']) for r in task['reports'])
             task['links']=rows(u,'SELECT * FROM workers.links WHERE task_id=:t ORDER BY created_at',t=t)
+            prepared=rows(u,"SELECT r.payload FROM core.confirmation_effects c JOIN core.proposal_revisions r ON r.proposal_id=c.proposal_id AND r.version=c.version WHERE c.worker_task_id=:t AND c.entity_id=:e",t=t,e=e)
+            if prepared:task['prepared_assignment']={k:prepared[0]['payload'].get(k) for k in ('worker_id','language','rendered_text')}
         return task
     def get(self,e,t,w=None):
         with self.factory() as u:

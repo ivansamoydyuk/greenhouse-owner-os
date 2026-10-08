@@ -34,6 +34,7 @@ def main():
                 except httpx.HTTPError:pass
                 time.sleep(.1)
             else:raise RuntimeError('preview readiness timed out')
+            subprocess.run(['node','tests/e2e/owner-r2-ui-fencing.mjs'],env=env,cwd=ROOT,check=True)
             if os.getenv('R2_E2E_ONLY'):
                 subprocess.run(['node','tests/e2e/owner-r2.mjs'],env=env,cwd=ROOT,check=True)
                 return

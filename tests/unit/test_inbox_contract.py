@@ -6,11 +6,12 @@ from greenhouse_owner_os.api.app import create_app
 
 def test_inbox_migration_is_exact_linear_head():
     scripts=ScriptDirectory.from_config(Config('alembic.ini'))
-    assert scripts.get_heads()==['20261008_0023']
+    assert scripts.get_heads()==['20261008_0024']
     chain=list(scripts.walk_revisions())
-    assert len(chain)==23 and chain[-1].revision=='20261004_0001'
-    assert chain[0].down_revision=='20261006_0022'
-    chain=chain[1:]
+    assert len(chain)==24 and chain[-1].revision=='20261004_0001'
+    assert chain[0].down_revision=='20261008_0023'
+    assert chain[1].down_revision=='20261006_0022'
+    chain=chain[2:]
     assert chain[0].down_revision=='20261006_0021' and chain[1].down_revision=='20261006_0020'
     assert chain[7].revision=='20261005_0015' and chain[7].down_revision=='20261005_0014'
 

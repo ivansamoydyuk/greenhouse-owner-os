@@ -5,7 +5,7 @@ from greenhouse_owner_os.domain.opening import OpeningPayableCommand
 from uuid import UUID
 from greenhouse_owner_os.services.capture import CaptureService, CaptureInput, CaptureConfirm
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 
 from greenhouse_owner_os.domain.history import ImportBatchCommand, HistoricalCandidateCommand
 from greenhouse_owner_os.domain.cash import TransferCommand, FundingCommand, SettlementCommand, SupplierAdvanceCommand, AdvanceApplicationCommand
@@ -17,6 +17,47 @@ from greenhouse_owner_os.services.finance import FinanceService
 
 def create_app(*, finance_service: FinanceService, actor_provider, reference_service=None, worker_provider=None) -> FastAPI:
     app = FastAPI(title="Greenhouse Owner OS Owner Core", version="0.1.0")
+    trusted_actor_provider = actor_provider
+
+    async def scoped_owner(request: Request, actor: UUID = Depends(trusted_actor_provider)):
+        """Legacy routes cannot bypass the entity ACL of R2-owned records.
+
+        Unregistered foundation fixtures keep their original adapter contract;
+        every operational reference-created entity has an immutable owner record.
+        Resource-ID routes resolve scope server-side, never from client identity.
+        """
+        if finance_service is None:return actor
+        from sqlalchemy import text
+        entity_id=request.path_params.get('entity_id')
+        body_entity=None
+        if not entity_id and request.method in ('POST','PUT','PATCH'):
+            try:body=await request.json()
+            except ValueError:body={}
+            if isinstance(body,dict):body_entity=body.get('entity_id')
+        with finance_service.uow_factory() as u:
+            if not hasattr(u,'session'):return actor
+            if not entity_id:
+                route=request.url.path.split('/')
+                tables={'obligations':'finance.obligations','payments':'finance.payments',
+                        'supplier-advances':'finance.payments','advances':'finance.advances',
+                        'transfers':'finance.own_account_transfers','owner-fundings':'finance.owner_fundings',
+                        'direct-settlements':'finance.direct_settlements','advance-applications':'finance.advance_applications',
+                        'import-batches':'core.import_batches','historical-candidates':'core.historical_candidates'}
+                if len(route)>3 and route[2] in tables:
+                    try:rid=UUID(route[3])
+                    except ValueError:rid=None
+                    if rid:entity_id=u.session.scalar(text('SELECT entity_id FROM '+tables[route[2]]+' WHERE id=:id'),dict(id=rid))
+            if not entity_id:
+                entity_id=request.query_params.get('entity_id') if request.url.path=='/v1/finance/reconciliation' else body_entity
+            if entity_id:
+                try:entity_id=UUID(str(entity_id))
+                except ValueError:raise HTTPException(422,'Invalid entity identity')
+                managed=u.session.scalar(text("SELECT EXISTS(SELECT 1 FROM core.reference_records WHERE entity_id=:e AND kind='entity')"),dict(e=entity_id))
+                if managed and not u.session.scalar(text('SELECT core.r2_owner(:e,:a)'),dict(e=entity_id,a=actor)):
+                    raise HTTPException(403,'Entity access is not authorized')
+        return actor
+
+    actor_provider=scoped_owner
 
     @app.exception_handler(NotFoundError)
     async def not_found_handler(_, exc: NotFoundError):
@@ -75,6 +116,7 @@ def create_app(*, finance_service: FinanceService, actor_provider, reference_ser
 
     @app.get('/v1/finance/reconciliation')
     def reconciliation(entity_id: UUID | None = None, actor_id: UUID = Depends(actor_provider)):
+        if entity_id is None:raise HTTPException(422,'Choose an entity for owner reconciliation')
         return finance_service.reconcile(include_classification=True, entity_id=entity_id)
 
     @app.get('/v1/entities/{entity_id}/finance-overview')

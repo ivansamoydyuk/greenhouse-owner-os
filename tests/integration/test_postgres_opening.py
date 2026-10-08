@@ -18,7 +18,7 @@ from greenhouse_owner_os.infrastructure.models import (
 from greenhouse_owner_os.repositories.sqlalchemy import SqlAlchemyAuditRepository, SqlAlchemyFinanceRepository
 from greenhouse_owner_os.services.references import ReferenceService, provision_authenticated_owner
 from tests.integration.test_postgres_readiness import preview, setup, send
-from scripts.validate_owner_opening import setup_confirmed_profile
+from scripts.validate_owner_opening import setup_confirmed_profile, TEST_PROFILE_OWNER_REF, TEST_PROFILE_OWNER_NAME
 
 
 def command(cp, **changes):
@@ -72,8 +72,8 @@ def test_explicit_opening_preserves_original_date_and_no_pnl_cash(preview):
 
 def test_owner_confirmed_profile_normal_payment_allocation_and_reversal(preview):
     sf,_,_,finance,_=preview
-    actor=provision_authenticated_owner(sf,external_ref='test:confirmed-profile-owner',
-        display_name='TEST VALIDATION authenticated owner adapter',environment='OWNER_VERIFIED')
+    actor=provision_authenticated_owner(sf,external_ref=TEST_PROFILE_OWNER_REF,
+        display_name=TEST_PROFILE_OWNER_NAME,environment='OWNER_VERIFIED')
     refs=ReferenceService(finance.uow_factory,environment='OWNER_VERIFIED')
     from fastapi.testclient import TestClient
     c=TestClient(create_app(finance_service=finance,reference_service=refs,actor_provider=lambda:actor))

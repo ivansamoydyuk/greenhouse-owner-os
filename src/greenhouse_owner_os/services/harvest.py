@@ -55,7 +55,7 @@ class HarvestService:
         a=u.session.get(WorkAreaRow,aid)
         if not a or a.entity_id!=e or (gid and root(a)!=gid):raise ValidationError('work area belongs to another entity or greenhouse')
         return a
-    def _evidence(self,u,e,actor,body,source_item_id=None):
+    def _evidence(self,u,e,actor,body,source_item_id=None,distinct_source_reviewed=False):
         if body.existing_id:
             r=u.session.get(EvidenceRow,body.existing_id)
             if not r or r.entity_id!=e:raise ValidationError('existing evidence scope mismatch')
@@ -91,7 +91,7 @@ class HarvestService:
                 if existing.raw_text!=body.raw_text or existing.file_bytes!=raw:
                     raise ConflictError('stable evidence source content changed; original retained')
                 return existing
-        if source_item_id is not None or (raw is not None and (not stable or body.source in ('owner_mobile:manual','inbox:manual'))):
+        if (source_item_id is not None and (binary_identity or not distinct_source_reviewed)) or (raw is not None and (not stable or body.source in ('owner_mobile:manual','inbox:manual'))):
             if u.session.scalar(select(EvidenceRow.id).where(EvidenceRow.entity_id==e,EvidenceRow.fingerprint==fingerprint)):
                 raise ConflictError('duplicate binary document; original evidence retained')
         elif not stable:
@@ -127,14 +127,14 @@ class HarvestService:
             for rid in ids:u.session.add(BatchReportRow(batch_id=r.id,report_id=rid))
             u.session.flush();return dict(row_dict(r),kind='batch',report_ids=[str(x) for x in ids])
         return self._write(e,actor,key,'harvest_batch',body.model_dump(mode='json'),run)
-    def settlement(self,e,actor,key,body,*,reviewed_qualities=None,source_item_id=None):
+    def settlement(self,e,actor,key,body,*,reviewed_qualities=None,source_item_id=None,distinct_source_reviewed=False):
         if reviewed_qualities is not None:
             if len(reviewed_qualities)!=len(body.lines) or any(q not in ('HIGHEST','FIRST','SECOND') for q in reviewed_qualities):raise ValidationError('Explicit receipt quality review required')
             if body.evidence.source!='owner:r2-action':raise ValidationError('Scoped proposal adapter required')
         def run(u):
             cp=u.session.get(CounterpartyRow,body.depot_id)
             if not cp or cp.entity_id!=e or cp.counterparty_type not in ('depot','customer','both'):raise ValidationError('select an existing depot/customer counterparty')
-            evidence=self._evidence(u,e,actor,body.evidence,source_item_id)
+            evidence=self._evidence(u,e,actor,body.evidence,source_item_id,distinct_source_reviewed)
             # Serialize all lifecycle creation for this immutable evidence, including
             # existing-id corrections and retries after reversal.
             u.session.scalar(select(EvidenceRow).where(EvidenceRow.id==evidence.id).with_for_update())
@@ -166,7 +166,7 @@ class HarvestService:
                     u.session.add(AllocationRow(line_id=line.id,**a.model_dump()))
                 u.session.flush()
             return self._settlement_view(u,r)
-        return self._write(e,actor,key,'depot_draft',dict(body.model_dump(mode='json'),**({'reviewed_qualities':reviewed_qualities} if reviewed_qualities is not None else {}),**({'source_item_id':str(source_item_id)} if source_item_id else {})),run)
+        return self._write(e,actor,key,'depot_draft',dict(body.model_dump(mode='json'),**({'reviewed_qualities':reviewed_qualities} if reviewed_qualities is not None else {}),**({'source_item_id':str(source_item_id),'distinct_source_reviewed':distinct_source_reviewed} if source_item_id else {})),run)
     def _same_settlement(self,u,r,body):
         # Source retries cannot silently change reviewed business values either.
         if any(getattr(r,k)!=v for k,v in body.model_dump(exclude={'evidence','lines','batch_ids'}).items()):return False
