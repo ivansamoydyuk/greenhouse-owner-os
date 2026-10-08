@@ -181,7 +181,7 @@ small { font-size: 13px; line-height: 1.45; }
 /* Sheets use native modal focus containment and never hide review facts. */
 dialog { border: 1px solid var(--line); border-radius: 22px; padding: 26px; width: min(620px, calc(100% - 32px)); max-height: calc(100dvh - 48px); overflow: auto; overscroll-behavior: contain; scroll-padding: 24px; color: var(--text); background: var(--surface); box-shadow: 0 24px 90px #142e2850; }
 dialog::backdrop { background: #102b2470; backdrop-filter: blur(2px); }
-dialog .close { display: grid; place-items: center; float: right; margin: -7px -8px 8px 12px; font-size: 24px; width: 44px; padding: 0; }
+dialog .close { display: grid; place-items: center; float: right; margin: -7px 0 8px 12px; font-size: 24px; width: 44px; padding: 0; }
 #sheet-title { min-height: 44px; display: flex; align-items: center; margin-bottom: 16px; padding-right: 4px; font-size: 23px; }
 #sheet-content > .card:first-of-type { margin-top: 12px; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }

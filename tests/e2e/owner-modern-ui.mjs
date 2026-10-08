@@ -96,6 +96,10 @@ async function dialogLayout(label) {
     const b = dialog.getBoundingClientRect(), failures = [];
     if (b.left < -1 || b.right > innerWidth + 1 || b.top < -1 || b.bottom > innerHeight + 1) failures.push('Dialog outside viewport');
     if (dialog.scrollWidth > dialog.clientWidth + 1) failures.push('Horizontal dialog overflow');
+    const content = dialog.querySelector('#sheet-content');
+    if (content && content.scrollWidth > content.clientWidth + 1) failures.push('Horizontal dialog content overflow');
+    const close = content?.querySelector('.close');
+    if (close) {const c = close.getBoundingClientRect(), area = content.getBoundingClientRect(); if (c.left < area.left - 1 || c.right > area.right + 1) failures.push('Close target leaves dialog content');}
     if (dialog.scrollHeight > dialog.clientHeight + 1 && !/auto|scroll/.test(getComputedStyle(dialog).overflowY)) failures.push('Tall dialog cannot scroll');
     if (!dialog.contains(document.activeElement)) failures.push('Focus escaped the modal');
     for (const button of dialog.querySelectorAll('button')) {
