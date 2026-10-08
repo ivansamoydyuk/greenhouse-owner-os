@@ -49,6 +49,7 @@ def main():
             if not os.getenv('INVENTORY_E2E_ONLY'):
                 subprocess.run(['node','tests/e2e/inbox.mjs'],env=env,cwd=ROOT,check=True)
             subprocess.run(['node','tests/e2e/inventory.mjs'],env=env,cwd=ROOT,check=True)
+            subprocess.run(['node','tests/e2e/workers.mjs'],env=env,cwd=ROOT,check=True)
         finally:
             server.terminate()
             try:server.wait(timeout=5)

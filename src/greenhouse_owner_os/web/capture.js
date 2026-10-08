@@ -2,7 +2,7 @@ import {escape as e, money, exact} from './core.js';
 
 // Browser speech is an optional adapter. Every transcript is editable evidence;
 // it goes through the same server extraction/review path as typed text.
-export function globalCapture({api, openSheet, ask, reload, detail, getData, getEntity, notice, inventoryReview, harvestReview}) {
+export function globalCapture({api, openSheet, ask, reload, detail, getData, getEntity, notice, taskReview, inventoryReview, harvestReview}) {
   let recognition;
   const $=s=>document.querySelector(s);
   const input=(id,label,value='',type='text')=>`<label for="${id}">${label}</label><input id="${id}" name="${id}" type="${type}" value="${e(value)}">`;
@@ -34,6 +34,7 @@ export function globalCapture({api, openSheet, ask, reload, detail, getData, get
   function review(r) {
     const data=getData(),f=r.extracted,parties=data.references.filter(x=>x.kind==='counterparty'),accounts=data.references.filter(x=>x.kind==='money_account');
     const gaps=r.gaps.map(g=>`<li>${e(g)}</li>`).join('');
+    if(r.route==='TASKS'){taskReview(r);return;}
     if(r.route==='INVENTORY'){inventoryReview(r);return;}
     if(r.route==='HARVEST_DEPOT'){harvestReview(r);return;}
     if(r.state==='LINKED'){detail(r.finance_kind,r.finance_id);return;}

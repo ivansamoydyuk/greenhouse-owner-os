@@ -32,6 +32,8 @@ class InboxRow(Base):
     state = Column(String(30), nullable=False)
     version = Column(Integer, nullable=False)
     capture_id = Column(UUID(as_uuid=True), ForeignKey('core.capture_drafts.id'), unique=True)
+    task_id = Column(UUID(as_uuid=True))
+    task_report_id = Column(UUID(as_uuid=True))
     inventory_id = Column(UUID(as_uuid=True))
     harvest_id = Column(UUID(as_uuid=True), ForeignKey('harvest.depot_settlements.id'))
     reviewed = Column(JSONB)

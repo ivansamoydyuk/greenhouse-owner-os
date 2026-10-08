@@ -165,6 +165,7 @@ class AttributionRow(Base):
 
 
 class CaptureRow(Base):
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     source_namespace: Mapped[str | None] = mapped_column(Text)
     source_reference: Mapped[str | None] = mapped_column(Text)
     confirmed_review: Mapped[dict | None] = mapped_column(JSONB)

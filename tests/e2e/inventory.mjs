@@ -7,7 +7,7 @@ const base=process.env.PREVIEW_URL||'http://127.0.0.1:4173';
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{})});
 const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
 const page=await ctx.newPage(),errors=[];page.on('pageerror',x=>errors.push(x.message));
-const sheet=()=>page.locator('#sheet-content'),click=n=>sheet().getByRole('button',{name:n,exact:true}).click(),close=()=>click('Закрыть');
+const sheet=()=>page.locator('#sheet-content'),click=n=>sheet().getByRole('button',{name:n,exact:true}).click(),close=async()=>{await click('Закрыть');await page.locator('#sheet').waitFor({state:'hidden'});};
 async function api(p,b,key=crypto.randomUUID()){const r=b===undefined?await ctx.request.get(base+p):await ctx.request.post(base+p,{headers:{'Idempotency-Key':key},data:b});assert.ok(r.ok(),await r.text());return r.json();}
 let eid,root,p,l,b,g,initial,receipt,application,transfer;
 const view=()=>api(root),amount=async location=>(await view()).stock.filter(x=>x.product_id===p.id&&(!location||x.location_id===location)).reduce((a,x)=>a+Number(x.quantity),0);
@@ -60,7 +60,7 @@ try{
 
  for(const width of [320,390,768,1280]){
   await page.setViewportSize({width,height:900});await page.locator('[data-page=inventory]').click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:`artifacts/inventory-${width}.png`,fullPage:true});
-  await page.locator(`[data-ievent="${captureDraft.id}"]`).first().click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:`artifacts/inventory-detail-${width}.png`,fullPage:true});await close();await page.locator(`[data-iproduct="${p.id}"]`).first().click();await sheet().getByText('Валюта оценки: TRY',{exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await close();
+  await page.locator(`[data-ievent="${captureDraft.id}"]`).first().click();await sheet().getByRole('heading',{name:'Складское событие',exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:`artifacts/inventory-detail-${width}.png`,fullPage:true});await close();await page.locator(`[data-iproduct="${p.id}"]`).first().click();await sheet().getByText('Валюта оценки: TRY',{exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await close();
  }
  assert.deepEqual((await api(`/v1/entities/${eid}/finance-overview`)).balances,initial);assert.equal((await view()).invariants.ok,true);assert.equal((await api(`/v1/finance/reconciliation?entity_id=${eid}`)).ok,true);assert.deepEqual(errors,[]);
  console.log('PASS H/I: 320/390/768/1280, no console/runtime errors; Finance unchanged; Inventory invariants and reconciliation PASS');

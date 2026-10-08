@@ -61,10 +61,21 @@ class DeterministicExtractor:
         raw=original.raw_text
         if not raw:
             return dict(text=None,route='UNRESOLVED',fields={},gaps=['Текст не извлечён. Нужна проверенная расшифровка; OCR не подключён.'],confidence='UNAVAILABLE',method='preserved_binary')
+        if original.source.startswith('telegram:') and original.metadata.get('task_report'):
+            known=[w for w in references.get('workers',()) if w.get('telegram_ref')==original.metadata.get('sender_reference') and w.get('active')]
+            fields=dict(original_language=original.metadata.get('language') or (known[0]['language'] if len(known)==1 else 'ru'),claim='note')
+            gaps=[]
+            if original.metadata.get('source_timestamp'):fields['source_timestamp']=original.metadata['source_timestamp']
+            if len(known)==1:fields['worker_id']=known[0]['id']
+            else:gaps.append('Неизвестный работник: сопоставьте текущий справочник')
+            for name in ('task_id','assignment_id','cycle'):
+                if original.metadata.get(name):fields[name]=original.metadata[name]
+                else:gaps.append('Отчёт не сопоставлен с задачей / назначением')
+            return dict(text=raw,route='WORKER_REPORTS',fields=fields,gaps=gaps,confidence='LOW',method='original_text')
         today=(original.received_at or datetime.now(timezone.utc)).astimezone(ZoneInfo('Europe/Istanbul')).date()
         route,fields,gaps=extract(raw,today=today,**references)
         if route=='UNRESOLVED' and re.search(r'(?i)\b(инструкция|полив|вентиляция|ремонт|договор)\b',raw):route='DOCUMENTS'
-        confidence='HIGH' if route in ('FINANCE','HARVEST_DEPOT','INVENTORY') and fields.get('kind') else 'LOW'
+        confidence='HIGH' if route in ('FINANCE','HARVEST_DEPOT','INVENTORY','TASKS','WORKER_REPORTS') and fields.get('kind') else 'LOW'
         return dict(text=raw,route=route,fields=fields,gaps=gaps,confidence=confidence,method='owner_transcription' if original.file_base64 else 'original_text')
 
 def serialize(row):
@@ -125,9 +136,9 @@ class InboxService:
             q=lambda model:list(u.session.scalars(select(model).where(model.entity_id==e)))
             try:
                 from .inventory import rows as inventory_rows
-                output=self.extractor.extract(body,dict(counterparties=q(CounterpartyRow),areas=q(WorkAreaRow),accounts=q(MoneyAccountRow),products=inventory_rows(u,"SELECT * FROM inventory.products WHERE entity_id=:e",e=e),locations=inventory_rows(u,"SELECT * FROM inventory.locations WHERE entity_id=:e",e=e)))
+                output=self.extractor.extract(body,dict(workers=inventory_rows(u,"SELECT * FROM workers.people WHERE entity_id=:e",e=e),counterparties=q(CounterpartyRow),areas=q(WorkAreaRow),accounts=q(MoneyAccountRow),products=inventory_rows(u,"SELECT * FROM inventory.products WHERE entity_id=:e",e=e),locations=inventory_rows(u,"SELECT * FROM inventory.locations WHERE entity_id=:e",e=e)))
                 reject_floats(output)
-                if output['route'] not in ('FINANCE','HARVEST_DEPOT','DOCUMENTS','UNRESOLVED','INVENTORY') or not isinstance(output['fields'],dict):raise ValueError('Invalid extractor result')
+                if output['route'] not in ('FINANCE','HARVEST_DEPOT','DOCUMENTS','UNRESOLVED','INVENTORY','TASKS','WORKER_REPORTS') or not isinstance(output['fields'],dict):raise ValueError('Invalid extractor result')
             except Exception:
                 # Provider errors must not lose the original or expose private
                 # provider exception/credentials. Review remains non-posting.
@@ -188,9 +199,25 @@ class InboxService:
                 return serialize(row)
             if row.version!=body.expected_version or row.state in ('REJECTED','CONFLICT'):raise ConflictError('Item is finalized or source conflicts; original retained')
             if row.duplicate_of_id and not body.duplicate_reviewed:raise ValidationError('Explicit duplicate review required')
-            if row.route not in ('FINANCE','HARVEST_DEPOT','INVENTORY'):raise ValidationError('Unknown document requires verified domain classification; no draft created')
+            if row.route not in ('FINANCE','HARVEST_DEPOT','INVENTORY','TASKS','WORKER_REPORTS'):raise ValidationError('Unknown document requires verified domain classification; no draft created')
             fields=dict(body.reviewed)
-            if row.route=='INVENTORY':
+            if row.route=='TASKS':
+                from .workers import WorkersService
+                from greenhouse_owner_os.domain.workers import TaskInput
+                for k in ('duplicate_reviewed','suggested_worker_ids','recurrence_suggestion','kind'):fields.pop(k,None)
+                fields.update(original_instruction=row.raw_text,source=row.source if row.locator else 'inbox:manual',locator=row.locator or str(i))
+                r=WorkersService(lambda:BorrowedUow(u)).create(e,a,'inbox:task:'+str(i),TaskInput(**fields))
+                from greenhouse_owner_os.domain.workers import LinkInput
+                WorkersService(lambda:BorrowedUow(u)).link(e,a,'inbox:task-link:'+str(i),UUID(r['id']),LinkInput(domain='inbox',target_id=i))
+                row.task_id=UUID(r['id'])
+            elif row.route=='WORKER_REPORTS':
+                from .workers import WorkersService
+                from greenhouse_owner_os.domain.workers import ReportInput
+                worker_id=UUID(fields.pop('worker_id'));task_id=UUID(fields.pop('task_id'))
+                fields.update(source_timestamp=row.metadata_json.get('source_timestamp') or fields.get('source_timestamp'),original_text=row.raw_text,source=row.source if row.locator else 'inbox:manual',locator=row.locator or str(i))
+                r=WorkersService(lambda:BorrowedUow(u)).report(e,a,'inbox:task-report:'+str(i),task_id,worker_id,ReportInput(**fields))
+                row.task_report_id=UUID(r['id'])
+            elif row.route=='INVENTORY':
                 from .inventory import InventoryService
                 from greenhouse_owner_os.domain.inventory import InventoryInput
                 evidence=dict(source=row.source if row.locator else 'inbox:manual',locator=row.locator or str(i),raw_text=row.raw_text)

@@ -1,4 +1,4 @@
-name: Inventory isolated review preview
+name: Workers & Tasks isolated review preview
 
 on:
   pull_request:
@@ -15,12 +15,12 @@ concurrency:
 
 jobs:
   preview:
-    if: github.head_ref == '04-fertilizers-inventory-r1' || github.ref_name == '04-fertilizers-inventory-r1'
+    if: github.head_ref == '08-workers-tasks-r1' || github.ref_name == '08-workers-tasks-r1'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:17
+        image: postgres:17.11
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -39,7 +39,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.13.15'
       - run: pip install -e ".[dev]"
       - run: alembic upgrade head
       - name: Start isolated authenticated HTTPS preview
@@ -86,6 +86,10 @@ jobs:
               inventory=client.get('/v1/entities/'+eid+'/inventory').json()
               assert inventory['stock']==[] and inventory['events']==[] and inventory['opening_state']=='UNINITIALIZED_VERIFY'
               assert inventory['invariants']['ok']
+              tasks=client.get('/v1/entities/'+eid+'/tasks').json()
+              assert tasks['workers']==[] and tasks['tasks']==[]
+              assert client.get('/worker').status_code==200
+              assert client.get('/v1/worker/tasks').status_code==401
               harvest=client.get('/v1/entities/'+eid+'/harvest').json()
               assert harvest['settlements']==[] and harvest['reports']==[]
               assert overview['balances']['TRY']['receivable']=='0.00'
@@ -94,10 +98,10 @@ jobs:
           print('External HTTPS authenticated preview smoke PASS; zero cash, Serkan unpaid 2600 TRY, reconciliation PASS')
           PY
           printf 'URL: %s\nAccess key: %s\nTEST PREVIEW ONLY. Opening Serkan AP 2600 TRY remains unpaid.\nExpires after 35 minutes of review time; runner database is then destroyed.\n' "$preview_url" "$PREVIEW_SECRET" > artifacts/preview-access.txt
-          printf '### Isolated Inventory preview\n\n%s\n\nAccess key: download the private **owner-inventory-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
+          printf '### Isolated Workers & Tasks preview\n\n%s\n\nAccess key: download the private **owner-workers-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
-          name: owner-inventory-review-access
+          name: owner-workers-review-access
           path: artifacts/preview-access.txt
           retention-days: 1
       - name: Owner review window (35 minutes, ephemeral data)

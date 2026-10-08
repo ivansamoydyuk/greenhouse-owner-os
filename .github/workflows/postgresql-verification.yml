@@ -2,7 +2,7 @@ name: PostgreSQL verification
 
 on:
   push:
-    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1, 04-fertilizers-inventory-r1]
+    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1, 04-fertilizers-inventory-r1, 08-workers-tasks-r1]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:17
+        image: postgres:17.11
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.13.15'
       - name: Install project and test dependencies
         run: pip install -e ".[dev]"
       - name: Verify disposable local PostgreSQL target
@@ -52,7 +52,9 @@ jobs:
           with create_engine(database_url).connect() as conn:
               assert conn.scalar(text('SELECT current_database()')) == 'greenhouse_owner_os_test'
               version = conn.scalar(text('SHOW server_version_num'))
-              assert 170000 <= int(version) < 180000
+              assert int(version) == 170011
+          import platform
+          assert platform.python_version() == '3.13.15'
           print('Disposable local PostgreSQL 17 target verified')
           PY
       - name: Alembic online upgrade
@@ -64,8 +66,8 @@ jobs:
           from sqlalchemy import create_engine, text
           with create_engine(os.environ['DATABASE_URL']).connect() as conn:
               revisions = conn.execute(text('SELECT version_num FROM public.alembic_version')).scalars().all()
-          assert revisions == ['20261006_0018'], 'Unexpected Alembic revision'
-          print('Alembic head: 20261006_0018')
+          assert revisions == ['20261006_0022'], 'Unexpected Alembic revision'
+          print('Alembic head: 20261006_0022')
           PY
       - name: Operational API smoke and reference safety
         run: pytest tests/integration/test_postgres_readiness.py -v
@@ -78,16 +80,19 @@ jobs:
           import os
           import xml.etree.ElementTree as ET
           cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'integration.xml')).findall('.//testcase')
-          assert len(cases) >= 92, 'PostgreSQL tests did not execute'
+          assert len(cases) >= 522, 'PostgreSQL tests did not execute'
           assert not any(case.find('skipped') is not None for case in cases), 'PostgreSQL tests skipped'
+          workers = [case for case in cases if 'test_postgres_workers' in case.get('classname', '')]
+          assert len(workers) >= 125, 'Workers adversarial gate did not execute'
           PY
-      - name: Complete Finance test suite
+      - name: Complete regression suite
         run: |
           timeout --signal=TERM --kill-after=10s 300s pytest -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/finance.xml"
           python - <<'PY'
           import os
           import xml.etree.ElementTree as ET
           cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'finance.xml')).findall('.//testcase')
+          assert len(cases) >= 659, 'Complete regression suite did not execute'
           assert not any(case.find('skipped') is not None for case in cases), 'Finance tests skipped'
           PY
       - name: Verify artifacts
