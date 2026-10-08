@@ -25,6 +25,7 @@ TERMINAL=('POSTED','CONFIRMED_NONPOSTING','REJECTED')
 ENGINE='owner-preparation-v1'
 def js(v):return json.dumps(v,ensure_ascii=False,default=str)
 def now():return datetime.now(timezone.utc)
+def reminder_eligible(first_unresolved,current,state):return state not in TERMINAL and current-first_unresolved>timedelta(hours=36)
 
 class OwnerCaptureService:
     def __init__(self,factory,recognizer=None):
@@ -109,7 +110,7 @@ class OwnerCaptureService:
             job=rows(u,"SELECT * FROM core.processing_jobs WHERE inbox_id=:i AND engine_version=:v AND attempts<3 AND (state='QUEUED' OR state='FAILED' AND retry_at<=clock_timestamp() OR state='RUNNING' AND lease_until<clock_timestamp()) FOR UPDATE SKIP LOCKED",i=i,v=ENGINE)
             if not job:return
             j=job[0];rows(u,"UPDATE core.processing_jobs SET state='RUNNING',attempts=attempts+1,lease_token=:t,lease_until=clock_timestamp()+interval '15 minutes',error_code=NULL WHERE id=:id RETURNING id",t=token,id=j['id'])
-            s=u.session.get(InboxRow,i);source=dict(id=s.id,e=s.entity_id,a=s.created_by,raw=s.raw_text,binary=s.file_bytes,mime=s.mime_type,fp=s.fingerprint,day=s.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(),duplicate=bool(s.duplicate_of_id))
+            s=u.session.get(InboxRow,i);source=dict(id=s.id,e=s.entity_id,a=s.created_by,raw=s.raw_text,binary=s.file_bytes,mime=s.mime_type,fp=s.fingerprint,saved_at=s.created_at,day=s.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(),duplicate=bool(s.duplicate_of_id))
             u.commit()
         try:
             if source['binary']:
@@ -126,7 +127,7 @@ class OwnerCaptureService:
                     # Never regenerate a reviewed slot or change its effect kind.
                     if rows(u,'SELECT id FROM core.proposed_actions WHERE inbox_id=:s AND slot=:slot',s=i,slot=slot):continue
                     pid=uuid4();priority=0 if kind in ('PAYABLE','PAYMENT','DIRECT_EXPENSE','STOCK_RECEIPT','STOCK_APPLICATION','INVOICE_MATCH') else 1 if kind=='DEPOT_RECEIPT' else 2
-                    rows(u,"INSERT INTO core.proposed_actions(id,entity_id,inbox_id,slot,action_type,state,version,priority,created_by) VALUES(:id,:e,:s,:slot,:k,'PREPARING',1,:p,:a) RETURNING id",id=pid,e=source['e'],s=i,slot=slot,k=kind,p=priority,a=source['a'])
+                    rows(u,"INSERT INTO core.proposed_actions(id,entity_id,inbox_id,slot,action_type,state,version,priority,created_by,first_unresolved_at) VALUES(:id,:e,:s,:slot,:k,'PREPARING',1,:p,:a,:saved) RETURNING id",id=pid,e=source['e'],s=i,slot=slot,k=kind,p=priority,a=source['a'],saved=source['saved_at'])
                     p=self._proposal(u,source['e'],pid)
                     warnings=list(output['warnings'])
                     if source['duplicate']:warnings.append('Возможный повтор источника: проверьте оригинал')
@@ -188,7 +189,7 @@ class OwnerCaptureService:
 
     def _depot_text(self,raw,parties):
         if not re.search(r'(?i)(grand|birinci|ikinci|i̇kinci|alacak)',raw):return None
-        lines=[];qualities=[]
+        lines=[];qualities=[];unreadable=[]
         number=lambda v:v.replace('.','').replace(',','.') if ',' in v else v
         for line in raw.splitlines():
             label=re.search(r'(?i)\b(Grand|Birinci|İkinci|Ikinci|Sera|Yerli)\b',line)
@@ -196,15 +197,15 @@ class OwnerCaptureService:
             nums=re.findall(r'(?<!\w)\d+(?:[.,]\d+)*(?!\w)',line[label.end():])
             # Bounded labelled format [count optional] kg, price, amount.
             # Other/partial layouts retain source and require owner input.
-            if len(nums) not in (3,4):continue
+            if len(nums) not in (3,4):unreadable.append(line[:1000]);continue
             try:
                 kg,price,amount=[number(v) for v in nums[-3:]]
-                if any(Decimal(v)<=0 for v in (kg,price,amount)):continue
+                if any(Decimal(v)<=0 for v in (kg,price,amount)):unreadable.append(line[:1000]);continue
                 ln=dict(original_quality_name=label.group(),net_weight_kg=kg,unit_price=price,stated_amount=amount,source_line=line[:1000])
                 if len(nums)==4 and nums[0].isdigit():ln['count']=int(nums[0])
                 lines.append(ln)
                 qualities.append({'grand':'HIGHEST','birinci':'FIRST','ikinci':'SECOND','i̇kinci':'SECOND'}.get(label.group().casefold()))
-            except Exception:continue
+            except Exception:unreadable.append(line[:1000]);continue
         match=[p for p in parties if p.counterparty_type in ('depot','customer','both') and p.name.casefold() in raw.casefold()]
         dates=re.findall(r'(?<!\d)(\d{2})[./](\d{2})[./](20\d{2})(?!\d)',raw)
         event=None
@@ -217,7 +218,7 @@ class OwnerCaptureService:
         # other depots require receipt-specific owner classification.
         if not match or 'görgün' not in match[0].name.casefold():qualities=[None for _ in lines]
         return dict(depot_id=str(match[0].id) if len(match)==1 else None,event_date=event,lines=lines,qualities=qualities,
-                    stated_total=number(totals[0]) if len(set(totals))==1 else None,alacak_value=number(alacak[0]) if len(alacak)==1 else None)
+                    stated_total=number(totals[0]) if len(set(totals))==1 else None,alacak_value=number(alacak[0]) if len(alacak)==1 else None,unreadable_lines=unreadable)
 
     def _proposal(self,u,e,i,lock=False):
         p=rows(u,'SELECT * FROM core.proposed_actions WHERE id=:i AND entity_id=:e'+(' FOR UPDATE' if lock else ''),i=i,e=e)
@@ -277,6 +278,7 @@ class OwnerCaptureService:
         elif kind=='DEPOT_RECEIPT':
             required('depot_id','Депо');required('event_date','Дата');scoped('core.counterparties',fields.get('depot_id'))
             if not fields['lines']:missing.append('Нечитаемые строки: внесите по оригиналу')
+            if fields['unreadable_lines']:missing.append('Неполные строки: '+ '; '.join(fields['unreadable_lines'])+' — восстановите точным ручным вводом по оригиналу')
             if len(fields['qualities'])!=len(fields['lines']) or any(q is None for q in fields['qualities']) or not fields['quality_reviewed']:missing.append('Подтвердите качества именно этого депо')
             if not fields['arithmetic_reviewed']:missing.append('Проверьте строки и сумму; Alacak не является оплатой')
             basis['quality_mappings']=rows(u,'SELECT DISTINCT ON(original_label) original_label,version,quality FROM harvest.depot_quality_mappings WHERE depot_id=:d ORDER BY original_label,version DESC',d=fields.get('depot_id'))
@@ -307,8 +309,8 @@ class OwnerCaptureService:
     def _view(self,u,p):
         rev=rows(u,'SELECT * FROM core.proposal_revisions WHERE proposal_id=:i AND version=:v',i=p['id'],v=p['version'])[0]
         src=u.session.get(InboxRow,UUID(p['inbox_id']))
-        overdue=now()-datetime.fromisoformat(p['first_unresolved_at'])>timedelta(hours=36)
-        return dict(p,revision=rev,source=dict(id=str(src.id),text=src.raw_text,filename=src.filename,has_file=src.file_bytes is not None),reminder_eligible=overdue and p['state'] not in TERMINAL)
+        overdue=reminder_eligible(datetime.fromisoformat(p['first_unresolved_at']),now(),p['state'])
+        return dict(p,revision=rev,source=dict(id=str(src.id),text=src.raw_text,filename=src.filename,has_file=src.file_bytes is not None),reminder_eligible=overdue)
 
     def queue(self,e,a,offset=0,limit=50):
         with self.factory() as u:
@@ -455,7 +457,7 @@ class OwnerCaptureService:
     def reminders(self,e,a):
         with self.factory() as u:
             self.owner(u,e,a)
-            ps=rows(u,"SELECT id FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED') AND first_unresolved_at<clock_timestamp()-interval '36 hours' ORDER BY id",e=e)
+            ps=rows(u,"SELECT id FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED') AND first_unresolved_at<CAST(:current AS timestamptz)-interval '36 hours' ORDER BY id",e=e,current=now())
             day=now().astimezone(ZoneInfo('Europe/Istanbul')).date()
             if ps:rows(u,"INSERT INTO core.owner_reminders(id,entity_id,actor_id,reminder_day,reason,state,proposal_ids) VALUES(:id,:e,:a,:d,'UNCONFIRMED','ELIGIBLE',CAST(:p AS jsonb)) ON CONFLICT DO NOTHING RETURNING id",id=uuid4(),e=e,a=a,d=day,p=js([p['id'] for p in ps]))
             if not ps:rows(u,"UPDATE core.owner_reminders SET state='CANCELLED' WHERE entity_id=:e AND actor_id=:a AND state='ELIGIBLE' RETURNING id",e=e,a=a)

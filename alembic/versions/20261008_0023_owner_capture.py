@@ -260,12 +260,12 @@ BEGIN
  THEN RAISE EXCEPTION 'Current revision required' USING ERRCODE='23514'; END IF;
  IF p.state IN ('POSTED','CONFIRMED_NONPOSTING') THEN
  SELECT * INTO effect FROM core.confirmation_effects WHERE proposal_id=p.id;
- IF effect.proposal_id IS NULL OR effect.version<>p.version OR NOT CASE p.action_type
+ IF effect.proposal_id IS NULL OR effect.version<>p.version OR NOT (CASE p.action_type
  WHEN 'PAYABLE' THEN effect.obligation_id IS NOT NULL WHEN 'PAYMENT' THEN effect.payment_id IS NOT NULL
  WHEN 'DIRECT_EXPENSE' THEN effect.direct_expense_id IS NOT NULL
  WHEN 'STOCK_RECEIPT' THEN effect.inventory_id IS NOT NULL WHEN 'STOCK_APPLICATION' THEN effect.inventory_id IS NOT NULL
  WHEN 'DEPOT_RECEIPT' THEN effect.settlement_id IS NOT NULL WHEN 'PERSONAL_TASK' THEN effect.owner_task_id IS NOT NULL
- WHEN 'WORKER_TASK' THEN effect.worker_task_id IS NOT NULL WHEN 'INVOICE_MATCH' THEN effect.invoice_match_id IS NOT NULL ELSE false END
+ WHEN 'WORKER_TASK' THEN effect.worker_task_id IS NOT NULL WHEN 'INVOICE_MATCH' THEN effect.invoice_match_id IS NOT NULL ELSE false END)
  THEN RAISE EXCEPTION 'Typed owner effect required' USING ERRCODE='23514'; END IF;
  END IF;
  RETURN NEW; END $$;

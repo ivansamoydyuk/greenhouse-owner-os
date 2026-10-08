@@ -71,6 +71,7 @@ class DepotProposal(StrictModel):
     arithmetic_reviewed: bool = False
     stated_total: str | None = None
     alacak_value: str | None = None
+    unreadable_lines: list[str] = Field(default_factory=list,max_length=100)
 
 class InvoiceMatchProposal(StrictModel):
     receipt_id: UUID | None = None

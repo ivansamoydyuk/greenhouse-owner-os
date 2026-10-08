@@ -27,6 +27,22 @@ def test_source_is_committed_before_preparation(inv):
     assert svc.queue(UUID(inv['e']),a)['items'][0]['state']=='NEEDS_INPUT'
     with sf() as db:assert db.scalar(text('SELECT count(*) FROM core.confirmation_effects WHERE entity_id=:e'),dict(e=inv['e']))==0
 
+def test_daily_reminder_dedupe_and_exact_boundary(inv,monkeypatch):
+    from datetime import timedelta
+    import greenhouse_owner_os.services.owner_capture as module
+    source(inv);p=queue(inv)[0];start=datetime.fromisoformat(p['first_unresolved_at'])
+    sf,a,_,_,_=inv['preview'];svc=OwnerCaptureService(lambda:SqlAlchemyUnitOfWork(sf))
+    monkeypatch.setattr(module,'now',lambda:start+timedelta(hours=36))
+    svc.reminders(UUID(inv['e']),a)
+    with sf() as db:assert db.scalar(text('SELECT count(*) FROM core.owner_reminders WHERE entity_id=:e'),dict(e=inv['e']))==0
+    monkeypatch.setattr(module,'now',lambda:start+timedelta(hours=36,microseconds=1))
+    with ThreadPoolExecutor(2) as pool:list(pool.map(lambda _:svc.reminders(UUID(inv['e']),a),range(2)))
+    svc.reminders(UUID(inv['e']),a)
+    with sf() as db:assert db.scalar(text('SELECT count(*) FROM core.owner_reminders WHERE entity_id=:e'),dict(e=inv['e']))==1
+    send(inv['c'],f"/entities/{inv['e']}/owner/confirmations/{p['id']}/reject",dict(expected_version=p['version']),expected=200)
+    svc.reminders(UUID(inv['e']),a)
+    with sf() as db:assert db.scalar(text('SELECT state FROM core.owner_reminders WHERE entity_id=:e'),dict(e=inv['e']))=='CANCELLED'
+
 def test_real_gorgun_photo_scoped_quality_and_season_weighting(inv):
     import base64
     from decimal import Decimal
