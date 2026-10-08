@@ -10,7 +10,7 @@ const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(
 const sheet=()=>page.locator('#sheet');
 const click=n=>sheet().getByRole('button',{name:n,exact:true}).click();
 const close=()=>click('Закрыть');
-async function poll(check){for(let i=0;i<100;i++){if(await check())return;await page.waitForTimeout(100);}assert.fail('R2 asynchronous preparation did not complete');}
+async function poll(check,attempts=100){for(let i=0;i<attempts;i++){if(await check())return;await page.waitForTimeout(100);}assert.fail('R2 asynchronous preparation did not complete');}
 try{
  await page.goto(base);await page.getByLabel('Ключ доступа').fill(process.env.PREVIEW_SECRET);await page.getByRole('button',{name:'Открыть Finance',exact:true}).click();await page.getByRole('heading',{name:'Моя теплица',exact:true}).waitFor();
  const eid=(await (await context.request.get(base+'/preview/config')).json()).entity_id,root=`/v1/entities/${eid}/owner`;
@@ -56,8 +56,32 @@ try{
  await page.locator('[data-r2-mode=photo]').click();await sheet().locator('input[type=file]').setInputFiles({name:'TEST-r2-Gorgun.png',mimeType:'image/png',buffer:photo});await click('Сохранить источник');await sheet().waitFor({state:'hidden'});await poll(async()=> (await api('/confirmations')).items.some(p=>p.action_type==='DEPOT_RECEIPT'));
  let receipt=(await api('/confirmations')).items.find(p=>p.action_type==='DEPOT_RECEIPT');assert.deepEqual(receipt.revision.payload.qualities,['HIGHEST','FIRST','SECOND']);await openProposal(receipt);assert.match(await sheet().innerText(),/Alacak: 3000.*не оплата/);await click('Исправить');await sheet().getByLabel('Подтверждаю качества строк именно этого депо').check();await sheet().getByLabel('Проверил строки и сумму; Alacak не означает оплату').check();await click('Сохранить исправления');await sheet().getByRole('heading',{name:'Проверить действие',exact:true}).waitFor();const depotReview=await sheet().innerText();for(const fact of ['Grand','Birinci','İkinci','Высшее · проверено владельцем','Первое · проверено владельцем','Второе · проверено владельцем','Не распределено по теплицам','Alacak: 3000','продажу и долг депо'])assert.ok(depotReview.includes(fact),fact);assert.equal(await sheet().locator('[data-r2-open]').count(),0);await click('Подтвердить');await sheet().waitFor({state:'hidden'});
  const afterReceipt=await (await context.request.get(base+`/v1/entities/${eid}/harvest`)).json(),sale=afterReceipt.settlements.find(s=>s.evidence.source_reference===receipt.id);assert.ok(sale);assert.equal((await api('/home')).finance.balances.TRY.cash,'0.00');await post(`/v1/entities/${eid}/harvest/settlements/${sale.id}/reverse`,{expected_version:2,event_date:sale.event_date,reason:'TEST R2 browser cleanup'});
+ // Real two-page PDF picker upload retains the original and prepares two
+ // independent invoice cards using the actual local OCR engine.
+ const pdf=execFileSync('python',['-c','from tests.ocr_corpus import document;import sys;sys.stdout.buffer.write(document(28)[0])']);
+ const beforePdfStock=await (await context.request.get(base+`/v1/entities/${eid}/inventory`)).json();
+ await page.locator('[data-r2-mode=photo]').click();
+ await sheet().locator('input[type=file]').setInputFiles({name:'TEST-r2-supplier.pdf',mimeType:'application/pdf',buffer:pdf});
+ await click('Сохранить источник');await sheet().waitFor({state:'hidden'});
+ await poll(async()=> (await api('/captures')).items.some(s=>s.original_name==='TEST-r2-supplier.pdf'));
+ const pdfSource=(await api('/captures')).items.find(s=>s.original_name==='TEST-r2-supplier.pdf');assert.ok(pdfSource.server_saved);
+ const originalPdf=await context.request.get(base+root+`/captures/${pdfSource.id}/original`);
+ assert.equal(originalPdf.status(),200);assert.match(originalPdf.headers()['content-type'],/^application\/pdf/);assert.deepEqual(await originalPdf.body(),pdf);
+ await poll(async()=> (await api('/confirmations')).items.filter(p=>p.inbox_id===pdfSource.id).length===2,1300);
+ const pdfActions=(await api('/confirmations')).items.filter(p=>p.inbox_id===pdfSource.id);
+ assert.deepEqual(pdfActions.map(p=>p.action_type).sort(),['INVOICE_MATCH','PAYABLE']);
+ assert.ok(pdfActions.every(p=>p.revision.extraction_run_id&&p.source.has_file));
+ const invoice=pdfActions.find(p=>p.action_type==='PAYABLE');assert.match(invoice.revision.payload.description,/FATURA/i);assert.match(invoice.revision.payload.description,/KNO3/);
+ for(const [index,action] of pdfActions.entries()){
+  await openProposal(action);assert.equal(await sheet().getByRole('button',{name:'Подтвердить',exact:true}).isDisabled(),true);
+  await sheet().getByText('Оригинальный источник',{exact:true}).click();assert.match(await sheet().getByRole('link',{name:'Открыть оригинал'}).getAttribute('href'),new RegExp(pdfSource.id));
+  await click('Отклонить');await sheet().getByRole('heading',{name:'Неподтверждённые',exact:true}).waitFor();await close();
+  if(index===0)assert.equal((await api(`/confirmations/${pdfActions[1].id}/preview`)).state,pdfActions[1].state);
+ }
+ assert.deepEqual((await (await context.request.get(base+`/v1/entities/${eid}/inventory`)).json()).stock,beforePdfStock.stock);
+ assert.deepEqual((await api('/home')).finance.balances,before.finance.balances);
  await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#app').getAttribute('aria-busy')==='false');
  for(const width of [320,390,768,1280]){await page.setViewportSize({width,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.equal(await page.locator('#owner-capture-bar').isVisible(),true);await page.evaluate(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));for(const button of document.querySelectorAll('#nav button,#owner-capture-bar button')){const box=button.getBoundingClientRect();if(box.width<44||box.height<44||box.left<0||box.right>innerWidth+1)throw Error('Owner touch target outside viewport or smaller than 44px');}});await page.screenshot({path:`${process.env.E2E_ARTIFACTS||'artifacts'}/owner-r2-${width}.png`,fullPage:true});await page.locator('#owner-queue').click();assert.equal(await page.evaluate(()=>document.querySelector('#sheet').scrollWidth<=document.querySelector('#sheet').clientWidth),true);await close();}
  assert.deepEqual((await api('/home')).finance.balances,before.finance.balances);assert.deepEqual(errors,[]);
- console.log('PASS R2 source-first, personal task revision/defer/confirm/done, unreadable photo/reject, offline retry, compact payment/unknown-cost stock/real Gorgun OCR confirmation, responsive 320/390/768/1280');
+ console.log('PASS R2 source-first, personal task revision/defer/confirm/done, unreadable photo/reject, offline retry, compact payment/unknown-cost stock/real Gorgun OCR confirmation, actual PDF picker/original/OCR/independent invoice review, responsive 320/390/768/1280');
 }finally{await browser.close();}
