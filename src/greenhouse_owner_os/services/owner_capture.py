@@ -319,6 +319,9 @@ class OwnerCaptureService:
 
     def _revision(self,u,p,payload,provenance,a,action,run_id=None,warnings=()):
         fields,missing,basis=self._validate(u,p,payload)
+        # Every displayed field has an honest category, including nullable facts
+        # and typed defaults such as TRY; missing metadata is not source truth.
+        provenance={k:provenance.get(k,{'category':'UNKNOWN' if v is None else 'INFERENCE','basis':'typed_default_or_preparation'}) for k,v in fields.items()}
         missing+=list(warnings)
         v=p['version'] if action=='PREPARE' else p['version']+1
         digest=_hash_request(dict(id=p['id'],version=v,type=p['action_type'],payload=fields,basis=basis,missing=missing))

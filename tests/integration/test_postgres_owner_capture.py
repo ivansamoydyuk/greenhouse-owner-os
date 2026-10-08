@@ -103,6 +103,7 @@ def test_supplier_siblings_remain_independent(inv):
 def test_same_kind_slots_and_supplier_three_effects_are_independent(inv):
     s=source(inv,'Должен Серкану 7000 за ремонт.\nДолжен Серкану 3000 за перевозку.')
     ps=queue(inv);assert len(ps)==2 and all(p['action_type']=='PAYABLE' for p in ps)
+    assert all(set(p['revision']['payload'])==set(p['revision']['provenance']) for p in ps)
     assert len({p['slot'] for p in ps})==2
     first=revise(inv,ps[0],dict(amount='7000',counterparty_id=inv['cp'],event_date='2026-10-08',description='TEST first'))
     confirm(inv,first)

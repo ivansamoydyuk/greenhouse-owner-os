@@ -22,7 +22,7 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced}
   const party=id=>home()?.finance.references.find(r=>r.id===id)?.original_name||'Не выбран';
   const input=(key,label,value='',type='text')=>`<label>${e(label)}<input name="${key}" type="${type}" value="${e(value??'')}"></label>`;
   const options=(list,value,empty='Не выбран')=>`<option value="">${empty}</option>${list.map(x=>`<option value="${e(x.id)}" ${x.id===value?'selected':''}>${e(x.original_name||x.name||x.display_name)}</option>`).join('')}`;
-  const select=(key,label,list,value,empty)=>`<label>${e(label)}<select name="${key}">${options(list,value,empty)}</select></label>`;
+  const select=(key,label,list,value,empty)=>`<label>${e(label)}<select name="${key}" aria-label="${e(label)}">${options(list,value,empty)}</select></label>`;
   function mount(){
     let bar=$('#owner-capture-bar');if(!bar){bar=document.createElement('div');bar.id='owner-capture-bar';bar.className='owner-capture-bar';bar.setAttribute('aria-label','Записать событие');document.body.append(bar);}
     bar.hidden=!home();bar.innerHTML='<button data-r2-mode="voice_transcript">🎙 Голос</button><button data-r2-mode="photo">📷 Фото</button><button data-r2-mode="text">✎ Текст</button>';
