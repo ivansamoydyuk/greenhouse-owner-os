@@ -227,6 +227,46 @@ CREATE TRIGGER owner_task_scope BEFORE INSERT OR UPDATE ON core.owner_tasks FOR 
 """
 
 HARDEN = r"""
+CREATE FUNCTION core.r2_snapshot_binding() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE f jsonb; k text; target jsonb;
+BEGIN
+ SELECT r.payload,p.action_type INTO f,k FROM core.proposal_revisions r JOIN core.proposed_actions p ON p.id=r.proposal_id WHERE r.proposal_id=NEW.proposal_id AND r.version=NEW.version;
+ IF k IN ('PAYABLE','PAYMENT','DIRECT_EXPENSE') AND (jsonb_typeof(f->'amount') IS DISTINCT FROM 'string' OR (f->>'amount') !~ '^\d{1,18}(\.\d{1,2})?$')
+ THEN RAISE EXCEPTION 'Exact amount snapshot required' USING ERRCODE='23514'; END IF;
+ IF k='PAYABLE' THEN
+ SELECT to_jsonb(o) INTO target FROM finance.obligations o WHERE id=NEW.obligation_id;
+ IF (target->>'original_amount')::numeric IS DISTINCT FROM (f->>'amount')::numeric
+ OR target->>'counterparty_id' IS DISTINCT FROM f->>'counterparty_id' OR target->>'currency' IS DISTINCT FROM f->>'currency'
+ OR target->>'event_date' IS DISTINCT FROM f->>'event_date' OR target->>'direction'<>'payable' OR target->>'status'<>'posted'
+ THEN RAISE EXCEPTION 'Payable approval snapshot mismatch' USING ERRCODE='23514'; END IF;
+ ELSIF k='PAYMENT' THEN
+ SELECT to_jsonb(p) INTO target FROM finance.payments p WHERE id=NEW.payment_id;
+ IF (target->>'amount')::numeric IS DISTINCT FROM (f->>'amount')::numeric
+ OR target->>'counterparty_id' IS DISTINCT FROM f->>'counterparty_id' OR target->>'money_account_id' IS DISTINCT FROM f->>'money_account_id'
+ OR target->>'currency' IS DISTINCT FROM f->>'currency' OR target->>'event_date' IS DISTINCT FROM f->>'event_date'
+ OR target->>'direction'<>'out' OR target->>'status'<>'posted'
+ OR (SELECT count(*) FROM finance.payment_allocations WHERE payment_id=NEW.payment_id)<>1
+ OR NOT EXISTS(SELECT 1 FROM finance.payment_allocations WHERE payment_id=NEW.payment_id AND obligation_id=(f->>'obligation_id')::uuid AND amount=(f->>'amount')::numeric)
+ THEN RAISE EXCEPTION 'Payment approval snapshot mismatch' USING ERRCODE='23514'; END IF;
+ ELSIF k IN ('STOCK_RECEIPT','STOCK_APPLICATION') THEN
+ SELECT to_jsonb(v) INTO target FROM inventory.events v WHERE id=NEW.inventory_id;
+ IF target->'payload'->'lines' IS DISTINCT FROM f->'lines' OR target->>'event_date' IS DISTINCT FROM f->>'event_date'
+ OR target->>'kind' IS DISTINCT FROM (CASE WHEN k='STOCK_RECEIPT' THEN 'receipt' ELSE 'application' END) OR target->>'status'<>'posted'
+ THEN RAISE EXCEPTION 'Stock approval snapshot mismatch' USING ERRCODE='23514'; END IF;
+ ELSIF k='PERSONAL_TASK' THEN
+ SELECT to_jsonb(t) INTO target FROM core.owner_tasks t WHERE id=NEW.owner_task_id;
+ IF target->>'title' IS DISTINCT FROM f->>'title' OR target->>'greenhouse_id' IS DISTINCT FROM f->>'greenhouse_id'
+ OR target->>'planned_date' IS DISTINCT FROM f->>'planned_date' OR target->>'owner_id' IS DISTINCT FROM NEW.actor_id::text
+ THEN RAISE EXCEPTION 'Task approval snapshot mismatch' USING ERRCODE='23514'; END IF;
+ ELSIF k='DEPOT_RECEIPT' THEN
+ SELECT to_jsonb(s) INTO target FROM harvest.depot_settlements s WHERE id=NEW.settlement_id;
+ IF target->>'depot_id' IS DISTINCT FROM f->>'depot_id' OR target->>'event_date' IS DISTINCT FROM f->>'event_date'
+ OR target->>'currency' IS DISTINCT FROM f->>'currency' OR target->>'status'<>'posted'
+ THEN RAISE EXCEPTION 'Depot approval snapshot mismatch' USING ERRCODE='23514'; END IF;
+ END IF;
+ RETURN NEW; END $$;
+CREATE CONSTRAINT TRIGGER confirmation_snapshot_binding AFTER INSERT ON core.confirmation_effects
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION core.r2_snapshot_binding();
 CREATE FUNCTION finance.r2_expense_identity() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Expense evidence retained' USING ERRCODE='23514'; END IF;

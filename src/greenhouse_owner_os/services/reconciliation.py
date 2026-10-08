@@ -20,6 +20,11 @@ def reconcile(session, *, include_classification=False, snapshot_established=Fal
               TransferRow, FundingRow, SettlementRow, EntityRow, ImportBatchRow, HistoricalCandidateRow]
     rows = {m: {r.id:r for r in session.scalars(select(m).order_by(m.id)).all()} for m in models}
     rows[OpeningPayableRow] = {r.obligation_id:r for r in session.scalars(select(OpeningPayableRow).order_by(OpeningPayableRow.obligation_id))}
+    from types import SimpleNamespace
+    rows['direct_expense']={}
+    if session.scalar(text("SELECT to_regclass('finance.direct_expenses')")):
+        query='SELECT * FROM finance.direct_expenses'+(' WHERE entity_id=:e' if entity_id is not None else '')+' ORDER BY id'
+        rows['direct_expense']={r['id']:SimpleNamespace(**r,replacement_of_id=None) for r in session.execute(text(query),dict(e=entity_id)).mappings()}
     if entity_id is not None:
         for model in (ObligationRow, PaymentRow, AdvanceRow, ApplicationRow, PostingRow,
                       LedgerAccountRow, MoneyAccountRow, CounterpartyRow, TransferRow,
@@ -142,10 +147,10 @@ def check_snapshot(rows, *, include_classification=False):
     system={(l.entity_id,l.currency,l.system_code):l.id for l in ledgers.values() if l.system_code}
     def control(r,code): return system.get((r.entity_id,r.currency,code))
     def cash(aid): return accounts[aid].ledger_account_id if aid in accounts else None
-    domains={'obligation':obs,'payment':pays,'advance_application':apps,'transfer':transfers,'owner_funding':fundings,'direct_settlement':settlements}
+    domains={'obligation':obs,'payment':pays,'advance_application':apps,'transfer':transfers,'owner_funding':fundings,'direct_settlement':settlements,'direct_expense':rows.get('direct_expense',{})}
     for kind,records in domains.items():
         for r in records.values():
-            if hasattr(r,'counterparty_id') and (r.counterparty_id not in cps or cps[r.counterparty_id].entity_id!=r.entity_id): fail('counterparty_scope_mismatch',r.id)
+            if hasattr(r,'counterparty_id') and not (kind=='direct_expense' and r.counterparty_id is None) and (r.counterparty_id not in cps or cps[r.counterparty_id].entity_id!=r.entity_id): fail('counterparty_scope_mismatch',r.id)
             if r.replacement_of_id:
                 old=records.get(r.replacement_of_id)
                 if not old or old.status!='reversed' or (old.entity_id,old.currency,old.counterparty_id,old.direction)!=(r.entity_id,r.currency,r.counterparty_id,r.direction): fail('orphan_replacement',r.id)
@@ -173,6 +178,8 @@ def check_snapshot(rows, *, include_classification=False):
                 line(control(r,'AP_CONTROL'),'debit',r.amount);line(control(r,'AR_CONTROL'),'credit',r.amount)
             elif kind=='owner_funding':
                 line(cash(r.money_account_id),'debit',r.amount);line(control(r,'OWNER_FUNDING'),'credit',r.amount)
+            elif kind=='direct_expense':
+                line(control(r,'GENERAL_EXPENSE'),'debit',r.amount);line(cash(r.money_account_id),'credit',r.amount)
             else:
                 line(cash(r.source_account_id),'credit',r.amount);line(cash(r.destination_account_id),'debit',r.amount)
                 if r.fee: line(cash(r.source_account_id),'credit',r.fee);line(r.fee_account_id,'debit',r.fee)

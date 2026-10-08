@@ -1,5 +1,7 @@
 from uuid import UUID
 from fastapi import Depends,Header,Query,Response,BackgroundTasks
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from greenhouse_owner_os.services.owner_capture import OwnerCaptureService
 from greenhouse_owner_os.domain.owner_capture import CaptureSource,ReviewAction,ReviseAction,ConfirmAction,TaskStateAction,NameOnlyParty
 from greenhouse_owner_os.domain.commands import ReverseCommand
@@ -48,7 +50,8 @@ def mount_owner_capture(app,finance,actor_provider):
         return service.review(entity_id,actor,item_id,key,body,'REOPEN')
     @app.post(root+'/confirmations/{item_id}/confirm')
     def confirm(entity_id:UUID,item_id:UUID,body:ConfirmAction,key:str=Header(alias='Idempotency-Key'),actor:UUID=Depends(actor_provider)):
-        return service.confirm(entity_id,actor,item_id,key,body)
+        result=service.confirm(entity_id,actor,item_id,key,body)
+        return JSONResponse(jsonable_encoder(result),status_code=409) if result.get('stale') else result
     @app.post(root+'/tasks/{item_id}/state')
     def task_state(entity_id:UUID,item_id:UUID,body:TaskStateAction,key:str=Header(alias='Idempotency-Key'),actor:UUID=Depends(actor_provider)):
         return service.task_state(entity_id,actor,item_id,key,body)

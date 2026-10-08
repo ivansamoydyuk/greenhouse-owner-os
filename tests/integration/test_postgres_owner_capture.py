@@ -175,7 +175,7 @@ def test_stock_changed_before_confirmation_stale(inv):
     source(inv,'Привезли 100 кг KNO3.');p=revise(inv,queue(inv)[0],dict(event_date='2026-10-08',lines=[line(inv)]))
     from tests.integration.test_postgres_inventory import event,post
     post(inv,event(inv,qty='20'))
-    r=confirm(inv,p);assert r['state']=='STALE'
+    r=confirm(inv,p,expected=409);assert r['state']=='STALE'
     with inv['preview'][0]() as db:assert db.scalar(text('SELECT count(*) FROM core.confirmation_effects WHERE proposal_id=:p'),dict(p=p['id']))==0
 
 def test_general_payable_no_optional_fields(inv):

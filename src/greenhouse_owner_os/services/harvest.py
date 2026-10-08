@@ -117,7 +117,10 @@ class HarvestService:
             for rid in ids:u.session.add(BatchReportRow(batch_id=r.id,report_id=rid))
             u.session.flush();return dict(row_dict(r),kind='batch',report_ids=[str(x) for x in ids])
         return self._write(e,actor,key,'harvest_batch',body.model_dump(mode='json'),run)
-    def settlement(self,e,actor,key,body):
+    def settlement(self,e,actor,key,body,*,reviewed_qualities=None):
+        if reviewed_qualities is not None:
+            if len(reviewed_qualities)!=len(body.lines) or any(q not in ('HIGHEST','FIRST','SECOND') for q in reviewed_qualities):raise ValidationError('Explicit receipt quality review required')
+            if body.evidence.source!='owner:r2-action':raise ValidationError('Scoped proposal adapter required')
         def run(u):
             cp=u.session.get(CounterpartyRow,body.depot_id)
             if not cp or cp.entity_id!=e or cp.counterparty_type not in ('depot','customer','both'):raise ValidationError('select an existing depot/customer counterparty')
@@ -144,16 +147,16 @@ class HarvestService:
                 if not b or b.entity_id!=e:raise ValidationError('batch scope mismatch')
                 if u.session.scalar(select(SettlementBatchRow.settlement_id).join(SettlementRow,SettlementRow.id==SettlementBatchRow.settlement_id).where(SettlementBatchRow.batch_id==bid,SettlementRow.status!='reversed')):raise ConflictError('batch already assigned to receipt')
                 u.session.add(SettlementBatchRow(settlement_id=r.id,batch_id=bid))
-            for ln in body.lines:
+            for ordinal,ln in enumerate(body.lines):
                 calc=line_amount(ln.net_weight_kg,ln.unit_price);amount=ln.confirmed_amount if ln.confirmed_amount is not None else calc
-                line=LineRow(id=uuid4(),settlement_id=r.id,normalized_quality=quality(ln.original_quality_name),calculated_amount=calc,amount=amount,**ln.model_dump(exclude={'allocations','confirmed_amount'}))
+                line=LineRow(id=uuid4(),settlement_id=r.id,normalized_quality=reviewed_qualities[ordinal] if reviewed_qualities is not None else quality(ln.original_quality_name),calculated_amount=calc,amount=amount,**ln.model_dump(exclude={'allocations','confirmed_amount'}))
                 u.session.add(line);u.session.flush()
                 for a in ln.allocations:
                     self._area(u,e,a.work_area_id)
                     u.session.add(AllocationRow(line_id=line.id,**a.model_dump()))
                 u.session.flush()
             return self._settlement_view(u,r)
-        return self._write(e,actor,key,'depot_draft',body.model_dump(mode='json'),run)
+        return self._write(e,actor,key,'depot_draft',dict(body.model_dump(mode='json'),**({'reviewed_qualities':reviewed_qualities} if reviewed_qualities is not None else {})),run)
     def _same_settlement(self,u,r,body):
         # Source retries cannot silently change reviewed business values either.
         if any(getattr(r,k)!=v for k,v in body.model_dump(exclude={'evidence','lines','batch_ids'}).items()):return False

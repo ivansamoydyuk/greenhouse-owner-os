@@ -119,9 +119,14 @@ class OwnerCaptureService:
             with self.factory() as u:
                 j=rows(u,'SELECT * FROM core.processing_jobs WHERE id=:id FOR UPDATE',id=j['id'])[0]
                 if j['state']!='RUNNING' or j['lease_token']!=str(token):return
-                specs=self.prepare(u,source,output)
                 run_id=uuid4()
-                rows(u,'INSERT INTO core.extraction_runs(id,entity_id,inbox_id,job_id,attempt,provider,engine_version,input_hash,raw_output,normalized,warnings) VALUES(:id,:e,:s,:j,:n,:p,:v,:h,CAST(:raw AS jsonb),CAST(:norm AS jsonb),CAST(:w AS jsonb)) RETURNING id',id=run_id,e=source['e'],s=i,j=j['id'],n=j['attempts'],p=output['provider'],v=output['version'],h=source['fp'],raw=js(output),norm=js(specs),w=js(output['warnings']))
+                # Retain actual OCR even when later typed normalization fails.
+                normalized=dict(text=output['text'],lines=[line for page in output.get('pages',[]) for line in page['lines']])
+                rows(u,'INSERT INTO core.extraction_runs(id,entity_id,inbox_id,job_id,attempt,provider,engine_version,input_hash,raw_output,normalized,warnings) VALUES(:id,:e,:s,:j,:n,:p,:v,:h,CAST(:raw AS jsonb),CAST(:norm AS jsonb),CAST(:w AS jsonb)) RETURNING id',id=run_id,e=source['e'],s=i,j=j['id'],n=j['attempts'],p=output['provider'],v=output['version'],h=source['fp'],raw=js(output),norm=js(normalized),w=js(output['warnings']))
+                u.commit()
+                j=rows(u,'SELECT * FROM core.processing_jobs WHERE id=:id FOR UPDATE',id=j['id'])[0]
+                if j['state']!='RUNNING' or j['lease_token']!=str(token):return
+                specs=self.prepare(u,source,output)
                 for idx,(kind,payload,provenance) in enumerate(specs):
                     slot=f'{kind}:{idx}'
                     # Never regenerate a reviewed slot or change its effect kind.
@@ -420,18 +425,11 @@ class OwnerCaptureService:
             from greenhouse_owner_os.domain.harvest import SettlementInput,SettlementPost,EvidenceInput
             svc=HarvestService(factory)
             body=SettlementInput(depot_id=f['depot_id'],event_date=f['event_date'],currency=f['currency'],original_greenhouse=f['original_greenhouse'],stated_total=f['stated_total'],alacak_value=f['alacak_value'],lines=f['lines'],evidence=EvidenceInput(source='owner:r2-action',source_reference=p['id'],raw_text=s.raw_text or None))
-            d=svc.settlement(e,a,key,body)
+            d=svc.settlement(e,a,key,body,reviewed_qualities=f['qualities'])
             for idx,q in enumerate(f['qualities']):
                 rows(u,'INSERT INTO harvest.receipt_quality_reviews(settlement_id,line_no,entity_id,proposal_id,quality,reviewed_by) VALUES(:s,:n,:e,:p,:q,:a) RETURNING line_no',s=d['id'],n=idx,e=e,p=p['id'],q=q,a=a)
-            # R2-specific classification is assigned before posting; legacy quality()
-            # remains unchanged for historical/manual R1 contracts.
-            ls=list(u.session.scalars(select(__import__('greenhouse_owner_os.infrastructure.harvest_models',fromlist=['LineRow']).LineRow).where(__import__('greenhouse_owner_os.infrastructure.harvest_models',fromlist=['LineRow']).LineRow.settlement_id==UUID(d['id'])).order_by(__import__('greenhouse_owner_os.infrastructure.harvest_models',fromlist=['LineRow']).LineRow.id)))
-            # Receipt line reviews bind by original line text, not random row ID order.
-            for ln in ls:
-                matches=[idx for idx,l in enumerate(f['lines']) if l['source_line']==ln.source_line and l['original_quality_name']==ln.original_quality_name]
-                if len(matches)!=1:raise ValidationError('Повторяющиеся строки требуют точного ручного режима')
-                ln.normalized_quality=f['qualities'][matches[0]]
-            u.session.flush();d=svc.get(e,UUID(d['id']))
+            # Classification is inserted once, never an UPDATE of immutable lines.
+            # Legacy quality() and historical/manual R1 contracts remain unchanged.
             issues=d.get('issues',[])
             r=svc.post(e,a,key+':post',UUID(d['id']),SettlementPost(expected_version=d['version'],confirmed=True,reviewed_issues=tuple(issues),review_reason='Owner reviewed R2 receipt arithmetic and scoped qualities'))
             if f['remember_quality_mapping']:
