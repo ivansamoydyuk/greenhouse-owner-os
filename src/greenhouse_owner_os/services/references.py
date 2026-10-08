@@ -120,6 +120,9 @@ class ReferenceService:
             response = self._ensure(uow, entity_id=entity_id, kind=kind, key=key,
                 name=command.name, source=command.source, definition=definition,
                 classification=self.environment, actor_id=actor_id, build=build)
+            if kind == 'entity':
+                uow.session.execute(text('INSERT INTO core.owner_entity_access(entity_id,actor_id) VALUES(:e,:a) ON CONFLICT DO NOTHING'),
+                                    dict(e=entity_id,a=actor_id))
             uow.idempotency.put(actor_id=actor_id, operation=operation, key=idempotency_key,
                 request_hash=request_hash, resource_type=kind, resource_id=UUID(response['id']), response=response)
             uow.commit()

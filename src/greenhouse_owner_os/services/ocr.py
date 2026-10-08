@@ -1,126 +1,67 @@
-"""Local, bounded OCR. Providers return evidence and have no domain authority."""
-from __future__ import annotations
+"""Local recognition only; provider receives bytes and cannot call domain services.
 
+Poppler + Tesseract Turkish/English, bounded pages, pixels, time and output.
+Raw TSV retains page/line/crop provenance. No filename parsing or field invention.
+"""
 import csv
-import hashlib
 import io
-import os
-from pathlib import Path
 import subprocess
 import tempfile
-from typing import Protocol
+from pathlib import Path
 
-from PIL import Image, ImageOps, UnidentifiedImageError
-from pypdf import PdfReader
-
-
-class RecognitionError(Exception):
-    """Safe error category; never contains source text or command output."""
-
-
-class OCRProvider(Protocol):
-    version: str
-    def recognize(self, original: bytes, mime_type: str) -> dict: ...
-
+class RecognitionFailure(Exception):
+    pass
 
 class LocalOCR:
-    version = 'tesseract-tur-eng-v1'
-    max_bytes = 20 * 1024 * 1024
-    max_pages = 20
-    max_pixels = 30_000_000
-
-    def __init__(self, *, timeout=30, executable='tesseract', pdf_executable='pdftoppm', tessdata=None):
-        self.timeout = timeout
-        self.executable = executable
-        self.pdf_executable = pdf_executable
-        self.tessdata = tessdata
-
-    def _run(self, args):
-        env = dict(os.environ, OMP_THREAD_LIMIT='1')
-        if self.tessdata:
-            env['TESSDATA_PREFIX'] = self.tessdata
-        try:
-            result = subprocess.run(args, capture_output=True, timeout=self.timeout, env=env)
-        except subprocess.TimeoutExpired:
-            raise RecognitionError('OCR_TIMEOUT') from None
-        except OSError:
-            raise RecognitionError('OCR_ENGINE_UNAVAILABLE') from None
-        if result.returncode:
-            raise RecognitionError('OCR_ENGINE_FAILED')
-        return result.stdout.decode('utf-8', errors='replace')
-
-    def recognize(self, original: bytes, mime_type: str) -> dict:
-        if not original or len(original) > self.max_bytes:
-            raise RecognitionError('OCR_SIZE_LIMIT')
-        signatures = {'application/pdf': b'%PDF-', 'image/png': b'\x89PNG\r\n\x1a\n', 'image/jpeg': b'\xff\xd8\xff'}
-        if mime_type not in signatures or not original.startswith(signatures[mime_type]):
-            raise RecognitionError('OCR_UNSUPPORTED_FILE')
-        languages = self._run([self.executable, '--list-langs'])
-        if not all(lang in languages.splitlines() for lang in ('tur', 'eng')):
-            raise RecognitionError('OCR_TURKISH_LANGUAGE_UNAVAILABLE')
-        engine = self._run([self.executable, '--version']).splitlines()[0]
-        with tempfile.TemporaryDirectory(prefix='owner-ocr-') as directory:
-            root = Path(directory)
-            if mime_type == 'application/pdf':
-                try:
-                    reader = PdfReader(io.BytesIO(original))
-                    if reader.is_encrypted or not 1 <= len(reader.pages) <= self.max_pages:
-                        raise RecognitionError('OCR_PDF_PAGE_LIMIT_OR_ENCRYPTED')
-                except RecognitionError:
-                    raise
-                except Exception:
-                    raise RecognitionError('OCR_INVALID_PDF') from None
-                source = root / 'original.pdf'
-                source.write_bytes(original)
-                self._run([self.pdf_executable, '-r', '160', '-scale-to', '4000', '-png', str(source), str(root / 'page')])
-                pages = sorted(root.glob('page-*.png'), key=lambda p: int(p.stem.split('-')[-1]))
+    version = 'local-tesseract-tur-eng-v1'
+    provider = 'local'
+    def recognize(self, content, mime):
+        from PIL import Image, ImageOps
+        Image.MAX_IMAGE_PIXELS = 25000000
+        with tempfile.TemporaryDirectory(prefix='owner-ocr-') as td:
+            root=Path(td); src=root/('source.pdf' if mime=='application/pdf' else 'source.image');src.write_bytes(content)
+            engine=self._run(['tesseract','--version']).splitlines()[0]
+            if 'tur' not in self._run(['tesseract','--list-langs']).splitlines():raise RecognitionFailure('turkish_model_unavailable')
+            if mime=='application/pdf':
+                info=self._run(['pdfinfo',str(src)])
+                pages=next((int(l.split(':',1)[1]) for l in info.splitlines() if l.startswith('Pages:')),0)
+                if not 1<=pages<=20:raise RecognitionFailure('pdf_page_limit')
+                self._run(['pdftoppm','-scale-to','2400','-png',str(src),str(root/'page')],timeout=45)
+                images=sorted(root.glob('page-*.png'),key=lambda p:int(p.stem.split('-')[-1]))
             else:
-                source = root / 'original'
-                source.write_bytes(original)
-                pages = [source]
-            output = []
-            warnings = []
-            for number, page in enumerate(pages, 1):
                 try:
-                    with Image.open(page) as image:
-                        if image.width * image.height > self.max_pixels:
-                            raise RecognitionError('OCR_PIXEL_LIMIT')
-                        image = ImageOps.exif_transpose(image).convert('RGB')
-                        image.thumbnail((4000, 4000))
-                        # OSD is evidence about orientation, not a text fixture.
-                        derivative = root / f'input-{number}.png'
-                        image.save(derivative)
-                        try:
-                            osd = self._run([self.executable, str(derivative), 'stdout', '--psm', '0'])
-                            import re
-                            rotation = re.search(r'Rotate: (90|180|270)', osd)
-                            if rotation:
-                                image = image.rotate(-int(rotation[1]), expand=True)
-                                image.save(derivative)
-                        except RecognitionError:
-                            warnings.append(f'page:{number}:orientation_unverified')
-                        raw = self._run([self.executable, str(derivative), 'stdout', '-l', 'tur+eng', '--psm', '6', '-c', 'tessedit_create_tsv=1'])
-                except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
-                    raise RecognitionError('OCR_INVALID_IMAGE') from None
-                lines = {}
-                for word in csv.DictReader(io.StringIO(raw), delimiter='\t'):
-                    if not word.get('text', '').strip():
-                        continue
-                    key = (word['block_num'], word['par_num'], word['line_num'])
-                    lines.setdefault(key, []).append(word)
-                spans = []
-                for ordinal, words in enumerate(lines.values(), 1):
-                    confidence = min(float(w['conf']) for w in words)
-                    spans.append(dict(page=number, line=ordinal, text=' '.join(w['text'] for w in words),
-                                      confidence=format(confidence, '.2f'),
-                                      box=[min(int(w['left']) for w in words), min(int(w['top']) for w in words),
-                                           max(int(w['left']) + int(w['width']) for w in words),
-                                           max(int(w['top']) + int(w['height']) for w in words)]))
-                    if confidence < 70:
-                        warnings.append(f'page:{number}:line:{ordinal}:low_confidence')
-                output.append(dict(page=number, raw_tsv=raw, spans=spans))
-            if not any(page['spans'] for page in output):
-                warnings.append('no_readable_text')
-            return dict(provider='local', engine=engine, version=self.version, languages=['tur', 'eng'],
-                        input_hash=hashlib.sha256(original).hexdigest(), pages=output, warnings=warnings,
-                        text='\n\n'.join('\n'.join(s['text'] for s in p['spans']) for p in output))
+                    with Image.open(src) as im:
+                        if im.width*im.height>25000000:raise RecognitionFailure('image_pixel_limit')
+                        im=ImageOps.exif_transpose(im).convert('RGB');im.thumbnail((3000,3000));im.save(root/'page-1.png')
+                except Exception as ex:raise RecognitionFailure('image_decode_failed') from ex
+                images=[root/'page-1.png']
+            result=[];warnings=[]
+            for page,path in enumerate(images,1):
+                # Test all four orientations. Unreadable recognition remains warnings;
+                # this score chooses an OCR derivative, never authoritative numbers.
+                candidates=[]
+                with Image.open(path) as im:
+                    for angle in (0,90,180,270):
+                        derivative=root/'derivative.png';im.rotate(angle,expand=True).save(derivative)
+                        tsv=self._run(['tesseract',str(derivative),'stdout','-l','tur+eng','--psm','6','tsv'],timeout=20)
+                        words=[r for r in csv.DictReader(io.StringIO(tsv),delimiter='\t') if r.get('text','').strip() and r.get('conf','-1')!='-1']
+                        score=sum(max(0,float(r['conf']))*len(r['text']) for r in words)
+                        candidates.append((score,angle,tsv,words))
+                _,angle,tsv,words=max(candidates,key=lambda c:c[0]);lines={}
+                for w in words:
+                    k=(w['block_num'],w['par_num'],w['line_num']);lines.setdefault(k,[]).append(w)
+                spans=[dict(page=page,line=i+1,text=' '.join(w['text'] for w in ws),
+                            bbox=[min(int(w['left']) for w in ws),min(int(w['top']) for w in ws),
+                                  max(int(w['left'])+int(w['width']) for w in ws),max(int(w['top'])+int(w['height']) for w in ws)],
+                            confidence=str(min(float(w['conf']) for w in ws))) for i,ws in enumerate(lines.values())]
+                if not spans or any(float(s['confidence'])<65 for s in spans):warnings.append(f'page_{page}_needs_review')
+                result.append(dict(page=page,rotation=angle,raw_tsv=tsv,lines=spans))
+            return dict(provider=self.provider,engine=engine,version=self.version,pages=result,
+                        text='\n'.join(s['text'] for p in result for s in p['lines']),warnings=warnings)
+    def _run(self,args,timeout=10):
+        try:
+            r=subprocess.run(args,capture_output=True,text=True,timeout=timeout,check=True,
+                             env=__import__('os').environ|{'OMP_THREAD_LIMIT':'1'})
+            if len(r.stdout)>2000000:raise RecognitionFailure('ocr_output_limit')
+            return r.stdout
+        except (OSError,subprocess.SubprocessError) as ex:raise RecognitionFailure('recognition_failed') from ex
