@@ -52,6 +52,8 @@ a[role=button], summary { min-height: 44px; }
 .brand small { display: block; color: var(--muted); font-size: 9px; letter-spacing: .18em; margin-top: 5px; }
 main { max-width: var(--content-width); margin: auto; padding: 20px 28px calc(var(--dock-height) + 32px); min-height: 50vh; }
 main:focus, h1:focus { outline: none; }
+main[aria-busy=true] { opacity: .65; }
+#refresh[aria-busy=true] { background: var(--green-soft); }
 h1, h2, h3, p { overflow-wrap: anywhere; }
 h1 { font-size: 34px; line-height: 1.15; letter-spacing: -.045em; font-weight: 720; margin: 0 0 9px; }
 h2 { font-size: 20px; letter-spacing: -.025em; line-height: 1.3; margin: 0 0 16px; font-weight: 680; }
@@ -359,6 +361,8 @@ blockquote { margin: 14px 0; padding: 14px; background: var(--background); borde
 }
 @media (prefers-reduced-motion: no-preference) {
   button { transition: background-color .15s, border-color .15s; }
+  #refresh[aria-busy=true] .ui-icon { animation: refresh-spin 1s linear infinite; }
+  @keyframes refresh-spin { to { transform: rotate(360deg); } }
   dialog[open] { animation: appear .16s ease-out; }
   @keyframes appear { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
 }

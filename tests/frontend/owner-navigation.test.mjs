@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {isVisibleOwnerControl} from '../e2e/visibility.mjs';
 import {
   routes, primaryRoutes, financeRoutes, moreRoutes, resolveRoute,
   primaryNavigation, financeNavigation, moreNavigation, icon,
@@ -82,4 +83,41 @@ test('icons stay decorative and unknown names cannot inject markup', () => {
   assert.match(html, /aria-hidden="true"/);
   assert.doesNotMatch(html, /<script|onclick|onerror/);
   assert.equal(html, icon('grid'));
+});
+
+
+test('closed native disclosures exclude content with stale rectangles but retain their first summary', () => {
+  const previous = globalThis.getComputedStyle;
+  globalThis.getComputedStyle = node => ({visibility: node.visibility || 'visible'});
+  const node = (tagName, children = [], options = {}) => {
+    const result = {tagName, children, parentElement: null, open: false, getClientRects: () => [{}], ...options};
+    result.contains = target => result === target || children.some(child => child.contains(target));
+    children.forEach(child => {child.parentElement = result;});
+    return result;
+  };
+  try {
+    const insideSummary = node('BUTTON'), summary = node('SUMMARY', [insideSummary]);
+    const hiddenButton = node('BUTTON'), secondSummary = node('SUMMARY');
+    const disclosure = node('DETAILS', [summary, hiddenButton, secondSummary]);
+    assert.equal(isVisibleOwnerControl(summary), true);
+    assert.equal(isVisibleOwnerControl(insideSummary), true);
+    assert.equal(isVisibleOwnerControl(hiddenButton), false);
+    assert.equal(isVisibleOwnerControl(secondSummary), false);
+    disclosure.open = true;
+    assert.equal(isVisibleOwnerControl(hiddenButton), true);
+    assert.equal(isVisibleOwnerControl(secondSummary), true);
+    const outer = node('DETAILS', [node('SUMMARY'), disclosure]);
+    assert.equal(isVisibleOwnerControl(summary), false, 'An inner summary is still hidden by its closed outer disclosure');
+    outer.open = true;
+    assert.equal(isVisibleOwnerControl(hiddenButton), true);
+    disclosure.open = false;
+    assert.equal(isVisibleOwnerControl(summary), true);
+    assert.equal(isVisibleOwnerControl(hiddenButton), false);
+    assert.equal(isVisibleOwnerControl(node('BUTTON', [], {visibility: 'hidden'})), false);
+    assert.equal(isVisibleOwnerControl(node('BUTTON', [], {getClientRects: () => []})), false);
+    assert.equal(isVisibleOwnerControl(node('BUTTON')), true, 'Ordinary visible unnamed controls must still be checked');
+  } finally {
+    if (previous === undefined) delete globalThis.getComputedStyle;
+    else globalThis.getComputedStyle = previous;
+  }
 });

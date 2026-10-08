@@ -1,4 +1,4 @@
-import {navigateOwner} from './navigation.mjs';
+import {navigateOwner,revealOwnerControl} from './navigation.mjs';
 // Browser -> real HTTP API -> PostgreSQL -> UI. Every synthetic posted operation
 // is reversed in dependency order; owner's opening AP remains unpaid.
 import assert from 'node:assert/strict';
@@ -47,5 +47,5 @@ try{
  // Restore every synthetic successful posting via UI, in dependency order.
  for(const[kind,id]of tracked.reverse()){await open(kind,id);if(await sheet().getByRole('button',{name:'Отменить операцию',exact:true}).isVisible())await reverse();}
  view=await projection();assert.deepEqual(view.balances.TRY,{cash:'0.00',payable:'2600.00',receivable:'0.00',advance_paid:'0.00',advance_received:'0.00'});
- await close();await navigateOwner(page,'overview');await page.getByRole('button',{name:'Проверить сверку',exact:true}).click();await page.getByText('Сверка пройдена',{exact:false}).waitFor();await page.screenshot({path:`${process.env.E2E_ARTIFACTS||'artifacts'}/finance-review-390.png`,fullPage:true});assert.deepEqual(errors,[]);console.log('PASS: cleanup/reversed synthetic operations, Serkan unpaid 2600 TRY, cash 0, reconciliation, no browser errors');
+ await close();await navigateOwner(page,'overview');await (await revealOwnerControl(page.locator('#reconcile'))).click();await page.getByText('Сверка пройдена',{exact:false}).waitFor();await page.screenshot({path:`${process.env.E2E_ARTIFACTS||'artifacts'}/finance-review-390.png`,fullPage:true});assert.deepEqual(errors,[]);console.log('PASS: cleanup/reversed synthetic operations, Serkan unpaid 2600 TRY, cash 0, reconciliation, no browser errors');
 }finally{await browser.close();}

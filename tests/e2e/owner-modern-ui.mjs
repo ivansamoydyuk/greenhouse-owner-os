@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
 import {chromium} from 'playwright';
-import {navigateOwner, waitOwnerRoute, ownerRoutes} from './navigation.mjs';
+import {navigateOwner, waitOwnerRoute, ownerRoutes, revealOwnerControl} from './navigation.mjs';
+import {isVisibleOwnerControl} from './visibility.mjs';
 
 const base = process.env.PREVIEW_URL || 'http://127.0.0.1:4173';
 assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(new URL(base).hostname), 'Disposable local preview only');
@@ -24,6 +25,7 @@ page.on('console', message => {
   if (expectedUnavailable && /status of 503/.test(message.text())) return;
   errors.push(message.text());
 });
+await page.addInitScript(`window.isVisibleOwnerControl = (${isVisibleOwnerControl.toString()});`);
 await page.addInitScript(() => {
   window.ownerUiFaults = [];
   new MutationObserver(() => {
@@ -60,7 +62,8 @@ async function layout(label) {
   const failures = await page.evaluate(() => {
     const failures = [], dock = document.querySelector('#owner-dock'), nav = document.querySelector('#nav'), capture = document.querySelector('#owner-capture-bar');
     const box = element => element.getBoundingClientRect();
-    const visible = element => element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden';
+    const visible = window.isVisibleOwnerControl;
+    const describe = element => JSON.stringify({id: element.id || null, html: element.outerHTML.slice(0,700)});
     if (document.documentElement.scrollWidth > innerWidth + 1) failures.push('Horizontal page overflow');
     if (!dock?.contains(nav) || !dock?.contains(capture)) failures.push('Nav and capture must share the measured owner dock');
     if (!dock || !visible(dock) || !capture || !visible(capture)) return [...failures, 'Persistent owner dock missing'];
@@ -70,9 +73,9 @@ async function layout(label) {
     for (const button of document.querySelectorAll('#nav button, #owner-capture-bar button, #app button')) {
       if (!visible(button)) continue;
       const b = box(button), name = button.getAttribute('aria-label') || button.innerText.trim();
-      if (!name) failures.push('Unnamed visible button');
-      if (b.width < 43.5 || b.height < 43.5) failures.push(`Touch target below 44px: ${name}`);
-      if (b.left < -1 || b.right > innerWidth + 1) failures.push(`Control leaves viewport: ${name}`);
+      if (!name) failures.push(`Unnamed visible button: ${describe(button)}`);
+      if (b.width < 43.5 || b.height < 43.5) failures.push(`Touch target below 44px: ${name}; ${describe(button)}`);
+      if (b.left < -1 || b.right > innerWidth + 1) failures.push(`Control leaves viewport: ${name}; ${describe(button)}`);
     }
     return failures;
   });
@@ -82,7 +85,7 @@ async function layout(label) {
   await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
   assert.equal(await page.evaluate(() => {
     const controls = [...document.querySelectorAll('#app button, #app a, #app summary')]
-      .filter(node => node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden');
+      .filter(window.isVisibleOwnerControl);
     return !controls.length || controls.at(-1).getBoundingClientRect().bottom <= document.querySelector('#owner-dock').getBoundingClientRect().top + 1;
   }), true, `${label}: dock obscures the last main control`);
   await page.evaluate(() => scrollTo(0, 0));
@@ -96,10 +99,11 @@ async function dialogLayout(label) {
     if (dialog.scrollHeight > dialog.clientHeight + 1 && !/auto|scroll/.test(getComputedStyle(dialog).overflowY)) failures.push('Tall dialog cannot scroll');
     if (!dialog.contains(document.activeElement)) failures.push('Focus escaped the modal');
     for (const button of dialog.querySelectorAll('button')) {
-      if (!button.getClientRects().length) continue;
+      if (!window.isVisibleOwnerControl(button)) continue;
       const r = button.getBoundingClientRect(), name = button.getAttribute('aria-label') || button.innerText.trim();
-      if (!name) failures.push('Unnamed dialog button');
-      if (r.height < 43.5 || r.width < 43.5) failures.push(`Dialog target below 44px: ${name}`);
+      const description = JSON.stringify({id: button.id || null, html: button.outerHTML.slice(0,700)});
+      if (!name) failures.push(`Unnamed dialog button: ${description}`);
+      if (r.height < 43.5 || r.width < 43.5) failures.push(`Dialog target below 44px: ${name}; ${description}`);
     }
     return failures;
   }), [], label);
@@ -178,7 +182,23 @@ try {
   for (const width of [320, 390, 768, 1280]) {
     await page.setViewportSize({width, height: 844});
     for (const route of ['home', 'overview', 'harvest', 'inventory', 'tasks', 'more']) {
-      await navigateOwner(page, route); await layout(`${width}/${route}`); await screenshot(route, width);
+      await navigateOwner(page, route); await layout(`${width}/${route}`);
+      if (route === 'overview') {
+        // Hidden advanced actions are excluded only while native details are
+        // closed. The exact same controls must pass every name/size/bounds
+        // assertion once the owner opens their real disclosure summaries.
+        for (const id of ['global-capture', 'reconcile']) {
+          const control = page.locator(`#${id}`);
+          assert.equal(await control.evaluate(node => window.isVisibleOwnerControl(node)), false, `${id} starts in its closed disclosure`);
+          await revealOwnerControl(control);
+          assert.equal(await control.evaluate(node => window.isVisibleOwnerControl(node)), true, `${id} must enter the visible-control assertions`);
+          await layout(`${width}/overview-open-${id}`);
+          await control.locator('xpath=ancestor::details[1]').locator(':scope > summary').click();
+          assert.equal(await control.evaluate(node => window.isVisibleOwnerControl(node)), false, `${id} leaves the visible surface after closing`);
+        }
+        await page.evaluate(() => scrollTo(0, 0));
+      }
+      await screenshot(route, width);
       assert.equal(await page.locator('#nav [aria-current=page]').getAttribute('data-page'), ownerRoutes[route].primary);
     }
     await navigateOwner(page, 'review'); await dialogLayout(`${width}/queue`); await screenshot('queue', width); await close();
