@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from pathlib import Path
 from uuid import UUID
 from fastapi import Depends, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -129,7 +129,14 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
 
     @app.get('/preview/config')
     def config(actor_id=Depends(owner)):
-        return {'entity_id':str(eid),'environment':'TEST_PREVIEW','actual_operations':False}
+        return {'entity_id':str(eid),'environment':'TEST_PREVIEW','actual_operations':False,'r2_fixtures':os.getenv('R2_REVIEW_FIXTURES')=='1','feature_sha':os.getenv('GITHUB_SHA')}
+
+    @app.get('/preview/fixtures/gorgun.png')
+    def representative_receipt(actor_id=Depends(owner)):
+        if os.getenv('R2_REVIEW_FIXTURES')!='1':raise HTTPException(404,'fixture unavailable')
+        from tests.ocr_corpus import document
+        original,mime=document(0)
+        return Response(original,media_type=mime,headers={'Content-Disposition':'attachment; filename="TEST-representative-Gorgun.png"'})
 
     @app.get('/health')
     def health():

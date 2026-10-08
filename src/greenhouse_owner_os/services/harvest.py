@@ -55,7 +55,7 @@ class HarvestService:
         a=u.session.get(WorkAreaRow,aid)
         if not a or a.entity_id!=e or (gid and root(a)!=gid):raise ValidationError('work area belongs to another entity or greenhouse')
         return a
-    def _evidence(self,u,e,actor,body):
+    def _evidence(self,u,e,actor,body,source_item_id=None):
         if body.existing_id:
             r=u.session.get(EvidenceRow,body.existing_id)
             if not r or r.entity_id!=e:raise ValidationError('existing evidence scope mismatch')
@@ -67,11 +67,21 @@ class HarvestService:
             signatures={'application/pdf':b'%PDF-','image/png':b'\x89PNG\r\n\x1a\n','image/jpeg':b'\xff\xd8\xff'}
             if not raw.startswith(signatures[body.mime_type]) or len(raw)>5242880:raise ValidationError('file type or size invalid; maximum 5 MB')
         fingerprint=hashlib.sha256(raw if raw is not None else (body.raw_text if body.raw_text is not None else body.source_reference).encode()).hexdigest()
+        binary_identity=raw is not None
+        if source_item_id is not None:
+            # The immutable Inbox retains the original (including large PDFs).
+            # Share its content identity with manual/R1 evidence, not a new hash
+            # of the proposal UUID: a later manual upload must not post twice.
+            from greenhouse_owner_os.infrastructure.inbox_models import InboxRow
+            original=u.session.get(InboxRow,source_item_id)
+            if not original or original.entity_id!=e or original.source!='owner:r2' or body.source!='owner:r2-action':raise ValidationError('original capture scope mismatch')
+            fingerprint=original.fingerprint
+            binary_identity=original.file_bytes is not None
         stable=body.source_reference is not None
         locks=[]
         if stable:
             locks.append('harvest-source:'+json.dumps([str(e),body.source,body.source_reference],ensure_ascii=False))
-        locks.append('harvest-content:'+str(e)+('binary:' if raw is not None else 'text:')+fingerprint)
+        locks.append('harvest-content:'+str(e)+('binary:' if binary_identity else 'text:')+fingerprint)
         # Lock all relevant identities in a fixed order, across independent request keys.
         for key in sorted(locks):
             u.session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':key})
@@ -81,8 +91,8 @@ class HarvestService:
                 if existing.raw_text!=body.raw_text or existing.file_bytes!=raw:
                     raise ConflictError('stable evidence source content changed; original retained')
                 return existing
-        if raw is not None and (not stable or body.source in ('owner_mobile:manual','inbox:manual')):
-            if u.session.scalar(select(EvidenceRow.id).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_not(None),EvidenceRow.fingerprint==fingerprint)):
+        if source_item_id is not None or (raw is not None and (not stable or body.source in ('owner_mobile:manual','inbox:manual'))):
+            if u.session.scalar(select(EvidenceRow.id).where(EvidenceRow.entity_id==e,EvidenceRow.fingerprint==fingerprint)):
                 raise ConflictError('duplicate binary document; original evidence retained')
         elif not stable:
             existing=u.session.scalar(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_(None),EvidenceRow.fingerprint==fingerprint).order_by(EvidenceRow.received_at,EvidenceRow.id).limit(1))
@@ -117,14 +127,14 @@ class HarvestService:
             for rid in ids:u.session.add(BatchReportRow(batch_id=r.id,report_id=rid))
             u.session.flush();return dict(row_dict(r),kind='batch',report_ids=[str(x) for x in ids])
         return self._write(e,actor,key,'harvest_batch',body.model_dump(mode='json'),run)
-    def settlement(self,e,actor,key,body,*,reviewed_qualities=None):
+    def settlement(self,e,actor,key,body,*,reviewed_qualities=None,source_item_id=None):
         if reviewed_qualities is not None:
             if len(reviewed_qualities)!=len(body.lines) or any(q not in ('HIGHEST','FIRST','SECOND') for q in reviewed_qualities):raise ValidationError('Explicit receipt quality review required')
             if body.evidence.source!='owner:r2-action':raise ValidationError('Scoped proposal adapter required')
         def run(u):
             cp=u.session.get(CounterpartyRow,body.depot_id)
             if not cp or cp.entity_id!=e or cp.counterparty_type not in ('depot','customer','both'):raise ValidationError('select an existing depot/customer counterparty')
-            evidence=self._evidence(u,e,actor,body.evidence)
+            evidence=self._evidence(u,e,actor,body.evidence,source_item_id)
             # Serialize all lifecycle creation for this immutable evidence, including
             # existing-id corrections and retries after reversal.
             u.session.scalar(select(EvidenceRow).where(EvidenceRow.id==evidence.id).with_for_update())
@@ -156,7 +166,7 @@ class HarvestService:
                     u.session.add(AllocationRow(line_id=line.id,**a.model_dump()))
                 u.session.flush()
             return self._settlement_view(u,r)
-        return self._write(e,actor,key,'depot_draft',dict(body.model_dump(mode='json'),**({'reviewed_qualities':reviewed_qualities} if reviewed_qualities is not None else {})),run)
+        return self._write(e,actor,key,'depot_draft',dict(body.model_dump(mode='json'),**({'reviewed_qualities':reviewed_qualities} if reviewed_qualities is not None else {}),**({'source_item_id':str(source_item_id)} if source_item_id else {})),run)
     def _same_settlement(self,u,r,body):
         # Source retries cannot silently change reviewed business values either.
         if any(getattr(r,k)!=v for k,v in body.model_dump(exclude={'evidence','lines','batch_ids'}).items()):return False

@@ -144,7 +144,14 @@ class OwnerCaptureService:
                 rows(u,"UPDATE core.processing_jobs SET state='FAILED',error_code='PREPARATION_FAILED',retry_at=clock_timestamp()+interval '1 minute',lease_token=NULL,lease_until=NULL WHERE id=:id AND lease_token=:t RETURNING id",id=j['id'],t=token);u.commit()
 
     def prepare(self,u,s,out):
-        raw=out['text'] or '';refs=lambda m:list(u.session.scalars(select(m).where(m.entity_id==s['e'])))
+        raw=out.get('preparation_text',out['text']) or '';refs=lambda m:list(u.session.scalars(select(m).where(m.entity_id==s['e'])))
+        # Explicit separate text statements are independent actions, even when
+        # their kinds coincide. Never split photographed/PDF table lines.
+        statements=[x.strip() for x in raw.splitlines() if x.strip()]
+        if not s['binary'] and len(statements)>1 and all(re.match(r'(?i)^(должен|заплатил|оплатил|привезли|сегодня полить|завтра .*починит|fatura)\b',x) for x in statements):
+            result=[]
+            for statement in statements:result.extend(self.prepare(u,s,dict(out,text=statement)))
+            return result
         refs_kw=dict(counterparties=refs(CounterpartyRow),areas=refs(WorkAreaRow),accounts=refs(MoneyAccountRow),
                      products=rows(u,'SELECT * FROM inventory.products WHERE entity_id=:e',e=s['e']),
                      locations=rows(u,'SELECT * FROM inventory.locations WHERE entity_id=:e',e=s['e']),workers=rows(u,'SELECT * FROM workers.people WHERE entity_id=:e',e=s['e']))
@@ -156,6 +163,8 @@ class OwnerCaptureService:
                 task=extract_task(re.sub('(?i)починит','починить',raw),areas=refs_kw['areas'],workers=refs_kw['workers'],today=s['day']);f=task[1] if task else {}
             workers=f.get('suggested_worker_ids',[])
             payload=dict(title=raw[:200],original_instruction=raw,greenhouse_id=f.get('greenhouse_id'),planned_date=f.get('planned_date'),worker_id=workers[0] if len(workers)==1 else None)
+            worker=next((w for w in refs_kw['workers'] if str(w['id'])==str(payload['worker_id'])),None)
+            if worker:payload['language']=worker['language']
             for k in payload:provenance[k]={'category':'SOURCE FACT' if k in ('title','original_instruction') else 'INFERENCE','source_text':raw}
             # An unknown named worker stays a worker proposal, never becomes finance
             # or silently becomes a personal task assigned to the owner.
@@ -198,7 +207,9 @@ class OwnerCaptureService:
         number=lambda v:v.replace('.','').replace(',','.') if ',' in v else v
         for line in raw.splitlines():
             label=re.search(r'(?i)\b(Grand|Birinci|İkinci|Ikinci|Sera|Yerli)\b',line)
-            if not label:continue
+            if not label:
+                if len(re.findall(r'(?<!\w)\d+(?:[.,]\d+)*(?!\w)',line))>=3 and not re.match(r'^\s*\d{2}[./]\d{2}[./]20\d{2}\s*$',line):unreadable.append(line[:1000])
+                continue
             nums=re.findall(r'(?<!\w)\d+(?:[.,]\d+)*(?!\w)',line[label.end():])
             # Bounded labelled format [count optional] kg, price, amount.
             # Other/partial layouts retain source and require owner input.
@@ -262,6 +273,10 @@ class OwnerCaptureService:
                     if fields.get('amount') and Decimal(fields['amount'])>Decimal(remaining['remaining_amount']):missing.append('Сумма больше остатка долга; уточните назначение')
         elif kind in ('STOCK_RECEIPT','STOCK_APPLICATION'):
             required('event_date','Дата')
+            if kind=='STOCK_RECEIPT':
+                basis['manual_source_receipts']=rows(u,"SELECT id,version FROM inventory.events WHERE entity_id=:e AND kind='receipt' AND status='posted' AND evidence->>'source_document'=:s AND source<>'owner:r2-action' ORDER BY id",e=e,s=p['inbox_id'])
+                basis['duplicate_source_receipts']=rows(u,"SELECT p.id,p.version FROM core.proposed_actions p JOIN core.inbox_items original ON original.id=p.inbox_id JOIN core.inbox_items incoming ON incoming.id=:s WHERE p.entity_id=:e AND p.action_type='STOCK_RECEIPT' AND p.state='POSTED' AND original.id<>incoming.id AND original.fingerprint=incoming.fingerprint ORDER BY p.id",e=e,s=p['inbox_id'])
+                if basis['manual_source_receipts'] or basis['duplicate_source_receipts']:missing.append('Этот оригинал уже принят: свяжите счёт с существующим приходом')
             if not fields['lines']:missing.append('Товар и количество')
             for ln in fields['lines']:
                 for key,label in [('product_id','Товар'),('location_id','Склад'),('quantity','Количество'),('unit','Единица')]:
@@ -287,6 +302,10 @@ class OwnerCaptureService:
             if len(fields['qualities'])!=len(fields['lines']) or any(q is None for q in fields['qualities']) or not fields['quality_reviewed']:missing.append('Подтвердите качества именно этого депо')
             if not fields['arithmetic_reviewed']:missing.append('Проверьте строки и сумму; Alacak не является оплатой')
             basis['quality_mappings']=rows(u,'SELECT DISTINCT ON(original_label) original_label,version,quality FROM harvest.depot_quality_mappings WHERE depot_id=:d ORDER BY original_label,version DESC',d=fields.get('depot_id'))
+            basis['same_day_batches']=rows(u,'SELECT id,event_date,label FROM harvest.batches WHERE entity_id=:e AND event_date=:d ORDER BY id',e=e,d=fields.get('event_date'))
+            for bid in fields['batch_ids']:
+                batch=scoped('harvest.batches',bid)
+                if batch and str(batch['event_date'])!=fields.get('event_date'):raise ValidationError('Партия не относится к дате чека')
             basis['existing_receipts']=rows(u,'SELECT id,version,status FROM harvest.depot_settlements WHERE entity_id=:e AND evidence_id IN (SELECT id FROM harvest.evidence WHERE fingerprint=(SELECT fingerprint FROM core.inbox_items WHERE id=:s))',e=e,s=p['inbox_id'])
             basis['confirmed_source_receipts']=rows(u,"SELECT p.id,p.version FROM core.proposed_actions p JOIN core.inbox_items i ON i.id=p.inbox_id WHERE p.entity_id=:e AND p.action_type='DEPOT_RECEIPT' AND p.state='POSTED' AND i.fingerprint=(SELECT fingerprint FROM core.inbox_items WHERE id=:s)",e=e,s=p['inbox_id'])
             if any(r['status']=='posted' for r in basis['existing_receipts']) or basis['confirmed_source_receipts']:missing.append('Этот оригинал уже принят: откройте существующий чек')
@@ -424,8 +443,8 @@ class OwnerCaptureService:
             from .harvest import HarvestService
             from greenhouse_owner_os.domain.harvest import SettlementInput,SettlementPost,EvidenceInput
             svc=HarvestService(factory)
-            body=SettlementInput(depot_id=f['depot_id'],event_date=f['event_date'],currency=f['currency'],original_greenhouse=f['original_greenhouse'],stated_total=f['stated_total'],alacak_value=f['alacak_value'],lines=f['lines'],evidence=EvidenceInput(source='owner:r2-action',source_reference=p['id'],raw_text=s.raw_text or None))
-            d=svc.settlement(e,a,key,body,reviewed_qualities=f['qualities'])
+            body=SettlementInput(depot_id=f['depot_id'],event_date=f['event_date'],currency=f['currency'],original_greenhouse=f['original_greenhouse'],batch_ids=f['batch_ids'],stated_total=f['stated_total'],alacak_value=f['alacak_value'],lines=f['lines'],evidence=EvidenceInput(source='owner:r2-action',source_reference=p['id'],raw_text=s.raw_text or None))
+            d=svc.settlement(e,a,key,body,reviewed_qualities=f['qualities'],source_item_id=s.id)
             for idx,q in enumerate(f['qualities']):
                 rows(u,'INSERT INTO harvest.receipt_quality_reviews(settlement_id,line_no,entity_id,proposal_id,quality,reviewed_by) VALUES(:s,:n,:e,:p,:q,:a) RETURNING line_no',s=d['id'],n=idx,e=e,p=p['id'],q=q,a=a)
             # Classification is inserted once, never an UPDATE of immutable lines.

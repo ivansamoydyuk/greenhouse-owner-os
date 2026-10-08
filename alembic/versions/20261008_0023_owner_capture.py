@@ -248,6 +248,13 @@ BEGIN
  OR (SELECT count(*) FROM finance.payment_allocations WHERE payment_id=NEW.payment_id)<>1
  OR NOT EXISTS(SELECT 1 FROM finance.payment_allocations WHERE payment_id=NEW.payment_id AND obligation_id=(f->>'obligation_id')::uuid AND amount=(f->>'amount')::numeric)
  THEN RAISE EXCEPTION 'Payment approval snapshot mismatch' USING ERRCODE='23514'; END IF;
+ ELSIF k='DIRECT_EXPENSE' THEN
+ SELECT to_jsonb(d) INTO target FROM finance.direct_expenses d WHERE id=NEW.direct_expense_id;
+ IF (target->>'amount')::numeric IS DISTINCT FROM (f->>'amount')::numeric
+ OR target->>'money_account_id' IS DISTINCT FROM f->>'money_account_id' OR target->>'counterparty_id' IS DISTINCT FROM f->>'counterparty_id'
+ OR target->>'currency' IS DISTINCT FROM f->>'currency' OR target->>'event_date' IS DISTINCT FROM f->>'event_date'
+ OR target->>'proposal_id' IS DISTINCT FROM NEW.proposal_id::text OR target->>'created_by' IS DISTINCT FROM NEW.actor_id::text OR target->>'status'<>'posted'
+ THEN RAISE EXCEPTION 'Expense approval snapshot mismatch' USING ERRCODE='23514'; END IF;
  ELSIF k IN ('STOCK_RECEIPT','STOCK_APPLICATION') THEN
  SELECT to_jsonb(v) INTO target FROM inventory.events v WHERE id=NEW.inventory_id;
  IF target->'payload'->'lines' IS DISTINCT FROM f->'lines' OR target->>'event_date' IS DISTINCT FROM f->>'event_date'
@@ -258,10 +265,31 @@ BEGIN
  IF target->>'title' IS DISTINCT FROM f->>'title' OR target->>'greenhouse_id' IS DISTINCT FROM f->>'greenhouse_id'
  OR target->>'planned_date' IS DISTINCT FROM f->>'planned_date' OR target->>'owner_id' IS DISTINCT FROM NEW.actor_id::text
  THEN RAISE EXCEPTION 'Task approval snapshot mismatch' USING ERRCODE='23514'; END IF;
+ ELSIF k='WORKER_TASK' THEN
+ SELECT to_jsonb(t) INTO target FROM workers.tasks t WHERE id=NEW.worker_task_id;
+ IF target->>'title' IS DISTINCT FROM f->>'title' OR target->>'greenhouse_id' IS DISTINCT FROM f->>'greenhouse_id'
+ OR target->>'planned_date' IS DISTINCT FROM f->>'planned_date' OR target->>'original_instruction' IS DISTINCT FROM f->>'original_instruction'
+ OR target->>'source'<>'owner:r2-action' OR target->>'locator' IS DISTINCT FROM NEW.proposal_id::text
+ THEN RAISE EXCEPTION 'Worker preparation snapshot mismatch' USING ERRCODE='23514'; END IF;
+ ELSIF k='INVOICE_MATCH' THEN
+ SELECT to_jsonb(l) INTO target FROM core.invoice_receipt_links l WHERE id=NEW.invoice_match_id;
+ IF target->>'receipt_id' IS DISTINCT FROM f->>'receipt_id' OR target->>'finance_obligation_id' IS DISTINCT FROM f->>'finance_obligation_id'
+ OR target->>'proposal_id' IS DISTINCT FROM NEW.proposal_id::text OR target->>'reviewed_by' IS DISTINCT FROM NEW.actor_id::text
+ THEN RAISE EXCEPTION 'Invoice match snapshot mismatch' USING ERRCODE='23514'; END IF;
  ELSIF k='DEPOT_RECEIPT' THEN
  SELECT to_jsonb(s) INTO target FROM harvest.depot_settlements s WHERE id=NEW.settlement_id;
  IF target->>'depot_id' IS DISTINCT FROM f->>'depot_id' OR target->>'event_date' IS DISTINCT FROM f->>'event_date'
  OR target->>'currency' IS DISTINCT FROM f->>'currency' OR target->>'status'<>'posted'
+ OR (target->>'stated_total')::numeric IS DISTINCT FROM (f->>'stated_total')::numeric
+ OR (target->>'alacak_value')::numeric IS DISTINCT FROM (f->>'alacak_value')::numeric
+ OR f->>'quality_reviewed'<>'true' OR f->>'arithmetic_reviewed'<>'true'
+ OR (SELECT count(*) FROM harvest.settlement_lines WHERE settlement_id=NEW.settlement_id)<>jsonb_array_length(f->'lines')
+ OR EXISTS(
+ SELECT x.l->>'original_quality_name',(x.l->>'net_weight_kg')::numeric,(x.l->>'unit_price')::numeric,(x.l->>'stated_amount')::numeric,(x.l->>'count')::int,x.l->>'source_line',f->'qualities'->>(x.n::int-1)
+ FROM jsonb_array_elements(f->'lines') WITH ORDINALITY x(l,n)
+ EXCEPT ALL
+ SELECT l.original_quality_name,l.net_weight_kg,l.unit_price,l.stated_amount,l.count,l.source_line,l.normalized_quality
+ FROM harvest.settlement_lines l WHERE l.settlement_id=NEW.settlement_id)
  THEN RAISE EXCEPTION 'Depot approval snapshot mismatch' USING ERRCODE='23514'; END IF;
  END IF;
  RETURN NEW; END $$;
@@ -328,4 +356,24 @@ BEGIN
  RETURN NEW; END $$;
 CREATE TRIGGER invoice_link_scope BEFORE INSERT ON core.invoice_receipt_links FOR EACH ROW EXECUTE FUNCTION core.r2_link_scope();
 CREATE TRIGGER quality_link_scope BEFORE INSERT ON harvest.receipt_quality_reviews FOR EACH ROW EXECUTE FUNCTION core.r2_link_scope();
+CREATE FUNCTION inventory.r2_source_reservation() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE v inventory.events;
+BEGIN
+ SELECT * INTO v FROM inventory.events WHERE id=NEW.id;
+ IF v.status<>'posted' THEN RETURN NEW; END IF;
+ IF v.source='owner:r2-action' AND NOT EXISTS(
+ SELECT 1 FROM core.confirmation_effects c JOIN core.proposed_actions p ON p.id=c.proposal_id
+ WHERE c.inventory_id=v.id AND p.id::text=v.locator AND p.inbox_id::text=v.evidence->>'source_document'
+ AND p.entity_id=v.entity_id AND core.r2_owner(v.entity_id,c.actor_id))
+ THEN RAISE EXCEPTION 'Stock source requires owner approval' USING ERRCODE='23514'; END IF;
+ IF v.kind='receipt' AND EXISTS(
+ SELECT 1 FROM core.inbox_items incoming JOIN core.inbox_items original ON original.entity_id=incoming.entity_id AND original.fingerprint=incoming.fingerprint
+ JOIN inventory.events other ON other.entity_id=original.entity_id AND other.evidence->>'source_document'=original.id::text
+ WHERE incoming.entity_id=v.entity_id AND incoming.id::text=v.evidence->>'source_document'
+ AND other.id<>v.id AND other.kind='receipt' AND other.status='posted'
+ AND (incoming.id<>original.id OR v.source<>'owner:r2-action' OR other.source<>'owner:r2-action'))
+ THEN RAISE EXCEPTION 'Original stock source already received' USING ERRCODE='23514'; END IF;
+ RETURN NEW; END $$;
+CREATE CONSTRAINT TRIGGER inventory_r2_source_reservation AFTER INSERT OR UPDATE ON inventory.events
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION inventory.r2_source_reservation();
 """

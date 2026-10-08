@@ -176,6 +176,10 @@ class InventoryService:
             if r['status']!='draft' or r['version']!=b.expected_version:raise ConflictError('Событие уже изменено')
             if r['evidence']['verification']=='HISTORY':raise ValidationError('Исторический источник не проводится в текущие остатки')
             if r['kind']=='receipt':
+                parent=r['evidence'].get('source_document')
+                if parent:
+                    prior=rows(u,"SELECT ev.id,ev.evidence FROM inventory.events ev WHERE ev.entity_id=:e AND ev.kind='receipt' AND ev.status='posted' AND ev.id<>:id AND ev.evidence->>'source_document'=:s",e=e,id=i,s=parent)
+                    if prior and (r['source']!='owner:r2-action' or any(v['evidence'].get('source')!='owner:r2-action' for v in prior)):raise ConflictError('Этот источник уже принят: используйте связь со счётом, не второй приход')
                 for ln in r['payload']['lines']:
                     if ln['unit_cost'] is not None and ln['product_id']:
                         currency=self._product(u,e,ln['product_id'])['currency']

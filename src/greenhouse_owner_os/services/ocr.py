@@ -59,12 +59,21 @@ class LocalOCR:
                             confidence=str(min(float(w['conf']) for w in ws))) for i,ws in enumerate(lines.values())]
                 if not spans or any(float(s['confidence'])<65 for s in spans):warnings.append(f'page_{page}_needs_review')
                 result.append(dict(page=page,rotation=angle,raw_tsv=tsv,lines=spans))
-            return dict(provider=self.provider,engine=engine,version=self.version,pages=result,
-                        text='\n'.join(s['text'] for p in result for s in p['lines']),warnings=warnings)
+            texts=['\n'.join(s['text'] for s in p['lines']) for p in result]
+            unique=list(dict.fromkeys(texts))
+            if len(unique)!=len(texts):warnings.append('Повторяющиеся страницы не добавлены второй раз в карточку; проверьте группировку по оригиналу')
+            elif len(texts)>1:warnings.append('Многостраничный документ: проверьте, что строки относятся к одному событию')
+            return dict(provider=self.provider,engine=engine,version=self.version,model='tur+eng / psm6 / four orientations',pages=result,
+                        text='\n'.join(texts),preparation_text='\n'.join(unique),warnings=warnings)
     def _run(self,args,timeout=10):
         try:
+            import os
+            # Recognition children do not inherit DB/provider/session credentials.
+            env={'PATH':os.environ.get('PATH','/usr/bin:/bin'),'OMP_THREAD_LIMIT':'1','LANG':'C.UTF-8'}
+            if os.environ.get('TESSDATA_PREFIX'):env['TESSDATA_PREFIX']=os.environ['TESSDATA_PREFIX']
+            if Path('/usr/bin/prlimit').exists():args=['/usr/bin/prlimit','--as=1073741824','--cpu=60','--fsize=16777216','--nofile=64','--',*args]
             r=subprocess.run(args,capture_output=True,text=True,timeout=timeout,check=True,
-                             env=__import__('os').environ|{'OMP_THREAD_LIMIT':'1'})
+                             env=env)
             if len(r.stdout)>2000000:raise RecognitionFailure('ocr_output_limit')
             return r.stdout
         except (OSError,subprocess.SubprocessError) as ex:raise RecognitionFailure('recognition_failed') from ex

@@ -68,6 +68,8 @@ def test_real_gorgun_photo_scoped_quality_and_season_weighting(inv):
     assert home['finance']['balances']['TRY']['receivable']=='3000.00'
     with inv['preview'][0]() as db:
         assert db.scalar(text('SELECT count(*) FROM harvest.depot_quality_mappings WHERE depot_id=:d'),dict(d=depot['id']))==3
+    # The legacy manual adapter recognizes the SAME original, not a proposal UUID.
+    send(inv['c'],f"/entities/{inv['e']}/harvest/settlements",dict(depot_id=depot['id'],event_date='2026-10-08',currency='TRY',lines=f['lines'],evidence=dict(source='owner_mobile:manual',file_base64=base64.b64encode(image).decode(),mime_type=mime,filename='TEST-manual-copy.png')),expected=409)
     # New capture identity of the same physical original must not create a second sale.
     source(inv,None,mode='photo',filename='TEST-copy.png',mime_type=mime,file_base64=base64.b64encode(image).decode())
     duplicate=queue(inv)[0];f=duplicate['revision']['payload'];f['quality_reviewed']=f['arithmetic_reviewed']=True
@@ -84,7 +86,11 @@ def test_payment_adapter_exact_one_effect_and_changed_debt_stale(inv):
     source(inv,'Заплатил Серкану 5 000');p=next(p for p in queue(inv) if p['action_type']=='PAYMENT')
     assert p['state']=='NEEDS_INPUT'
     f=dict(amount='5000',currency='TRY',event_date='2026-10-08',counterparty_id=inv['cp'],money_account_id=inv['cash'],payment_purpose='debt',obligation_id=debt['id'],description='TEST ремонт')
-    p=revise(inv,p,f);r=confirm(inv,p);assert confirm(inv,p,key='payment-retry')==r
+    p=revise(inv,p,f)
+    source(inv,'Оплатил Серкану 5 000');second=next(x for x in queue(inv) if x['action_type']=='PAYMENT' and x['id']!=p['id'])
+    second=revise(inv,second,f)
+    r=confirm(inv,p);assert confirm(inv,p,key='payment-retry')==r
+    stale=confirm(inv,second,expected=409);assert stale['state']=='STALE' and stale['stale']
     assert r['effect']['status']=='posted'
     assert inv['preview'][3].reconcile(entity_id=UUID(inv['e']))['ok']
 
@@ -93,6 +99,19 @@ def test_supplier_siblings_remain_independent(inv):
     pay=revise(inv,pay,dict(amount='7000',counterparty_id=inv['cp'],event_date='2026-10-08',description='TEST invoice'))
     confirm(inv,pay);assert next(p for p in queue(inv) if p['id']==match['id'])['state']==match['state']
     with inv['preview'][0]() as db:assert db.scalar(text('SELECT count(*) FROM inventory.events WHERE entity_id=:e'),dict(e=inv['e']))==0
+
+def test_same_kind_slots_and_supplier_three_effects_are_independent(inv):
+    s=source(inv,'Должен Серкану 7000 за ремонт.\nДолжен Серкану 3000 за перевозку.')
+    ps=queue(inv);assert len(ps)==2 and all(p['action_type']=='PAYABLE' for p in ps)
+    assert len({p['slot'] for p in ps})==2
+    first=revise(inv,ps[0],dict(amount='7000',counterparty_id=inv['cp'],event_date='2026-10-08',description='TEST first'))
+    confirm(inv,first)
+    send(inv['c'],f"/entities/{inv['e']}/owner/confirmations/{ps[1]['id']}/reject",dict(expected_version=ps[1]['version']),expected=200)
+    sf,a,_,_,_=inv['preview'];svc=OwnerCaptureService(lambda:SqlAlchemyUnitOfWork(sf));svc.process(UUID(s['id']))
+    with sf() as db:assert db.scalar(text('SELECT count(*) FROM core.proposed_actions WHERE inbox_id=:s'),dict(s=s['id']))==2
+    source(inv,'Fatura KNO3 100 kg\nПривезли 100 кг KNO3 в İmamlı.\nЗаплатил Серкану 5000')
+    kinds={p['action_type'] for p in queue(inv)}
+    assert {'PAYABLE','STOCK_RECEIPT','PAYMENT','INVOICE_MATCH'}<=kinds
 
 def test_provider_failure_original_survives(inv):
     class Failed:
@@ -161,7 +180,7 @@ def test_source_uuid_retry_and_changed_original_conflict(inv):
     send(inv['c'],path,dict(body,text='changed'),key='source-c',expected=409)
 
 def test_stock_receipt_unknown_cost_and_invoice_match_no_second_quantity(inv):
-    source(inv,'Привезли 100 кг KNO3 в İmamlı.');p=queue(inv)[0];assert p['action_type']=='STOCK_RECEIPT'
+    saved=source(inv,'Привезли 100 кг KNO3 в İmamlı.');p=queue(inv)[0];assert p['action_type']=='STOCK_RECEIPT'
     p=revise(inv,p,dict(event_date='2026-10-08',lines=[line(inv)]));r=confirm(inv,p)
     assert r['effect']['status']=='posted' and r['effect']['payload']['lines'][0]['unit_cost'] is None
     source(inv,'Fatura KNO3 100 kg');ps=queue(inv)
@@ -170,6 +189,10 @@ def test_stock_receipt_unknown_cost_and_invoice_match_no_second_quantity(inv):
     assert linked['effect']['valuation_state']=='UNKNOWN_UNCHANGED'
     stock=inv['c'].get('/v1'+inv['root']).json()['stock'];assert sum(__import__('decimal').Decimal(s['quantity']) for s in stock)==100
     assert any(p['action_type']=='PAYABLE' for p in queue(inv))
+    # Manual path of the SAME retained original cannot receive quantity twice.
+    manual=send(inv['c'],inv['root']+'/events',dict(kind='receipt',event_date='2026-10-08',lines=[line(inv)],evidence=dict(source='owner_mobile:inventory',source_document=saved['id'],verification='VERIFIED')))
+    send(inv['c'],inv['root']+f"/events/{manual['id']}/post",dict(confirmed=True,expected_version=1,duplicate_reviewed=True),expected=409)
+    assert confirm(inv,match,key='invoice-link-retry')==linked
 
 def test_stock_changed_before_confirmation_stale(inv):
     source(inv,'Привезли 100 кг KNO3.');p=revise(inv,queue(inv)[0],dict(event_date='2026-10-08',lines=[line(inv)]))

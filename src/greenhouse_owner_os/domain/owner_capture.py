@@ -64,6 +64,7 @@ class DepotProposal(StrictModel):
     event_date: date | None = None
     currency: Literal['TRY','USD','EUR','UAH'] = 'TRY'
     original_greenhouse: str | None = Field(default=None,max_length=250)
+    batch_ids: list[UUID] = Field(default_factory=list,max_length=100)
     lines: list[LineInput] = Field(default_factory=list, max_length=100)
     qualities: list[Literal['HIGHEST','FIRST','SECOND'] | None] = Field(default_factory=list,max_length=100)
     quality_reviewed: bool = False
