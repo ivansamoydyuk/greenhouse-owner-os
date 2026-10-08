@@ -25,6 +25,7 @@ dialog .close{margin-right:0}
 .owner-capture-bar button{flex:1;min-height:48px;background:#e8efdb;color:#173c32;font-weight:700}
 .owner-home{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.owner-home>*{margin:0;min-width:0}
 .owner-home small{display:block;overflow-wrap:anywhere}.owner-receivable{grid-column:1/-1}.owner-payable strong{font-size:22px}.owner-queue-link{text-align:left;display:grid;gap:8px;color:#173c32}.owner-queue-link strong{font-size:32px}.overdue{border:2px solid #a32f20!important;background:#fff5ed}
+.owner-receivable small{color:#dceadd}
 .owner-task{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:12px 0;border-bottom:1px solid #cad5c5}.owner-task span{min-width:0;overflow-wrap:anywhere}.owner-task button{flex-shrink:0;min-height:44px}
 .r2-fields{display:grid;gap:14px}.r2-fields label{font-size:14px}.r2-fields input,.r2-fields select{margin-top:6px}.owner-proposal h2{overflow-wrap:anywhere}
 #sheet-content table{width:100%;font-size:12px;border-collapse:collapse;table-layout:fixed}#sheet-content th,#sheet-content td{padding:6px 2px;overflow-wrap:anywhere;text-align:left}
