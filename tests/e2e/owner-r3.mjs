@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {chromium,webkit} from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {runDailyJourneys} from './owner-r3-daily.mjs';
 
 const base=process.env.PREVIEW_URL||'http://127.0.0.1:4173';
 const artifacts=process.env.E2E_ARTIFACTS||'artifacts/owner-r3-evidence';
@@ -11,7 +12,7 @@ assert.match(expectedSha||'',/^[a-f0-9]{40}$/,'Set the exact build SHA before br
 assert.ok(process.env.PREVIEW_SECRET,'An ephemeral preview key is required');
 await fs.mkdir(artifacts,{recursive:true});
 const report={feature_sha:expectedSha,started_at:new Date().toISOString(),screenshots:[],journeys:[],checks:[],limitations:['Chromium/WebKit automation is not physical iPhone verification.','Native microphone recording and a real iPhone software keyboard are not asserted by these tests.','Speech unavailable/error fallback is exercised without substituting a transcript for live microphone input.','Click totals are trusted browser DOM interactions, not physical iPhone tap estimates. Native picker/keyboard UI is not measured; the photo journey explicitly chooses a prepared synthetic source.'],errors:[],failures:[],tool_diagnostics:[]};
-// Keep the original eight Chromium journey records and their gate unchanged.
+// Retain all original journey assertions. The owner-requested radial navigation adds one explicit trusted click to capture entry.
 // The design-lock corrections below are separately measured in BOTH engines.
 report.correction_journeys=[];
 report.money_regressions=[];
@@ -67,7 +68,7 @@ async function newPage(browser) {
 }
 async function ready(page){await page.locator('#main h1').waitFor();await page.evaluate(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});}
 async function route(page,name){await page.goto(base+'/#'+(name==='capture/voice'?'home':name));await ready(page);if(name==='capture/voice'){await click(page,'capture-voice');await page.getByTestId('voice-fallback').waitFor({timeout:15000});}await page.evaluate(()=>window.scrollTo(0,0));}
-async function click(page,id){const target=page.getByTestId(id),href=await target.getAttribute('href');await target.click();if(href?.startsWith('#'))await page.waitForFunction(hash=>location.hash===hash,href);await ready(page);}
+async function click(page,id){if(['capture-photo','capture-voice','capture-text','capture-video'].includes(id)&&await page.getByTestId('radial-toggle').count()&&await page.getByTestId('radial-toggle').getAttribute('aria-expanded')!=='true'){await page.getByTestId('radial-toggle').click();}const target=page.getByTestId(id),href=await target.getAttribute('href');await target.click();if(href?.startsWith('#'))await page.waitForFunction(hash=>location.hash===hash,href);await ready(page);}
 async function fill(page,id,value){const field=page.getByTestId(id);await field.click();if(await field.evaluate(el=>el.tagName==='SELECT')){const target=await field.evaluate((el,label)=>[...el.options].findIndex(option=>option.textContent===label),value);assert.ok(target>=0,'Requested select choice exists');for(const key of ['Home',...Array(target).fill('ArrowDown'),'Enter']){await page.keyboard.press(key);await page.evaluate(key=>window.__r3Metrics.key(key),key);}assert.equal(await field.inputValue(),value);}else await field.fill(value);await field.blur();}
 async function rawShot(page,options){
   const firstError=report.errors.length;page.__r3TakingScreenshot=true;
@@ -115,8 +116,10 @@ async function layout(page,routeName,width){
   assert.deepEqual(problems,[],`${width}px #${routeName}: ${problems.join('; ')}`);
   const covered=await page.evaluate(async()=>{const dock=document.querySelector('.dock'),last=document.querySelector('#main')?.lastElementChild;if(!dock||!last)return false;window.scrollTo(0,document.documentElement.scrollHeight);await new Promise(r=>requestAnimationFrame(r));const hidden=last.getBoundingClientRect().bottom>dock.getBoundingClientRect().top+1;window.scrollTo(0,0);return hidden;});
   assert.equal(covered,false,`${width}px #${routeName}: bottom content is covered by capture/navigation dock`);
-  if(!routeName.startsWith('capture/')&&!routeName.startsWith('task/')){
-    for(const mode of ['photo','voice','text'])assert.equal(await page.getByTestId('capture-'+mode).isVisible(),true,`${mode} capture is available`);
+  if(!['capture/','task/','quick/','daily/','assignment/'].some(prefix=>routeName.startsWith(prefix))){
+    assert.equal(await page.getByTestId('radial-toggle').isVisible(),true,'Central radial Capture is available');
+    assert.equal(await page.getByTestId('radial-toggle').getAttribute('aria-expanded'),'false','Capture starts collapsed');
+    for(const mode of ['photo','voice','text','video'])assert.equal(await page.getByTestId('capture-'+mode).isVisible(),false,`${mode} remains hidden until the owner opens Capture`);
   }
 }
 async function captureFailure(page){if(!page.isClosed()){await rawShot(page,{path:path.join(artifacts,'failure.png'),fullPage:true}).catch(()=>{});await fs.writeFile(path.join(artifacts,'failure.html'),await page.content()).catch(()=>{});}}
@@ -267,6 +270,7 @@ async function moneyRegressions(browser,engine){
             assert.deepEqual(result.measurements.map(item=>item.value),expected,'Money values stay exact, with no layout-driven rounding or truncation');
             if(font==='fallback')assert.ok(result.measurements.every(item=>/^system-ui,/.test(item.font_family)),'The alternate system font stack actually applies to both KPIs');
             assert.equal(await page.evaluate(()=>window.r3Demo.state().largeAmount),scale==='large','The intended normal/large data mode is active');
+            if(scale==='large')assert.ok(await page.evaluate(()=>window.r3Demo.state().receivables.some(r=>r.id==='stress'&&r.amount>=123456789.12)),'Large mode really includes a nine-digit exact money value');
           }catch(error){status='FAIL';failure=error.message;recordFailure(`${engine} money ${font} ${scale} ${width} #${routeName}`,error);}
           report.money_regressions.push({engine,font,scale,width,route:'#'+routeName,status,...(failure?{failure}:{}),...result});
           // Fresh, deterministic evidence for every matrix point, including the
@@ -450,6 +454,7 @@ async function main(browser,engine){
   }catch(error){await captureFailure(page);throw error;}finally{await context.close();}
   await correctionJourneys(browser,engine);
   await moneyRegressions(browser,engine);
+  await runDailyJourneys({browser,engine,newPage,click,fill,ready,route,screenshot,layout,report,correctionJourney,correctionReload});
   if(engine!=='chromium')return;
   await journey(browser,'1. Home → review → missing amount → one clarification → demo confirmation',async page=>{
     await click(page,'nav-review');await click(page,'review-clarify');await click(page,'edit-amount');await fill(page,'fact-input','2500');await click(page,'sheet-save');await click(page,'confirm-proposal');
@@ -563,6 +568,9 @@ try{
     const browser=await type.launch({headless:true});
     try{await main(browser,engine);}finally{await browser.close();}
   }
+  assert.equal(report.daily_journeys.length,20,'Ten additive daily journeys in both engines');
+  assert.ok(report.daily_journeys.every(item=>item.status==='PASS'),'All daily journeys pass');
+  assert.equal(report.daily_layout_checks.length,98,'Seven daily pages by seven widths by two engines');
   assert.equal(report.journeys.length,8);
   assert.equal(report.correction_journeys.length,20,'All ten focused correction journeys run in each engine');
   assert.ok(report.correction_journeys.every(item=>item.status==='PASS'),'Both-engine correction journeys pass');
@@ -585,6 +593,7 @@ try{
   process.exitCode=1;
 }finally{
   report.finished_at=new Date().toISOString();
+  await fs.writeFile(path.join(artifacts,'daily-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Trusted DOM clicks from Home, with explicit radial expansion counted. Both engines, ten additive daily journeys, 98 daily screen/width cases.',journeys:report.daily_journeys,layouts:report.daily_layout_checks},null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'browser-report.json'),JSON.stringify(report,null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Trusted DOM click events from Home, visible form entry events, actual manual field changes. Dropdown selection uses actual keyboard Home/Arrow/Enter events listed separately. Native file chooser/keyboard tap costs are unmeasured. Photo journey3 explicitly uses the prepared synthetic-source button; real file attachment is covered separately without claiming picker-tap counts.',journeys:report.journeys},null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'correction-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Ten additional trusted browser journeys in each engine. Source/current coherence, each stock/depot fact sheet, separate photo caption, both explicit contradiction resolutions, zero-entry Serkan/tomorrow recovery, compact Home worker signal, saved-task correction/prose guard/DONE/restore, and replaced/cleared conflict captions. Original eight Chromium journeys are retained separately.',journeys:report.correction_journeys},null,2)+'\n');

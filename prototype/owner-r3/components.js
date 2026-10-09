@@ -26,6 +26,9 @@ const paths = {
   review: "M9 4h6m-8 0H5v17h14V4h-2M8 12l3 3 5-6",
   tasks: "M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01",
   more: "M4 6h16M4 12h16M4 18h16",
+  plus: "M12 5v14M5 12h14",
+  video: "M3 5h12v14H3zM15 10l6-4v12l-6-4",
+  scissors: "M4 4l16 16M20 4 4 20M7 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0M7 17a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
   camera: "M3 7h4l2-3h6l2 3h4v14H3zM16 13a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
   voice:
     "M9 4a3 3 0 0 1 6 0v8a3 3 0 0 1-6 0V4M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8",
@@ -65,40 +68,16 @@ export function Header(title, subtitle = "", back = false, extra = "") {
   return `<header class="page-header">${back ? btn(icon("back"), "back", "icon-button", "back", 'aria-label="Назад"') : ""}<div><h1>${e(title)}</h1>${subtitle ? `<p class="muted">${e(subtitle)}</p>` : ""}</div>${extra}</header>`;
 }
 export function Navigation(page, count) {
-  return `<nav class="navigation" aria-label="Основные разделы">${[
-    ["home", "Главная", "home"],
-    ["review", "Проверка", "review"],
-    ["tasks", "Задачи", "tasks"],
-    ["more", "Ещё", "more"],
-  ]
-    .map(([id, label, ic]) =>
-      link(
-        `${icon(ic)}<span>${label}</span>${id === "review" && count ? `<span class="nav-dot">${count}</span>` : ""}`,
-        id,
-        page === id ? "active" : "",
-        `nav-${id}`,
-      ),
-    )
-    .join("")}</nav>`;
+  const item = (id, label, ic) => link(`${icon(ic)}<span>${label}</span>${id === "review" && count ? `<span class="nav-dot">${count}</span>` : ""}`, id, page === id ? "active" : "", `nav-${id}`);
+  return `<nav class="navigation" aria-label="Основные разделы">${item("home", "Главная", "home")}${item("review", "Проверка", "review")}<button class="capture-toggle" data-action="radial-toggle" data-testid="radial-toggle" aria-label="AI Capture — добавить источник" aria-expanded="false" aria-controls="radial-menu"><span class="capture-orb">${icon("plus")}</span><span>AI Capture</span></button>${item("tasks", "Задачи", "tasks")}${item("more", "Ещё", "more")}</nav>`;
 }
 export function CaptureBar() {
-  return `<div class="capture-bar" aria-label="Добавить источник">${[
-    ["photo", "Фото", "camera"],
-    ["voice", "Голос", "voice"],
-    ["text", "Текст", "text"],
-  ]
-    .map(([id, label, ic]) =>
-      btn(
-        `${icon(ic)}<span>${label}</span>`,
-        `capture-${id}`,
-        "capture-button",
-        `capture-${id}`,
-      ),
-    )
-    .join("")}</div>`;
+  return `<div id="radial-menu" class="radial-menu" role="group" aria-label="Добавить источник" hidden>${[
+    ["photo", "Фото", "camera"], ["voice", "Голос", "voice"], ["text", "Текст", "text"], ["video", "Видео", "video"],
+  ].map(([id, label, ic]) => btn(`<span class="radial-orb">${icon(ic)}</span><span>${label}</span>`, `capture-${id}`, `radial-item radial-${id}`, `capture-${id}`)).join("")}<p class="radial-hint">Источник сохраняется в DEMO</p></div>`;
 }
 export function AppShell(body, page, count, focused = false) {
-  return `<div class="shell"><div class="demo-strip">ДЕМО — данные не проводятся</div><main id="main" tabindex="-1">${body}</main>${focused ? "" : `<footer class="dock">${CaptureBar()}${Navigation(page, count)}</footer>`}</div>`;
+  return `<div class="shell"><div class="demo-strip">ДЕМО — данные не проводятся</div><main id="main" tabindex="-1">${body}</main>${focused ? "" : `<div class="radial-backdrop" data-action="radial-close" data-testid="radial-outside" hidden></div><footer class="dock">${CaptureBar()}${Navigation(page, count)}</footer>`}</div>`;
 }
 export function MetricCard({
   label,

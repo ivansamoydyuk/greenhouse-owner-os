@@ -1,3 +1,5 @@
+import {ensureDaily,projectDaily,harvestRows as dailyHarvestRows,overview,createAction,updateAction,confirmAction,syncLegacyConfirmation} from "./daily-demo.js";
+import {contextualActions,financeOverview,quickForm,dailyReview,depotList,depotDetail,reconcile,dailyMovementList,invoiceNotice} from "./daily-ui.js";
 import {
   SCENARIO_TEXT,
   RECOVERY_TEXT,
@@ -58,7 +60,8 @@ let state = loadState(localStorage),
   returnFocus = null,
   inventoryQuery = "",
   lastRoute = route,
-  captureAttempt = 0;
+  captureAttempt = 0,
+  radialOpen = false;
 const sheetDrafts = new Map();
 const app = document.querySelector("#app"),
   sheetRoot = document.querySelector("#sheet-root");
@@ -79,13 +82,21 @@ const fact = (label, value) =>
   `<div class="fact-row"><dt>${e(label)}</dt><dd>${e(value)}</dd></div>`;
 const sectionLink = (label, to, test = "") =>
   link(`${e(label)} ${icon("arrow")}`, to, "section-link", test);
-const rows = () => currentHarvestRows(state);
+function initializeDaily() {
+  ensureDaily(state);
+  state.dailyDrafts ??= {};
+  if (!state.tasks.some(t => t.id === "lab-followup")) state.tasks.push({id:"lab-followup",title:"Посмотреть результаты анализа почвы",place:"Yeşilöz",when:"13 октября",date:"2026-10-13",worker:null,status:"todo",source:"Синтетическая личная задача · посмотреть результаты анализа",category:"Анализы"});
+  projectDaily(state);
+}
+initializeDaily();
+const rows = () => dailyHarvestRows(state);
+const dailyPending = () => state.daily.actions.filter(a=>a.status==="pending");
+const pendingCount = () => pending(state).length + dailyPending().length;
+const dailyBand = a => ["expense","payment","obligation"].includes(a.kind)?"payable":a.kind.startsWith("inventory-")?"stock":["harvest","harvest-link","depot"].includes(a.kind)?"harvest":"task";
+
+
 function chartData() {
-  const d = structuredClone(harvestDays);
-  d.at(-1).kg += state.activity
-    .filter((x) => x.type === "harvest")
-    .reduce((s, x) => s + x.kg, 0);
-  return d;
+  return Array.from({length:9}, (_,i) => ({label: i===0 ? "1 окт" : String(i+1), kg: state.daily.receipts.filter(r=>r.date===`2026-10-${String(i+1).padStart(2,"0")}`).reduce((n,r)=>n+r.netKg,0)}));
 }
 function chart(compact = false) {
   const d = chartData(),
@@ -105,7 +116,7 @@ function harvestCard() {
 function home() {
   const p = pending(state),
     mine = state.tasks.filter((x) => x.status === "todo");
-  return `<header class="page-header home-header"><div><p class="greeting">Ваше хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")} Пятница, 9 октября 2026</div></div><span class="brand-mark">${icon("leaf")}</span></header><div class="home-layout"><div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Финансы ${p.filter((x) => x.type === "payable").length} · склад ${p.filter((x) => x.type === "stock").length} · ещё ${p.filter((x) => !["payable", "stock"].includes(x.type)).length}</p></div><span class="count">${p.length}</span>`, "review", "attention", "home-review")}${state.workerTasks.some(t => t.status === "problem") ? link(`${icon("warning")}<span>Работники: ${state.workerTasks.filter(t => t.status === "problem").length} ${plural(state.workerTasks.filter(t => t.status === "problem").length, "проблема", "проблемы", "проблем")} · нужен фильтр</span>${icon("arrow")}`, "task/filter-report", "attention-worker", "home-worker-exception") : ""}</div><div class="financial-grid ${state.largeAmount ? "stress" : ""}">${MetricCard({ label: "Мне должны", value: moneyTotal(state.receivables), detail: state.receivables.length + " контрагента", to: "finance/receivable", primary: true, test: "home-receivable", ic: "down" })}${MetricCard({ label: "Я должен", value: moneyTotal(state.payables), detail: `${state.payables.length} обязательства`, to: "finance/payable", test: "home-payable", ic: "up" })}</div>${harvestCard()}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${mine.length}</span></h2>${link("Все", "tasks")}</div><section class="card list-card">${
+  return `<header class="page-header home-header"><div><p class="greeting">Ваше хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")} Пятница, 9 октября 2026</div></div><span class="brand-mark">${icon("leaf")}</span></header><div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} РАСХОД`, "quick/expense", "daily-action", "home-expense")}${link(`${icon("scissors")} СРЕЗ`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Финансы ${p.filter((x) => x.type === "payable").length+dailyPending().filter(a=>dailyBand(a)==="payable").length} · склад ${p.filter((x) => x.type === "stock").length+dailyPending().filter(a=>dailyBand(a)==="stock").length} · ещё ${p.filter((x) => !["payable", "stock"].includes(x.type)).length+dailyPending().filter(a=>!["payable","stock"].includes(dailyBand(a))).length}</p></div><span class="count">${pendingCount()}</span>`, "review", "attention", "home-review")}${state.workerTasks.some(t => t.status === "problem") ? link(`${icon("warning")}<span>Работники: ${state.workerTasks.filter(t => t.status === "problem").length} ${plural(state.workerTasks.filter(t => t.status === "problem").length, "проблема", "проблемы", "проблем")} · нужен фильтр</span>${icon("arrow")}`, "task/filter-report", "attention-worker", "home-worker-exception") : ""}</div><div class="financial-grid ${state.largeAmount ? "stress" : ""}">${MetricCard({ label: "Мне должны", value: moneyTotal(state.receivables), detail: state.receivables.length + " контрагента", to: "finance/receivable", primary: true, test: "home-receivable", ic: "down" })}${MetricCard({ label: "Я должен", value: moneyTotal(state.payables), detail: `${state.payables.length} обязательства`, to: "finance/payable", test: "home-payable", ic: "up" })}</div>${harvestCard()}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${mine.length}</span></h2>${link("Все", "tasks")}</div><section class="card list-card">${
     mine
       .slice(0, 2)
       .map((t) => TaskRow(t))
@@ -122,7 +133,8 @@ function review() {
         : f === "all"
           ? all
           : all.filter((x) => x.type === f);
-  return `${Header("Проверка", `${all.length} неподтверждённых действий`)}<div class="filters">${[
+  const dailyList=f==="confirmed"?state.daily.actions.filter(a=>a.status==="confirmed"):dailyPending().filter(a=>f==="all"||dailyBand(a)===f);
+  return `${Header("Проверка", `${pendingCount()} неподтверждённых действий`)}<div class="filters">${[
     ["all", "Все"],
     ["payable", "Финансы"],
     ["stock", "Склад"],
@@ -133,12 +145,12 @@ function review() {
     .map(([v, l]) => FilterChip(l, v, f === v, "review"))
     .join(
       "",
-    )}</div>${list.length ? `<div class="review-list">${list.map((p) => (p.status === "confirmed" ? `<section class="card"><span class="tag">Подтверждено в демо</span><h2 class="detail-title">${e(p.title)}</h2><p class="note">Только локальный demo-state.</p>${link("Исходник", `review/${p.id}`, "btn secondary")}</section>` : ReviewCard(p))).join("")}</div>` : EmptyState("Здесь пока пусто", f === "confirmed" ? "Подтверждённые демо-карточки появятся здесь." : "В этом разделе нет карточек на проверку.", btn("Показать все", "filter:review:all"))}`;
+    )}</div>${list.length+dailyList.length ? `<div class="review-list">${dailyList.map(a=>`<section class="review-card"><span class="tag amber">Источник сохранён · DEMO</span><h2>${e(({expense:"Расход",harvest:"Полевой срез",payment:"Платёж",obligation:"Обязательство"})[a.kind]||"Действие")}</h2><p class="note">${e(a.input.purpose||a.kind)}</p>${link("Проверить",`daily/${a.id}`,"btn primary full",`review-${a.id}`)}</section>`).join("")}${list.map((p) => (p.status === "confirmed" ? `<section class="card"><span class="tag">Подтверждено в демо</span><h2 class="detail-title">${e(p.title)}</h2><p class="note">Только локальный demo-state.</p>${link("Исходник", `review/${p.id}`, "btn secondary")}</section>` : ReviewCard(p))).join("")}</div>` : EmptyState("Здесь пока пусто", f === "confirmed" ? "Подтверждённые демо-карточки появятся здесь." : "В этом разделе нет карточек на проверку.", btn("Показать все", "filter:review:all"))}`;
 }
 function sourceDetails(p) {
   const captures = state.sources.filter(s => s.id === p.id || s.proposalId === p.id);
   const file = captures.at(-1)?.file;
-  return `<section class="source-evidence"><span class="eyebrow">ОРИГИНАЛ</span><div class="source-original-layout"><p class="original-text" data-testid="source-original">${e(p.source)}</p>${p.image ? `<img class="source-document source-evidence-thumb" src="${e(p.image)}" alt="Источник: синтетический документ">` : ""}</div>${captures.filter(s => s.comment).map((s, i) => `<div class="owner-comment" data-testid="owner-comment"><span class="eyebrow">Комментарий владельца${i ? " · ещё один захват" : ""}</span><p>${e(s.comment)}</p></div>`).join("")}<details class="source-details"><summary>Исходник и история</summary>${file?.kind === "pdf" ? `<a class="btn secondary" href="${e(file.url)}" download="${e(file.name)}" data-testid="download-source-pdf">Скачать исходный PDF</a>` : ""}${p.image ? `<img class="source-full-document" src="${e(p.image)}" alt="Синтетический документ, исходник">` : ""}<p class="muted">Версия ${p.revision || 1}. Источник и комментарии сохранены отдельно, без изменений. Все записи здесь синтетические.</p></details></section>`;
+  return `<section class="source-evidence"><span class="eyebrow">ОРИГИНАЛ</span><div class="source-original-layout"><p class="original-text" data-testid="source-original">${e(p.source)}</p>${p.image ? `<img class="source-document source-evidence-thumb" src="${e(p.image)}" alt="Источник: синтетический документ">` : ""}</div>${captures.filter(s => s.comment).map((s, i) => `<div class="owner-comment" data-testid="owner-comment"><span class="eyebrow">Комментарий владельца${i ? " · ещё один захват" : ""}</span><p>${e(s.comment)}</p></div>`).join("")}<details class="source-details"><summary>Исходник и история</summary>${file?.kind === "video" ? `<p class="notice">Видео-источник: ${e(file.name)}. Сохранён локально, анализ ИИ не выполнялся.</p>${file.fixture?videoPreview(file):`<div class="photo-preview">${videoPreview(file)}</div>`}` : ""}${file?.kind === "pdf" ? `<a class="btn secondary" href="${e(file.url)}" download="${e(file.name)}" data-testid="download-source-pdf">Скачать исходный PDF</a>` : ""}${p.image ? `<img class="source-full-document" src="${e(p.image)}" alt="Синтетический документ, исходник">` : ""}<p class="muted">Версия ${p.revision || 1}. Источник и комментарии сохранены отдельно, без изменений. Все записи здесь синтетические.</p></details></section>`;
 }
 function reviewDetail(id) {
   const p = state.proposals.find((x) => x.id === id);
@@ -176,6 +188,14 @@ function voiceBody() {
     }[voiceStatus];
   return `<section class="voice-state ${voiceStatus === "listening" ? "listening" : ""}"><span class="voice-disc">${icon("voice")}</span><h2>${title}</h2><p>${support ? voiceMessage || "В этом браузере нет поддерживаемого речевого ввода. Можно диктовать микрофоном клавиатуры в текстовом поле." : voiceStatus === "listening" ? "Говорите естественно. «Готово» остановит ввод." : "Сохраняется только текст. Аудиозапись не создаётся."}</p>${support ? btn("Перейти к тексту", "voice-fallback", "primary full", "voice-fallback") : voiceStatus === "listening" || voiceStatus === "requesting" ? btn("Готово", "voice-stop", "primary full", "voice-stop") : btn("Продолжить голосом", "voice-start", "secondary", "voice-start")}${!support ? btn("Ввести текст", "voice-fallback", "text-button full", "voice-fallback") : ""}</section>${state.draft.text ? `<label class="capture-label" for="capture-input">Проверьте текст</label><textarea id="capture-input" data-testid="capture-input" class="capture-input" placeholder="Ваш текст">${e(state.draft.text)}</textarea>` : ""}`;
 }
+let localVideoObjectUrl = null;
+function videoPreview(file) {
+  if (!file || file.fixture) return `<div class="video-demo-preview">${icon("video")}<strong>Визуальный DEMO-источник</strong><small>Синтетический кадр, не реальная запись</small></div>`;
+  if(localVideoObjectUrl)URL.revokeObjectURL(localVideoObjectUrl);
+  const [header,encoded]=file.url.split(","),bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));
+  localVideoObjectUrl=URL.createObjectURL(new Blob([bytes],{type:header.match(/data:([^;]+)/)?.[1]||"video/mp4"}));
+  return `<video controls playsinline preload="metadata" src="${e(localVideoObjectUrl)}" data-testid="video-preview"></video>`;
+}
 function capture(mode) {
   state.draft.mode = mode;
   const d = state.draft;
@@ -189,11 +209,12 @@ function capture(mode) {
   if (mode === "voice") body = voiceBody();
   if (mode === "photo")
     body = `${d.file ? `<div class="photo-preview">${d.file.kind === "image" ? `<img src="${e(d.file.url)}" alt="Выбранный источник">` : `<section class="state">${icon("text")}<h2>Документ PDF</h2><p>Содержимое не распознаётся в этом прототипе.</p></section>`}<div class="file-name">${e(d.file.name)}</div></div>${btn("Выбрать другой", "clear-file", "text-button", "clear-file")}` : `<div class="file-buttons"><label class="file-label">${icon("camera")} Камера или изображение<input data-testid="photo-file" id="photo-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" capture="environment"></label><label class="file-label">${icon("text")} Выбрать PDF<input data-testid="pdf-file" id="pdf-file" type="file" accept="application/pdf"></label></div>`}<label class="field">Комментарий · необязательно<input class="input" data-testid="capture-comment" id="capture-comment" value="${e(d.comment)}" placeholder="Что важно на фото?"></label><p class="note">Ваш файл остаётся на устройстве. Для произвольного файла готовых ответов нет.</p>`;
+  if(mode === "video") body=`${d.file?.kind==="video"?`<div class="photo-preview">${videoPreview(d.file)}<div class="file-name">${e(d.file.name)}</div></div>${btn("Выбрать другой","clear-file","text-button","clear-file")}`:`<label class="file-label">${icon("video")} Выбрать видео<input id="video-file" data-testid="video-file" type="file" accept="video/mp4,video/webm,video/quicktime"></label>`}<label class="field">Комментарий · необязательно<input class="input" id="capture-comment" data-testid="capture-comment" value="${e(d.comment)}"></label><div class="notice amber">Только локальный DEMO-источник. ИИ не анализирует видео, OCR и видеообработки нет. Файл не отправляется на сервер.</div>`;
   const saveButton =
     mode !== "voice" || d.text
       ? btn("Сохранить в демо", "capture-save", "primary full", "capture-save")
       : "";
-  return `<div class="capture-page" data-r3-form="capture-${mode}">${Header({ text: "Новая запись", voice: "Голос", photo: "Фото" }[mode], "", true)}${body}${saveButton}<div class="scenario-panel"><p>ГОТОВЫЙ СЦЕНАРИЙ ИНТЕРФЕЙСА · НЕ ИИ</p>${mode === "photo" ? btn(`${icon("text")} Выбрать синтетический чек депо`, "demo-photo", "secondary scenario-button full", "demo-photo") + btn("Чек и противоречивый комментарий", "demo-photo-conflict", "text-button full", "demo-photo-conflict") : btn(`${icon("tasks")} Попробовать задачу про полив`, "demo-irrigation", "secondary scenario-button full", "demo-irrigation") + btn("Неясное событие: Серкан, завтра", "demo-recovery", "text-button full", "demo-recovery")}</div><p class="screen-note">Демо-состояние хранится только в этом браузере</p></div>`;
+  return `<div class="capture-page" data-r3-form="capture-${mode}">${Header({ text: "Новая запись", voice: "Голос", photo: "Фото", video: "Видео" }[mode], "", true)}${body}${saveButton}<div class="scenario-panel"><p>ГОТОВЫЙ СЦЕНАРИЙ ИНТЕРФЕЙСА · НЕ ИИ</p>${mode === "video" ? btn(`${icon("video")} Синтетический пример видео`, "demo-video", "secondary full", "demo-video") : mode === "photo" ? btn(`${icon("text")} Выбрать синтетический чек депо`, "demo-photo", "secondary scenario-button full", "demo-photo") + btn("Чек и противоречивый комментарий", "demo-photo-conflict", "text-button full", "demo-photo-conflict") : btn(`${icon("tasks")} Попробовать задачу про полив`, "demo-irrigation", "secondary scenario-button full", "demo-irrigation") + btn("Неясное событие: Серкан, завтра", "demo-recovery", "text-button full", "demo-recovery")}</div><p class="screen-note">Демо-состояние хранится только в этом браузере</p></div>`;
 }
 function tasks() {
   const f = state.filters.tasks;
@@ -214,7 +235,7 @@ function tasks() {
   } else {
     content = `<section class="card"><div class="card-header"><h2>Черновик поручения</h2><span class="tag amber">${state.workerTask.status === "assigned" ? "Назначено в демо" : "Не назначено"}</span></div>${link(`<strong>${e(state.workerTask.title)}</strong><p class="note no-bottom">İmamlı · 10 октября · ${state.workerTask.worker ? e(workerName(state.workerTask.worker)) : "Исполнитель не выбран"}</p>`, "assignment/worker-task", "task-row", "worker-task")}</section><div class="section-heading"><h2>Работники</h2>${link("Все", "workers")}</div><section class="card list-card">${state.workers.map(workerRow).join("")}</section>`;
   }
-  return `${Header("Задачи", "Планы и поручения")}<div class="filters">${FilterChip("Мои", "mine", f === "mine", "tasks", "tasks-mine")}${FilterChip("Работникам", "workers", f === "workers", "tasks", "tasks-workers")}</div>${content || EmptyState("Задач пока нет", "Добавьте поручение текстом или голосом.")}`;
+  return `${Header("Задачи", "Планы и поручения")}${contextualActions([["Задача себе","quick/task","tasks-add-self"],["Задача работникам","quick/worker","tasks-add-workers"]])}<div class="filters">${FilterChip("Мои", "mine", f === "mine", "tasks", "tasks-mine")}${FilterChip("Работникам", "workers", f === "workers", "tasks", "tasks-workers")}</div>${content || EmptyState("Задач пока нет", "Добавьте поручение текстом или голосом.")}`;
 }
 function taskDetail(id) {
   const t =
@@ -232,7 +253,7 @@ function taskDetail(id) {
       Header("Задача", "", true) +
       EmptyState("Задача не найдена", "Вернитесь к списку.")
     );
-  return `<div class="detail-layout">${Header(t.worker ? "Поручение" : "Моя задача", "", true)}<section class="card"><span class="tag ${t.status === "problem" ? "red" : ""}">${{ todo: "Нужно сделать", done: "Выполнено владельцем", assigned: "Назначено", problem: "Есть проблема" }[t.status]}</span><p class="current-label">ТЕКУЩЕЕ ДЕЙСТВИЕ</p><h2 class="detail-title" data-testid="current-action">${e(t.actionNeedsReview ? "Уточните текст действия" : t.title)}</h2>${t.actionNeedsReview ? `<div class="notice amber" data-testid="task-needs-review">Место или срок изменились. Проверьте свой текст в «Изменить поручение». Пока уточнение не завершено, действие нельзя отметить выполненным.</div>` : ""}${!t.worker ? btn("Изменить поручение", "edit:title:" + id, "text-button", "edit-instruction") : ""}${t.worker ? `<dl class="fact-list">${fact("Где", t.place)}${fact("Когда", t.when)}${fact("Кому", workerName(t.worker))}</dl>` : `${FactChip("Теплица", t.place, "edit:place:" + id, "edit-place")}${FactChip("Когда", t.when, "edit:when:" + id, "edit-when")}`} ${t.report ? `<div class="notice amber">Отчёт: ${e(t.report)}</div>` : ""}${!t.worker ? `<p class="note">${t.date ? "Точная дата: " + new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(new Date(t.date + "T12:00:00")) : "Точная дата не выбрана"}. Личная задача не требует назначения работника.</p>${!t.actionNeedsReview ? btn(t.status === "done" ? "Вернуть в задачи" : "Отметить выполненной", `task-done:${id}`, "primary full", "task-save") : ""}` : ""}${sourceDetails(t)}</section></div>`;
+  return `<div class="detail-layout">${Header(t.worker ? "Поручение" : "Моя задача", "", true)}<section class="card"><span class="tag ${t.status === "problem" ? "red" : ""}">${{ todo: "Нужно сделать", done: "Выполнено владельцем", assigned: "Назначено", problem: "Есть проблема" }[t.status]}</span><p class="current-label">ТЕКУЩЕЕ ДЕЙСТВИЕ</p><h2 class="detail-title" data-testid="current-action">${e(t.actionNeedsReview ? "Уточните текст действия" : t.title)}</h2>${t.actionNeedsReview ? `<div class="notice amber" data-testid="task-needs-review">Место или срок изменились. Проверьте свой текст в «Изменить поручение». Пока уточнение не завершено, действие нельзя отметить выполненным.</div>` : ""}${!t.worker ? btn("Изменить поручение", "edit:title:" + id, "text-button", "edit-instruction") : ""}${t.worker ? `<dl class="fact-list">${fact("Где", t.place)}${fact("Когда", t.when)}${fact("Кому", workerName(t.worker))}</dl>` : `${FactChip("Теплица", t.place, "edit:place:" + id, "edit-place")}${FactChip("Когда", t.when, "edit:when:" + id, "edit-when")}`} ${t.report ? `<div class="notice amber">Отчёт: ${e(t.report)}</div>` : ""}${!t.worker ? `<p class="note">${t.date ? "Точная дата: " + new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(new Date(t.date + "T12:00:00")) : "Точная дата не выбрана"}. Личная задача не требует назначения работника.</p>${!t.actionNeedsReview ? btn(t.status === "done" ? "Вернуть в задачи" : "Отметить выполненной", `task-done:${id}`, "primary full", "task-save") : ""}` : ""}${t.id.startsWith("daily-worker-")?`<div class="notice">Назначено только в DEMO. ${t.translation?"Текст на дари введён и проверен владельцем.":"Перевод на дари не подготовлен."} Никакой отправки в Telegram.</div>${t.translation?`<div class="translation" lang="fa" dir="rtl">${e(t.translation)}</div>`:""}`:""}${sourceDetails(t)}</section></div>`;
 }
 function workerRow(w) {
   const count =
@@ -248,7 +269,7 @@ function workerRow(w) {
   );
 }
 function workers() {
-  return `${Header("Работники", "TEST-профили · вид владельца")}<section class="card list-card">${state.workers.map(workerRow).join("")}</section><p class="note">Здесь показаны назначения и отчёты. Онлайн-статус и фактическое выполнение не определяются.</p>`;
+  return `${Header("Работники", "TEST-профили · вид владельца")}${contextualActions([["Поручить задачу","quick/worker","workers-assign"],["Посмотреть проблемы","task/filter-report","workers-problems"]])}<section class="card list-card">${state.workers.map(workerRow).join("")}</section><p class="note">Здесь показаны назначения и отчёты. Онлайн-статус и фактическое выполнение не определяются.</p>`;
 }
 function workerDetail(id) {
   const w = state.workers.find((x) => x.id === id);
@@ -267,24 +288,24 @@ function assignment() {
   return `<div class="detail-layout" data-r3-form="assignment">${Header("Назначить поручение", "TEST · без отправки работнику", true)}<section class="card"><span class="eyebrow">ИНСТРУКЦИЯ</span><h2 class="detail-title">${e(t.title)}</h2><dl class="fact-list">${fact("Теплица", t.place)}${fact("Когда", t.when)}</dl>${FactChip("Кому", workerName(t.worker), "choose-worker", "choose-worker")}<p class="list-section-label">Содержание на дари</p><div class="translation" lang="fa" dir="rtl">${e(t.translation)}</div><div class="notice amber">Один заранее написанный TEST-пример. Общего переводчика нет. Проверьте, что числа, смысл и «не включать» сохранены.</div>${t.status === "assigned" ? "" : btn("Исправить текст на дари", "edit-translation", "secondary full", "edit-translation")}<p class="note">Назначение меняет только demo-state. Нет сообщения в Telegram и новой авторизации работника.</p>${t.status === "assigned" ? `<div class="notice">Назначено в демо. Проверку текста подтвердил владелец. Внешняя отправка не выполнялась.</div>` : btn(t.worker ? "Проверил текст · назначить в демо" : "Выбрать работника", t.worker ? "assignment-confirm" : "choose-worker", "primary full", "assignment-confirm")}</section></div>`;
 }
 function finance(tab) {
-  const f = tab || state.filters.finance;
-  state.filters.finance = f;
+  const f = tab || "overview"; state.filters.finance = f;
   const items = f === "payable" ? state.payables : state.receivables;
-  return `${Header("Финансы", "Рабочая валюта · TRY", true)}<div class="financial-grid ${state.largeAmount ? "stress" : ""}">${MetricCard({ label: "Мне должны", value: moneyTotal(state.receivables), detail: "Неоплаченные продажи", to: "finance/receivable", primary: true, ic: "down" })}${MetricCard({ label: "Я должен", value: moneyTotal(state.payables), detail: "Непогашенные долги", to: "finance/payable", ic: "up" })}</div><div class="filters">${link("Должники", "finance/receivable", `filter-chip ${f === "receivable" ? "selected" : ""}`)}${link("Кредиторы", "finance/payable", `filter-chip ${f === "payable" ? "selected" : ""}`)}${link("Движения", "finance/movements", `filter-chip ${f === "movements" ? "selected" : ""}`)}</div>${f === "movements" ? `<section class="card"><h2>Последние движения</h2><div class="timeline-row"><div class="summary-pair"><strong>TEST Банановое депо</strong><strong>+252 000 TRY</strong></div><p>Оплата по ранее отражённым продажам · 8 октября</p></div><p class="note no-bottom">Синтетический пример. Оплата уменьшает долг, не создаёт вторую продажу или расход.</p></section>` : `<section class="card list-card">${items.map((x) => link(`<div class="line"><strong>${e(x.name)}</strong><span class="amount">${money(x.amount)}</span></div><p>${e(x.meaning)} · ${e(x.date)}</p>`, `counterparty/${x.id}`, "finance-item", x.id === "depot" ? "finance-depot" : "finance-" + x.id)).join("")}</section>`}${state.largeAmount ? '<div class="notice amber">Режим проверки крупной суммы: добавлена отдельная TEST-позиция другого периода. Она не входит в продажи текущего сезона.</div>' : ""}<p class="note">Суммы других валют сюда не включены. Долг не означает состоявшуюся оплату.</p>`;
+  return `${Header("Финансы", "1 сентября — 9 октября 2026 · TRY", true)}${contextualActions([["Добавить расход","quick/expense","finance-expense"],["Записать платёж","quick/payment","finance-payment"]],[["Добавить долг / обязательство","quick/obligation","finance-obligation"]])}<div class="filters">${[["overview","Обзор"],["receivable","Мне должны"],["payable","Я должен"],["movements","Деньги"]].map(([id,label])=>link(label,`finance/${id}`,`filter-chip ${f===id?"selected":""}`,`finance-tab-${id}`)).join("")}</div>${f==="overview"?financeOverview(state):`<div class="financial-grid ${state.largeAmount ? "stress" : ""}">${MetricCard({label:"Мне должны",value:moneyTotal(state.receivables),detail:"На 9 октября · DEMO",to:"finance/receivable",primary:true,ic:"down"})}${MetricCard({label:"Я должен",value:moneyTotal(state.payables),detail:"На 9 октября · DEMO",to:"finance/payable",ic:"up"})}</div>${f==="movements"?dailyMovementList(state):`<section class="card list-card">${items.map(x=>link(`<div class="line"><strong>${e(x.name)}</strong><span class="amount">${money(x.amount)}</span></div><p>${e(x.meaning)} · ${e(x.date)}</p>`,`counterparty/${encodeURIComponent(x.id)}`,"finance-item",x.id==="depot"?"finance-depot":"finance-"+x.id)).join("")||"<p class=note>Нет подтверждённых позиций.</p>"}</section>`}`}${state.largeAmount?'<div class="notice amber">Крупная TEST-позиция другого периода: только проверка читаемости. В обзор периода не входит.</div>':""}<p class="note">Неполный синтетический набор. Другие валюты не складываются с TRY. Долг не означает состоявшуюся оплату.</p>`;
 }
 function counterparty(id) {
-  const receivable = state.receivables.find((x) => x.id === id),
-    x = receivable || state.payables.find((x) => x.id === id);
-  if (!x) return EmptyState("Контрагент не найден", "Вернитесь к финансам.");
-  return `<div class="detail-layout">${Header("Контрагент", "", true)}<section class="card"><span class="eyebrow">${receivable ? "МНЕ ДОЛЖНЫ" : "Я ДОЛЖЕН"}</span><h2 class="detail-title">${e(x.name)}</h2><div class="detail-value">${money(x.amount)}</div><p class="muted">${e(x.date)}</p><dl class="fact-list">${fact("Содержание", x.meaning)}${fact("Валюта", "TRY")}${fact("Состояние", "Не оплачено")}</dl>${id === "depot" ? `<div class="notice">Подтверждённые продажи сезона: ${money(harvestMetrics(rows()).revenue)}. Оплачено 252 000 TRY. Другой покупатель сезона: ${money(state.receivables.find((x) => x.id === "buyer").amount)}.</div>` : ""}<details class="source-details"><summary>Источники</summary><p>Синтетические документы DEMO-S1–S3. Это пример интерфейса позиции, не реальный долг.</p></details></section></div>`;
+  id=decodeURIComponent(id);
+  const receivable=state.receivables.find(x=>x.id===id),x=receivable||state.payables.find(x=>x.id===id);
+  if(!x)return EmptyState("Контрагент не найден","Вернитесь к финансам.");
+  const debts=state.daily.obligations.filter(o=>(o.partyId||o.party)===id);
+  return `<div class="detail-layout">${Header("Контрагент","",true)}<section class="card"><span class="eyebrow">${receivable?"МНЕ ДОЛЖНЫ":"Я ДОЛЖЕН"}</span><h2 class="detail-title">${e(x.name)}</h2><div class="detail-value">${money(x.amount)}</div><p class="muted">На 9 октября 2026 · TRY</p><dl class="fact-list">${fact("Содержание",x.meaning)}${fact("Состояние","Непогашенная часть")}</dl>${debts.map(o=>`<div class="timeline-row"><strong>${e(o.purpose)}</strong><p>${o.date} · ${money(o.amountMinor/100)}</p>${o.receiptId?link("Открыть чек",`depot/${o.receiptId}`,"btn secondary full"):""}</div>`).join("")}<p class="note">Источники синтетические. Остаток учитывает только явно связанные платежи; продажи и платежи не дублируются.</p></section></div>`;
 }
 function quality(m) {
   const colors = ["#34734e", "#a8c477", "#cfaa59", "#cbd1c8"],
-    labels = ["Высшее", "Первое", "Второе", "Не разобрано"];
+    labels = ["Исходное I", "Исходное II", "Исходное III", "Не разобрано"];
   let x = 0;
   return `<svg width="100%" height="18" viewBox="0 0 300 18" role="img" aria-label="${m.quality.map((q, i) => labels[i] + ": " + q + " кг").join(", ")}">${m.quality
     .map((q, i) => {
-      const w = (q / m.kg) * 300,
+      const w = m.kg ? (q / m.kg) * 300 : 0,
         r = `<rect x="${x}" y="0" width="${w}" height="18" fill="${colors[i]}"/>`;
       x += w;
       return r;
@@ -297,7 +318,7 @@ function harvest(id) {
   const all = rows(),
     row = all.find((x) => x.id === id),
     m = harvestMetrics(row ? [row] : all);
-  return `${Header(row ? row.name : "Урожай", "Сезон 2026/27 · " + SEASON, true)}<div class="split-grid"><div><section class="card"><span class="eyebrow">Подтверждённые поставки бананов</span><div class="detail-value">${number(m.kg)} кг</div><div class="harvest-stat-grid"><div><span class="label">Средний вес ветки</span><strong>${number(m.bunchWeight, 1)} кг</strong><small class="coverage">${number(m.countedKg)} кг / ${m.bunches} веток</small></div><div><span class="label">Взвешенная цена</span><strong>${number(m.price, 2)} TRY/кг</strong><small class="coverage">${number(m.revenue)} TRY / ${number(m.kg)} кг</small></div></div><p class="note">Без подтверждённого количества веток: ${number(m.kg - m.countedKg)} кг.</p>${row ? "" : chart()}</section><section class="card"><div class="card-header"><h2>Качество</h2><span class="tag">По документам</span></div>${quality(m)}</section></div><div>${row ? `<section class="card"><h2>Документы и полевые отчёты</h2><div class="timeline-row"><span class="tag">Демо-факт продажи</span><h3>Подтверждённые документы депо</h3><p>${number(m.kg)} кг · ${money(m.revenue)}</p></div><div class="timeline-row"><span class="tag amber">Свидетельство работника</span><h3>Полевой отчёт о срезке</h3><p>Количество неизвестно. Не добавлено к продажам.</p></div></section>` : `<section class="card"><h2>По теплицам</h2>${all.map((r) => link(`${icon("leaf")}<div><strong>${e(r.name)}</strong><p>${number(r.kg)} кг · ${number(r.revenue / r.kg, 2)} TRY/кг</p></div>${icon("arrow")}`, `harvest/${r.id}`, "greenhouse-row", `harvest-${r.id}`)).join("")}</section>`}${state.proposals.some((p) => p.type === "harvest" && ["pending", "deferred"].includes(p.status)) ? '<div class="notice amber">Неподтверждённый чек 1 200 кг показан в «Проверке» и не включён в продажи.</div>' : state.activity.some((x) => x.type === "harvest") ? '<div class="notice">Подтверждённый демо-чек включён в сезон. Деньги ещё не получены.</div>' : ""}</div></div>`;
+  return `${Header(row ? row.name : "Урожай", "Сезон 2026/27 · " + SEASON, true)}${row?"":contextualActions([["Записать срез","quick/harvest","harvest-cut"],["Добавить чек депо","quick/depot","harvest-depot"]],[["Срезы и сверка","reconcile","harvest-reconcile"],["Все чеки · сентябрь–октябрь","depots","harvest-all-depots"]])}<div class="split-grid"><div><section class="card"><span class="eyebrow">Подтверждённые поставки бананов</span><div class="detail-value">${m.kg?number(m.kg)+" кг":"Нет подтверждённых чеков"}</div>${m.kg?"":"<p class=note>Это отсутствие записей, а не подтверждённый нулевой урожай.</p>"}<div class="harvest-stat-grid"><div><span class="label">Средний вес ветки</span><strong>${number(m.bunchWeight, 1)} кг</strong><small class="coverage">${number(m.countedKg)} кг / ${m.bunches} веток</small></div><div><span class="label">Взвешенная цена</span><strong>${number(m.price, 2)} TRY/кг</strong><small class="coverage">${number(m.revenue)} TRY / ${number(m.kg)} кг</small></div></div><p class="note">Без подтверждённого количества веток: ${number(m.kg - m.countedKg)} кг.</p>${row ? "" : chart()}</section><section class="card"><div class="card-header"><h2>Качество</h2><span class="tag">По документам</span></div>${quality(m)}</section></div><div>${row ? `<section class="card"><h2>Документы и полевые отчёты</h2><div class="timeline-row"><span class="tag">Демо-факт продажи</span><h3>Подтверждённые документы депо</h3><p>${number(m.kg)} кг · ${money(m.revenue)}</p></div><div class="timeline-row"><span class="tag amber">Свидетельство работника</span><h3>Полевой отчёт о срезке</h3><p>${state.daily.fieldReports.filter(f=>f.greenhouseId===row.id&&f.date>=state.daily.season.from&&f.date<=state.daily.season.to).map(f=>`${f.date}: ${number(f.bunches)} веток · вес UNKNOWN · ${f.receiptId?"связь с чеком подтверждена":"не связан с чеком"}`).join("<br>")||"Нет подтверждённых полевых отчётов в этом периоде."}</p>${link("Срезы и сверка","reconcile","btn secondary full","greenhouse-reconcile")}</div></section>` : `<section class="card"><h2>По теплицам</h2>${all.map((r) => link(`${icon("leaf")}<div><strong>${e(r.name)}</strong><p>${number(r.kg)} кг · ${number(r.kg?r.revenue / r.kg:null, 2)} TRY/кг</p></div>${icon("arrow")}`, `harvest/${r.id}`, "greenhouse-row", `harvest-${r.id}`)).join("")}</section>`}${state.proposals.some((p) => p.type === "harvest" && ["pending", "deferred"].includes(p.status)) ? '<div class="notice amber">Неподтверждённый чек 1 200 кг показан в «Проверке» и не включён в продажи.</div>' : state.activity.some((x) => x.type === "harvest") ? '<div class="notice">Подтверждённый демо-чек включён в сезон. Деньги ещё не получены.</div>' : ""}</div></div>`;
 }
 function inventory() {
   const f = state.filters.inventory,
@@ -307,7 +328,7 @@ function inventory() {
       (f === "all" || x.category === f) &&
       x.name.toLocaleLowerCase("ru").includes(q),
   );
-  return `${Header("Склад", "Остатки и движения", true)}<div class="search">${icon("search")}<input class="input" id="inventory-search" data-testid="inventory-search" placeholder="Поиск товара" aria-label="Поиск товара" value="${e(inventoryQuery)}"></div><div class="filters">${[
+  return `${Header("Склад", "Остатки и движения", true)}${contextualActions([["Приход","quick/inventory-arrival","inventory-arrival"],["Внесение","quick/inventory-consumption","inventory-consumption"]],[["Перемещение","quick/inventory-transfer","inventory-transfer"]])}<div class="search">${icon("search")}<input class="input" id="inventory-search" data-testid="inventory-search" placeholder="Поиск товара" aria-label="Поиск товара" value="${e(inventoryQuery)}"></div><div class="filters">${[
     ["all", "Все"],
     ["Удобрения", "Удобрения"],
     ["Материалы", "Материалы"],
@@ -315,20 +336,20 @@ function inventory() {
     .map(([v, l]) => FilterChip(l, v, f === v, "inventory"))
     .join(
       "",
-    )}</div><div id="stock-results">${list.length ? `<section class="card list-card">${list.map(StockRow).join("")}</section>` : EmptyState("Товаров не найдено", "Попробуйте другое название или категорию.")}</div><p class="note">Порог минимального остатка не задан. Неизвестное количество не считается нулём.</p>`;
+    )}</div><div id="stock-results">${list.length ? `<section class="card list-card">${list.map(StockRow).join("")}</section>` : EmptyState("Товаров не найдено", "Попробуйте другое название или категорию.")}</div><p class="note">Порог минимального остатка не задан. Неизвестное количество не считается нулём.</p>${invoiceNotice(state)}`;
 }
 function stock(id, showMovements = false) {
   const s = state.stock.find((x) => x.id === id);
   if (!s) return EmptyState("Товар не найден", "Вернитесь к складу.");
-  return `<div class="detail-layout">${Header(showMovements ? "Движения" : s.name, s.place, true)}<section class="card"><span class="eyebrow">${e(s.category)}</span><div class="detail-value">${s.quantity == null ? "Остаток неизвестен" : number(s.quantity, 3) + " " + e(s.unit)}</div><p class="note">Стоимость неизвестна. Порог низкого остатка не задан.</p>${!showMovements ? link("Открыть движения", `stock/${id}/movements`, "btn secondary full", "stock-movements") : s.movements.length ? s.movements.map((m) => `<div class="timeline-row"><div class="summary-pair"><strong>${e(m.label)}</strong><strong>${m.quantity > 0 ? "+" : ""}${number(m.quantity, 3)} ${e(s.unit)}</strong></div><p>${e(m.date)} · ${e(s.place)}</p></div>`).join("") : EmptyState("Нет движений", "Неизвестный остаток не заменён нулём.")}</section></div>`;
+  return `<div class="detail-layout">${Header(showMovements ? "Движения" : s.name, s.place, true)}<section class="card"><span class="eyebrow">${e(s.category)}</span><div class="detail-value">${s.quantity == null ? "Остаток неизвестен" : number(s.quantity, 3) + " " + e(s.unit)}</div><p class="note">Стоимость неизвестна. Порог низкого остатка не задан.</p>${!showMovements ? link("Открыть движения", `stock/${id}/movements`, "btn secondary full", "stock-movements") : s.movements.length ? s.movements.map((m) => `<div class="timeline-row"><div class="summary-pair"><strong>${e(m.label.replace("Подтверждённый физический приход","Физический приход · подтверждён"))}</strong><strong>${m.quantity > 0 ? "+" : ""}${number(m.quantity, 3)} ${e(s.unit)}</strong></div><p>${e(m.date)} · ${e(s.place)}</p></div>`).join("") : EmptyState("Нет движений", "Неизвестный остаток не заменён нулём.")}</section></div>`;
 }
 function more() {
   return `<div class="more-layout">${Header("Ещё", "Всё хозяйство в одном месте")}<section class="card list-card">${[
     [
-      "finance/receivable",
+      "finance/overview",
       "wallet",
       "Финансы",
-      "Долги и движения",
+      "Обзор, долги и движения",
       "more-finance",
     ],
     ["harvest", "leaf", "Урожай", "Сезон, теплицы и качество", "more-harvest"],
@@ -356,7 +377,7 @@ function more() {
 }
 function sources() {
   const labels = {pending: "На проверке", deferred: "Отложено", confirmed: "Подтверждено в демо", rejected: "Отклонено · источник сохранён"};
-  return `${Header("Источники", "Синтетические оригиналы и решения", true)}${state.proposals.map((p) => {
+  return `${Header("Источники", "Синтетические оригиналы и решения", true)}${state.daily.actions.map(a=>`<section class="card"><span class="tag">${a.status==="confirmed"?"Подтверждено в DEMO":"Нужно проверить"}</span><p class="note">${e(state.daily.sources.find(x=>x.id===a.sourceId)?.raw)}</p>${link("Открыть действие",`daily/${a.id}`,"btn secondary full",`source-${a.id}`)}</section>`).join("")}${state.proposals.map((p) => {
     const capture = state.sources.find(s => s.id === p.id || (p.id === "depot-review" && s.id === "demo-receipt"));
     return `<section class="card"><span class="tag">${e(labels[p.status])}</span><h2 class="detail-title">${e(p.title)}</h2><p class="code-free">${e(p.source)}</p>${capture?.comment ? `<p class="note">Комментарий: ${e(capture.comment)}</p>` : ""}${capture?.file?.kind === "pdf" ? `<a class="btn secondary" href="${e(capture.file.url)}" download="${e(capture.file.name)}">Скачать исходный PDF</a>` : ""}${p.image ? `<img class="source-document" src="${e(p.image)}" alt="Сохранённый синтетический исходник">` : ""}${link("Открыть карточку", `review/${p.id}`, "btn secondary full", `source-${p.id}`)}</section>`;
   }).join("")}`;
@@ -365,11 +386,29 @@ function settings() {
   return `${Header("О прототипе", "Состояния для проверки", true)}<section class="card"><h2>Синтетические TEST-данные</h2><p class="note">Подтверждения меняют только браузерный demo-state. Это не тест понимания произвольной речи. Фото и тексты не отправляются в API.</p><div class="settings-stack">${btn("Сеть: " + (state.online ? "доступна" : "нет сети"), "toggle-offline", "secondary", "toggle-offline")}${btn("Следующее сохранение: " + (state.failNext ? "ошибка" : "обычное"), "toggle-error", "secondary", "toggle-error")}${btn("Следующее подтверждение: " + (state.staleNext ? "устаревшее" : "обычное"), "toggle-stale", "secondary", "toggle-stale")}${btn("Показать пустую очередь", "toggle-empty", "secondary", "toggle-empty")}${btn("Крупная сумма: " + (state.largeAmount ? "включена" : "выключена"), "toggle-large", "secondary", "toggle-large")}${btn("Сбросить синтетический пример", "reset-demo", "danger", "reset-demo")}</div></section><p class="note">Физический iPhone, микрофон и клавиатура требуют отдельной проверки владельцем. В прототипе нет работников R2, календаря удобрений, обхода или внешней отправки.</p>`;
 }
 function render({ focus = false } = {}) {
+  projectDaily(state);
+  if(state.largeAmount) state.receivables.push({id:"stress",name:"TEST Крупная отдельная позиция",amount:123456789.12,meaning:"Другой период · проверка читаемости",date:"Срок не указан"});
+
   const parts = route.split("/"),
     page = parts[0],
-    focused = page === "capture" || page === "assignment";
+    focused = page === "capture" || page === "assignment" || page === "quick" || page === "daily";
   let html;
   switch (page) {
+    case "quick":
+      html = quickForm(state, parts[1] || "expense",parts[2]);
+      break;
+    case "daily":
+      html = dailyReview(state,parts[1]);
+      break;
+    case "depots":
+      html = depotList(state);
+      break;
+    case "depot":
+      html = depotDetail(state,parts[1]);
+      break;
+    case "reconcile":
+      html = reconcile(state);
+      break;
     case "home":
       html = home();
       break;
@@ -433,7 +472,7 @@ function render({ focus = false } = {}) {
       : page === "task" || page === "assignment"
         ? "tasks"
         : "more",
-    pending(state).length,
+    pendingCount(),
     focused,
   );
   // Keep the selected horizontal filter visible without moving the page vertically.
@@ -447,6 +486,31 @@ function render({ focus = false } = {}) {
   if (focus) document.querySelector("#main")?.focus({ preventScroll: true });
   save();
 }
+function setRadial(open, { historyChange = true, focus = true } = {}) {
+  radialOpen = open;
+  const menu = document.querySelector("#radial-menu"), toggle = document.querySelector('[data-testid="radial-toggle"]');
+  if (!menu || !toggle) return;
+  menu.hidden = !open;
+  document.querySelector(".radial-backdrop").hidden = !open;
+  toggle.setAttribute("aria-expanded", String(open));
+  document.querySelector("#main").inert = open;
+  for (const link of document.querySelectorAll(".navigation a")) link.inert = open;
+  if (historyChange) {
+    if (open) history.pushState({ r3Radial: true }, "", location.href);
+    else if (history.state?.r3Radial) history.back();
+  }
+  if (focus) (open ? menu.querySelector("button") : toggle)?.focus({ preventScroll: true });
+}
+window.addEventListener("popstate", () => { if (radialOpen) setRadial(false, { historyChange: false }); });
+document.addEventListener("keydown", (ev) => {
+  if (!radialOpen) return;
+  if (ev.key === "Escape") { ev.preventDefault(); setRadial(false); }
+  if (ev.key === "Tab") {
+    const controls = [...document.querySelectorAll("#radial-menu button"), document.querySelector('[data-testid="radial-toggle"]')];
+    const index = controls.indexOf(document.activeElement);
+    ev.preventDefault(); controls[(index + (ev.shiftKey ? controls.length - 1 : 1)) % controls.length].focus();
+  }
+});
 function navigate(to) {
   if (route === to) {
     render();
@@ -457,6 +521,7 @@ function navigate(to) {
   location.hash = to;
 }
 window.addEventListener("hashchange", () => {
+  if (radialOpen) setRadial(false, { historyChange: false, focus: false });
   captureAttempt++;
   saving = false;
   if (
@@ -653,6 +718,12 @@ async function captureSave() {
 }
 document.addEventListener("input", (ev) => {
   const el = ev.target;
+  if(el.closest("#daily-form") && el.name) {
+    const form=el.closest("#daily-form"),key=form.dataset.key;
+    state.dailyDrafts[key]??={};state.dailyDrafts[key][el.name]=el.value;
+    if(el.name==="date")state.dailyDrafts[key].dateAssumed=false;
+    save();
+  }
   if (el.id === "capture-input") {
     state.draft.text = el.value;
     state.draft.scenario = el.value === SCENARIO_TEXT ? "irrigation" : null;
@@ -688,7 +759,7 @@ document.addEventListener("input", (ev) => {
 });
 document.addEventListener("change", async (ev) => {
   const el = ev.target;
-  if (!["photo-file", "pdf-file"].includes(el.id)) return;
+  if (!["photo-file", "pdf-file", "video-file"].includes(el.id)) return;
   const f = el.files?.[0];
   if (!f) return;
   const supported = [
@@ -696,6 +767,7 @@ document.addEventListener("change", async (ev) => {
     "image/png",
     "image/webp",
     "application/pdf",
+    "video/mp4", "video/webm", "video/quicktime",
   ].includes(f.type);
   if (!supported) {
     toast("Этот файл не удалось открыть. Выберите другое фото или PDF.");
@@ -714,7 +786,7 @@ document.addEventListener("change", async (ev) => {
     });
     state.draft.file = {
       name: f.name,
-      kind: f.type === "application/pdf" ? "pdf" : "image",
+      kind: f.type.startsWith("video/") ? "video" : f.type === "application/pdf" ? "pdf" : "image",
       url,
     };
     state.draft.scenario = null;
@@ -738,12 +810,48 @@ document.addEventListener("click", async (ev) => {
   if (!b) return;
   ev.preventDefault();
   const action = b.dataset.action;
+  if(action === "daily-save") {
+    const form=document.querySelector("#daily-form"),kind=form.dataset.kind;
+    const values=Object.fromEntries(new FormData(form));
+    values.dateAssumed=state.dailyDrafts[form.dataset.key]?.dateAssumed!==false;
+    try {
+      if(kind==="worker") {
+        if(!values.title.trim()||!values.worker||!values.place||!values.date)throw Error("Укажите поручение, работника, теплицу и дату.");
+        const id="daily-worker-"+state.daily.nextId++;
+        state.workerTasks.unshift({id,title:values.title,place:values.place,when:values.date,date:values.date,worker:values.worker,status:"assigned",report:null,source:values.title,sourceFacts:structuredClone(values),translation:values.translation||null,translationReviewed:!!values.translation,synthetic:true});
+        delete state.dailyDrafts[form.dataset.key];save();navigate("task/"+id);return;
+      }
+      if(kind==="task") {
+        if(!values.title.trim()) throw Error("Напишите, что нужно сделать.");
+        const id="daily-task-"+state.daily.nextId++;
+        state.tasks.unshift({id,title:values.title,place:values.place||null,when:values.when||null,date:null,worker:null,status:"todo",source:values.title,provenance:"owner-entry"});
+        delete state.dailyDrafts[form.dataset.key];save();navigate("task/"+id);return;
+      }
+      const a=form.dataset.editId?updateAction(state,form.dataset.editId,values):createAction(state,kind,values);
+      delete state.dailyDrafts[form.dataset.key];save();navigate("daily/"+a.id);
+    } catch(error) {const message=document.querySelector("#daily-form-error");message.hidden=false;message.textContent=error.message==="EMPTY_SOURCE"?"Добавьте сообщение или факты события.":error.message;}
+    return;
+  }
+  if(action.startsWith("daily-confirm:")) {
+    try {confirmAction(state,action.slice(14),Number(b.dataset.revision));save();render();toast("Подтверждено только в DEMO");} catch(error) {toast(error.message==="STALE"?"Карточка изменилась. Проверьте актуальные факты.":"Нужно уточнить факты действия.");render();}
+    return;
+  }
+  if(action.startsWith("daily-link:")) {
+    const [,reportId,receiptId]=action.split(":");
+    const existing=state.daily.actions.find(a=>a.kind==="harvest-link"&&a.status==="pending"&&a.input.reportId===reportId&&a.input.receiptId===receiptId);
+    const a=existing||createAction(state,"harvest-link",{reportId,receiptId,date:"2026-10-09",raw:"Синтетический кандидат связи полевого отчёта и чека. Совпадение даты не доказывает связь."});
+    save();navigate("daily/"+a.id);return;
+  }
+  if (action === "radial-toggle") { setRadial(!radialOpen); return; }
+  if (action === "radial-close") { setRadial(false); return; }
   if (
     action.startsWith("capture-") &&
-    ["capture-photo", "capture-voice", "capture-text"].includes(action)
+    ["capture-photo", "capture-voice", "capture-text", "capture-video"].includes(action)
   ) {
+    if (radialOpen) { setRadial(false, { historyChange: false, focus: false }); if(history.state?.r3Radial) await new Promise(resolve=>{window.addEventListener("popstate",resolve,{once:true});history.back();}); }
     const mode = action.split("-")[1];
     state.draft.mode = mode;
+    if(state.draft.file && ((mode==="video") !== (state.draft.file.kind==="video"))) state.draft.file=null;
     save();
     navigate("capture/" + mode);
     if (mode === "voice") startVoice();
@@ -820,7 +928,8 @@ document.addEventListener("click", async (ev) => {
       return;
     }
     try {
-      confirm(state, id, activeProposalRevision);
+      const confirmed = confirm(state, id, activeProposalRevision);
+      syncLegacyConfirmation(state, confirmed);
       save();
       const p = state.proposals.find((x) => x.id === id);
       toast("Подтверждено только в демо");
@@ -876,6 +985,10 @@ document.addEventListener("click", async (ev) => {
     save();
     render();
     return;
+  }
+  if(action === "demo-video") {
+    state.draft.file={name:"DEMO-синтетический-видео-источник",kind:"video",fixture:true,url:null};
+    state.draft.scenario="video"; save();render();return;
   }
   if (action === "clear-file") {
     state.draft.file = null;
@@ -989,6 +1102,7 @@ document.addEventListener("click", async (ev) => {
   }
   if (action === "reset-demo") {
     state = initialState();
+    initializeDaily();
     save();
     navigate("home");
     toast("Синтетический пример восстановлен");
@@ -1022,6 +1136,7 @@ window.addEventListener("offline", () => {
 window.r3Demo = {
   reset() {
     state = initialState();
+    initializeDaily();
     save();
     render();
   },
