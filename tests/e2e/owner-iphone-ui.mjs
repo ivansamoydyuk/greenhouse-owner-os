@@ -7,6 +7,7 @@ import {createHash} from 'node:crypto';
 import {chromium} from 'playwright';
 import {navigateOwner, waitOwnerRoute, revealOwnerControl} from './navigation.mjs';
 import {isVisibleOwnerControl} from './visibility.mjs';
+import {intendedTask, sourceTasks, taskSnapshots} from './task-review-fixture.mjs';
 
 const base = process.env.PREVIEW_URL || 'http://127.0.0.1:4173';
 assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(new URL(base).hostname), 'Disposable local preview only');
@@ -254,7 +255,20 @@ try {
   fixtures.source = source.id;
   const sourceOriginal = owner + `/captures/${source.id}/original`;
   sourceHashes.set(sourceOriginal, await originalHash(sourceOriginal));
-  const proposal = await poll(async () => (await api(owner + '/confirmations')).items.find(item => item.inbox_id === source.id), 'Long source proposal missing');
+  const duplicateMarker = 'Сегодня полить İmamlı.';
+  let proposal = await poll(async () => intendedTask((await api(owner + '/confirmations')).items, source.id, duplicateMarker), 'Intended long source task missing');
+  const preparedTasks = sourceTasks((await api(owner + '/confirmations')).items, source.id);
+  assert.equal(preparedTasks.filter(p => p.revision.payload.original_instruction.startsWith('Сегодня полить')).length, 2, 'Both repeated source task slots survive');
+  assert.equal(preparedTasks.filter(p => p.revision.payload.original_instruction.includes('Проверить давление')).length, 1, 'Pressure instruction survives independently');
+  assert.equal(preparedTasks.filter(p => p.revision.payload.original_instruction.startsWith('Сверить каждую строку')).length, 4, 'Every explicit sibling instruction survives');
+  // Isolate summary rendering from parser slot ordering. The normal TEST
+  // revision path provides a repeated long title; source text stays immutable.
+  const reviewTitle = longText.slice(0, 200);
+  assert.equal(reviewTitle.split(duplicateMarker).length - 1, 2);
+  proposal = await api(owner + `/confirmations/${proposal.id}/revise`, {expected_version: proposal.version,
+    payload: {...proposal.revision.payload, title: reviewTitle}});
+  assert.equal(proposal.revision.payload.title, reviewTitle);
+  const sourceTaskSnapshots = taskSnapshots((await api(owner + '/confirmations')).items, source.id);
   fixtures.proposal = proposal.id;
   const proposalBefore = await api(owner + `/confirmations/${proposal.id}/preview`);
   const openReview = async () => {
@@ -300,7 +314,6 @@ try {
     }
     await openReview();
     const primaryText = await sheet().locator('.owner-proposal').innerText();
-    const duplicateMarker = 'Сегодня полить İmamlı.';
     assert.equal(primaryText.split(duplicateMarker).length - 1, 1, 'Primary review states the long instruction only once');
     assert.equal(await sheet().locator('.source-text').evaluate(node => window.isVisibleOwnerControl(node)), false, 'Full original remains under disclosure');
     await modalLayout(`${width}/long-review`, sheet().locator('#r2-reject')); await shot('long-review');
@@ -505,6 +518,7 @@ try {
 
 
   const proposalAfter = await api(owner + `/confirmations/${proposal.id}/preview`);
+  assert.deepEqual(taskSnapshots((await api(owner + '/confirmations')).items, source.id), sourceTaskSnapshots, 'All source task siblings and payloads survive layout/disclosure checks unchanged');
   assert.equal(proposalAfter.version, proposalBefore.version, 'Layout/disclosure checks never revise a proposal');
   assert.equal(proposalAfter.state, proposalBefore.state, 'Layout/disclosure checks never authorize posting');
   for (const [path, hash] of sourceHashes) assert.equal(await originalHash(path), hash, 'Original source bytes are immutable');
