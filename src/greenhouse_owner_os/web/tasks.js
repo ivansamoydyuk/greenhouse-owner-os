@@ -88,7 +88,7 @@ export function tasksUI({api,openSheet,reload,getData,getEntity,notice,getSheetR
     $('#assign-rendering-preview').innerHTML=!rendered.trim()?'<p class="task-assignment-exception note" role="status">Введите проверенный текст для работника.</p>':sameInstruction(rendered,t.original_instruction)?`<p class="task-assignment-exception note" role="status">Это оригинал · ${e(languageNames[ownerLanguage]||ownerLanguage)}. Для него выберите «Использовать оригинал».</p>`:renderingCopy(rendered,true);
     sync();
    };
-   if($('#assign-use-original'))$('#assign-use-original').onclick=()=>{mode='original';rendered=t.original_instruction;draw();};
+   if($('#assign-use-original'))$('#assign-use-original').onclick=()=>{mode='original';rendered=t.original_instruction;draw();button.focus?.();};
    sync();
   }
   $('#assign-worker').onchange=()=>{worker=workers.find(w=>w.id===$('#assign-worker').value)||null;preview();};

@@ -14,7 +14,7 @@ function harness({workers=[worker()],record=task(),handler}={}){
    get innerHTML(){return this._html;},set innerHTML(value){for(const id of this._children)nodes.delete('#'+id);this._html=value;this._children=parse(value);if(this.tag==='select')this.value=selectedValue(value);},
    querySelector(selector){return selector==='button.primary'?this.primary:nodes.get(selector)||null;},
    querySelectorAll(){return [...nodes.values()].filter(n=>['input','textarea','select','button'].includes(n.tag)).concat(this.primary?[this.primary]:[]);},
-   close(){if(this.open){this.open=false;revision++;}},
+   close(){if(this.open){this.open=false;revision++;}},focus(){this.focused=true;},
   };
  }
  function selectedValue(body){const options=[...body.matchAll(/<option\b([^>]*)>/g)];return decode((options.find(m=>/\bselected\b/.test(m[1]))||options[0])?.[1].match(/\bvalue="([^"]*)"/)?.[1]||'');}
@@ -86,7 +86,7 @@ test('manual translation stays optional, explicit and bound to the selected work
 });
 
 test('explicit original fallback is labelled and submitted as Russian, never as worker language',async()=>{
- const h=harness();try{await assignment(h);h.nodes.get('#assign-use-original').onclick();assert.match(h.html(),/Будет назначен оригинал · Русский/);assert.match(h.html(),/Это не перевод на язык работника/);await h.submit('#task-assign-form');const body=h.requests.find(r=>r.body).body;assert.equal(body.language,'ru');assert.equal(body.rendered_text,task().original_instruction);assert.equal(body.translation_source,'original');}finally{h.cleanup();}
+ const h=harness();try{await assignment(h);h.nodes.get('#assign-use-original').onclick();assert.equal(h.nodes.get('#task-assign-form').primary.focused,true,'Removed fallback button hands focus to the unchanged assignment action');assert.match(h.html(),/Будет назначен оригинал · Русский/);assert.match(h.html(),/Это не перевод на язык работника/);await h.submit('#task-assign-form');const body=h.requests.find(r=>r.body).body;assert.equal(body.language,'ru');assert.equal(body.rendered_text,task().original_instruction);assert.equal(body.translation_source,'original');}finally{h.cleanup();}
 });
 
 test('worker changes invalidate prepared and manual text, and inactive workers never auto-select',async()=>{
