@@ -264,3 +264,12 @@ test('only explicit confirmed quality-line ADET is retained, without filling mis
   const r=s.daily.receipts.find(r=>r.id===a.id);assert.equal(r.lines[0].adet,6);assert.equal(r.lines[0].adetProvenance,'source-fact');assert.equal(r.lines[1].adet,null);
   const invalid=createAction(s,'depot',{party:'TEST Банановое депо',adet:'10',lines:[{quality:'I',netKg:'100',price:'30',adet:'1.5'}]});assert.equal(invalid.canConfirm,false);
 });
+
+test('media source cannot interpret hidden text as a prepared personal task',async()=>{
+  const {prepare}=await import('../../prototype/owner-r3/demo-adapter.js');
+  const {SCENARIO_TEXT,RECOVERY_TEXT}=await import('../../prototype/owner-r3/fixtures.js');
+  for(const mode of ['photo','video'])for(const text of [SCENARIO_TEXT,RECOVERY_TEXT]){
+    const s=initialState();s.draft={mode,text,comment:'',scenario:'recovery',file:{kind:mode==='photo'?'image':'video',name:'SYNTHETIC-file',fixture:true}};
+    const p=prepare(s);assert.equal(p.type,'unknown');assert.equal(s.tasks.length,3);assert.equal(s.sources[0].text,text);assert.equal(s.sources[0].file.kind,mode==='photo'?'image':'video');
+  }
+});

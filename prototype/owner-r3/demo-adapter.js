@@ -60,7 +60,7 @@ export function prepare(state) {
   };
   state.sources.push(structuredClone(source));
   let p;
-  if (d.text === SCENARIO_TEXT) {
+  if (["text", "voice"].includes(d.mode) && !d.file && d.text === SCENARIO_TEXT) {
     p = {
       id,
       type: "task",
@@ -87,7 +87,7 @@ export function prepare(state) {
     }
     state.draft = { mode: d.mode, text: "", comment: "", file: null, scenario: null };
     return existing;
-  } else if (d.scenario === "recovery" && d.text === RECOVERY_TEXT) {
+  } else if (["text", "voice"].includes(d.mode) && !d.file && d.scenario === "recovery" && d.text === RECOVERY_TEXT) {
     p = {
       id, type: "unknown", title: "Нужно одно уточнение", meaning: "Неясно, что произошло",
       source: d.text, party: "TEST Серкан", when: "Завтра", date: null, worker: null,

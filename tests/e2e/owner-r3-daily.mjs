@@ -324,10 +324,13 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
     assert.match(await page.locator('#main').innerText(), /Есть проблема/);
     await go(page, 'nav-more'); await go(page, 'more-workers'); await go(page, 'workers-assign');
     await page.getByTestId('daily-worker').waitFor(); await go(page, 'back');
-    await go(page, 'nav-home'); const before = await stateOf(page);
+    await go(page, 'nav-home');
+    await go(page,'capture-text');await fill(page,'capture-input','Нужно переделать полив на Озвади на следующей неделе');await go(page,'back');
+    const before = await stateOf(page);
     await go(page, 'radial-toggle'); await go(page, 'capture-video');
     assert.match(await page.locator('#main').innerText(), /ИИ не анализирует видео/);
     assert.equal(await page.getByTestId('video-file').count(), 1);
+    assert.equal((await stateOf(page)).draft.text,'','Video never inherits hidden unsaved text');
     await go(page, 'demo-video'); await fill(page, 'capture-comment', 'TEST визуальный источник без AI-анализа');
     await go(page, 'capture-save'); await page.getByText('Нужна ручная проверка', {exact: true}).waitFor();
     const after = await stateOf(page), source = after.sources.find(s => !before.sources.some(old => old.id === s.id));
@@ -337,6 +340,9 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
     await page.getByText('Исходник и история', {exact: true}).click(); assert.match(await page.locator('#main').innerText(), /анализ ИИ не выполнялся/);
     await screenshot(page, engine, 'daily-video-synthetic-source', 390, 'Saved synthetic video source with explicit no-AI boundary');
     await correctionReload(page); assert.equal((await stateOf(page)).sources.find(s => s.id === source.id).file.kind, 'video');
+    assert.equal((await stateOf(page)).tasks.length,before.tasks.length,'Video source creates no accidental task');
+    await go(page,'nav-home');await go(page,'capture-text');assert.equal(await page.getByTestId('capture-input').inputValue(),'Нужно переделать полив на Озвади на следующей неделе','The independent text draft survives cross-mode capture and reload');
+    await go(page,'back');await go(page,'capture-photo');assert.equal((await stateOf(page)).draft.text,'');await go(page,'demo-photo');await go(page,'capture-save');await page.getByTestId('confirm-proposal').waitFor();assert.match(await page.locator('#main').innerText(),/Чек депо/);assert.equal((await stateOf(page)).tasks.length,before.tasks.length);
   });
 
   await journey('seven-width daily pages and financial text geometry through actual contextual navigation', async page => {

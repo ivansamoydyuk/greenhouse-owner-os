@@ -85,6 +85,7 @@ const sectionLink = (label, to, test = "") =>
 function initializeDaily() {
   ensureDaily(state);
   state.dailyDrafts ??= {};
+  state.captureDrafts ??= {};
   if (!state.tasks.some(t => t.id === "lab-followup")) state.tasks.push({id:"lab-followup",title:"Посмотреть результаты анализа почвы",place:"Yeşilöz",when:"13 октября",date:"2026-10-13",worker:null,status:"todo",source:"Синтетическая личная задача · посмотреть результаты анализа",category:"Анализы"});
   projectDaily(state);
 }
@@ -150,7 +151,7 @@ function review() {
 function sourceDetails(p) {
   const captures = state.sources.filter(s => s.id === p.id || s.proposalId === p.id);
   const file = captures.at(-1)?.file;
-  return `<section class="source-evidence"><span class="eyebrow">ОРИГИНАЛ</span><div class="source-original-layout"><p class="original-text" data-testid="source-original">${e(p.source)}</p>${p.image ? `<img class="source-document source-evidence-thumb" src="${e(p.image)}" alt="Источник: синтетический документ">` : ""}</div>${captures.filter(s => s.comment).map((s, i) => `<div class="owner-comment" data-testid="owner-comment"><span class="eyebrow">Комментарий владельца${i ? " · ещё один захват" : ""}</span><p>${e(s.comment)}</p></div>`).join("")}<details class="source-details"><summary>Исходник и история</summary>${file?.kind === "video" ? `<p class="notice">Видео-источник: ${e(file.name)}. Сохранён локально, анализ ИИ не выполнялся.</p>${file.fixture?videoPreview(file):`<div class="photo-preview">${videoPreview(file)}</div>`}` : ""}${file?.kind === "pdf" ? `<a class="btn secondary" href="${e(file.url)}" download="${e(file.name)}" data-testid="download-source-pdf">Скачать исходный PDF</a>` : ""}${p.image ? `<img class="source-full-document" src="${e(p.image)}" alt="Синтетический документ, исходник">` : ""}<p class="muted">Версия ${p.revision || 1}. Источник и комментарии сохранены отдельно, без изменений. Все записи здесь синтетические.</p></details></section>`;
+  return `<section class="source-evidence"><span class="eyebrow">ОРИГИНАЛ</span><div class="source-original-layout"><p class="original-text" data-testid="source-original">${e(p.source)}</p>${p.image ? `<img class="source-document source-evidence-thumb" src="${e(p.image)}" alt="Источник: синтетический документ">` : ""}</div>${captures.filter(s => s.comment).map((s, i) => `<div class="owner-comment" data-testid="owner-comment"><span class="eyebrow">Комментарий владельца${i ? " · ещё один захват" : ""}</span><p>${e(s.comment)}</p></div>`).join("")}<details class="source-details"><summary>Исходник и история</summary>${p.sourceFacts?`<dl class="fact-list">${Object.entries(p.sourceFacts).filter(([k,v])=>v&&!["title","translation"].includes(k)).map(([k,v])=>fact(({place:"Теплица при вводе",when:"Когда при вводе",date:"Дата при вводе",worker:"ID выбранного работника"})[k]||k,v)).join("")}</dl>`:""}${file?.kind === "video" ? `<p class="notice">Видео-источник: ${e(file.name)}. Сохранён локально, анализ ИИ не выполнялся.</p>${file.fixture?videoPreview(file):`<div class="photo-preview">${videoPreview(file)}</div>`}` : ""}${file?.kind === "pdf" ? `<a class="btn secondary" href="${e(file.url)}" download="${e(file.name)}" data-testid="download-source-pdf">Скачать исходный PDF</a>` : ""}${p.image ? `<img class="source-full-document" src="${e(p.image)}" alt="Синтетический документ, исходник">` : ""}<p class="muted">Версия ${p.revision || 1}. Источник и комментарии сохранены отдельно, без изменений. Все записи здесь синтетические.</p></details></section>`;
 }
 function reviewDetail(id) {
   const p = state.proposals.find((x) => x.id === id);
@@ -196,8 +197,14 @@ function videoPreview(file) {
   localVideoObjectUrl=URL.createObjectURL(new Blob([bytes],{type:header.match(/data:([^;]+)/)?.[1]||"video/mp4"}));
   return `<video controls playsinline preload="metadata" src="${e(localVideoObjectUrl)}" data-testid="video-preview"></video>`;
 }
+function selectCaptureMode(mode) {
+  if(state.draft.mode===mode)return;
+  state.captureDrafts[state.draft.mode]=structuredClone(state.draft);
+  state.draft=structuredClone(state.captureDrafts[mode]||{mode,text:"",comment:"",file:null,scenario:null});
+  state.draft.mode=mode;
+}
 function capture(mode) {
-  state.draft.mode = mode;
+  selectCaptureMode(mode);
   const d = state.draft;
   let body = "";
   if (saving)
@@ -713,6 +720,7 @@ async function captureSave() {
     return;
   }
   const p = prepare(state);
+  state.captureDrafts[state.draft.mode]=structuredClone(state.draft);
   save();
   navigate("review/" + p.id);
 }
@@ -824,7 +832,7 @@ document.addEventListener("click", async (ev) => {
       if(kind==="task") {
         if(!values.title.trim()) throw Error("Напишите, что нужно сделать.");
         const id="daily-task-"+state.daily.nextId++;
-        state.tasks.unshift({id,title:values.title,place:values.place||null,when:values.when||null,date:null,worker:null,status:"todo",source:values.title,provenance:"owner-entry"});
+        state.tasks.unshift({id,title:values.title,place:values.place||null,when:values.when||null,date:null,worker:null,status:"todo",source:values.title,sourceFacts:structuredClone(values),provenance:"owner-entry"});
         delete state.dailyDrafts[form.dataset.key];save();navigate("task/"+id);return;
       }
       const a=form.dataset.editId?updateAction(state,form.dataset.editId,values):createAction(state,kind,values);
@@ -850,8 +858,7 @@ document.addEventListener("click", async (ev) => {
   ) {
     if (radialOpen) { setRadial(false, { historyChange: false, focus: false }); if(history.state?.r3Radial) await new Promise(resolve=>{window.addEventListener("popstate",resolve,{once:true});history.back();}); }
     const mode = action.split("-")[1];
-    state.draft.mode = mode;
-    if(state.draft.file && ((mode==="video") !== (state.draft.file.kind==="video"))) state.draft.file=null;
+    selectCaptureMode(mode);
     save();
     navigate("capture/" + mode);
     if (mode === "voice") startVoice();
@@ -1008,6 +1015,10 @@ document.addEventListener("click", async (ev) => {
   }
   if (action === "voice-fallback") {
     stopVoice();
+    const voiceText=state.draft.text;
+    selectCaptureMode("text");
+    if(voiceText){state.draft.text=voiceText;state.draft.scenario=voiceText===SCENARIO_TEXT?"irrigation":null;}
+    save();
     navigate("capture/text");
     return;
   }

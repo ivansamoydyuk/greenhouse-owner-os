@@ -1628,3 +1628,8 @@ main { padding-bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
 @media (max-width:350px) { .navigation a { font-size:11px; } .navigation { height:76px; } .capture-toggle { font-size:9px; } .capture-orb { width:54px;height:54px; } .overview-cell { padding:11px; } .overview-cell strong { font-size:20px; } .daily-form .form-pair.equal { grid-template-columns:1fr; } }
 @media (min-width:700px) { .navigation { gap:0; } .context-actions { max-width:640px; } .overview-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .overview-cell strong { font-size:28px; } }
 @media (prefers-reduced-motion:reduce) { .radial-item { animation:none; } .capture-orb .icon { transition:none; } }
+/* Preserve the fan geometry while pressing; the generic button :active nudge
+   must not replace the radial positioning transform during pointer hit testing. */
+.radial-item:active { transform: translateX(var(--fan-x)) translateY(var(--fan-y)); }
+.radial-menu { pointer-events: none; }
+.radial-item { pointer-events: auto; }
