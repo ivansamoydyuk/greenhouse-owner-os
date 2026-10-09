@@ -411,7 +411,7 @@ body:has(#sheet[open]) .owner-dock { visibility: hidden; pointer-events: none; }
 .task-assignment-review { font-size: 13px; color: var(--muted); line-height: 1.5; }
 .review-empty-help { color: var(--muted); max-width: 34em; margin: 20px auto 0; }
 @media (max-width: 620px) {
-  #sheet { position: fixed; inset: var(--sheet-viewport-top, 0px) 0 auto; margin: 6px auto; width: calc(100% - 12px); height: calc(var(--sheet-viewport-height, 100dvh) - 12px); max-height: calc(var(--sheet-viewport-height, 100dvh) - 12px); padding: 0; border-radius: 19px; }
+  #sheet { position: fixed; inset: var(--sheet-viewport-top, 0px) 0 auto; margin: 6px auto; width: calc(100% - 12px); max-width: calc(100% - 12px); height: calc(min(var(--sheet-viewport-height, 100dvh), 100dvh) - 12px); max-height: calc(min(var(--sheet-viewport-height, 100dvh), 100dvh) - 12px); padding: 0; animation: none; border-radius: 19px; }
   #sheet-content { padding: 16px 16px max(24px, env(safe-area-inset-bottom)); min-height: 100%; }
   .sheet-header { top: -1px; margin: -16px 0 16px; padding: max(12px, env(safe-area-inset-top)) 0 10px; }
   .sheet-header #sheet-title { font-size: 21px; }

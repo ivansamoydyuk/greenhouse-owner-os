@@ -94,7 +94,7 @@ async function dialogLayout(label) {
   await sheet().evaluate(async dialog => {await Promise.all(dialog.getAnimations().map(animation => animation.finished));});
   assert.deepEqual(await sheet().evaluate(dialog => {
     const b = dialog.getBoundingClientRect(), failures = [];
-    if (b.left < -1 || b.right > innerWidth + 1 || b.top < -1 || b.bottom > innerHeight + 1) failures.push('Dialog outside viewport');
+    if (b.left < -1 || b.right > innerWidth + 1 || b.top < -1 || b.bottom > innerHeight + 1) failures.push('Dialog outside viewport: '+JSON.stringify({rect:{x:b.x,y:b.y,width:b.width,height:b.height,bottom:b.bottom},viewport:{width:innerWidth,height:innerHeight,visualHeight:window.visualViewport?.height,visualTop:window.visualViewport?.offsetTop},style:document.documentElement.getAttribute('style')}));
     if (dialog.scrollWidth > dialog.clientWidth + 1) failures.push('Horizontal dialog overflow');
     const content = dialog.querySelector('#sheet-content');
     if (content && content.scrollWidth > content.clientWidth + 1) failures.push('Horizontal dialog content overflow');
