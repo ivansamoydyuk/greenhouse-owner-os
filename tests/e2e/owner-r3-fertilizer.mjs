@@ -53,12 +53,19 @@ export async function runFertilizerJourneys({ browser, engine, click, fill, read
     const index = await field.evaluate((element, wanted) => [...element.options].findIndex((option) => option.value === wanted), value);
     assert.ok(index >= 0, `Visible ${id} offers ${value}`);
     await field.click();
+    // Keep the native keyboard sequence fast: each change may rerender the
+    // control, and the app must preserve its disclosure/focus between keys.
     for (const key of ['Home', ...Array(index).fill('ArrowDown'), 'Enter']) {
       await page.getByTestId(id).press(key);
       await page.evaluate((pressed) => window.__r3Metrics.key(pressed), key);
     }
     assert.equal(await page.getByTestId(id).inputValue(), value);
     await page.getByTestId(id).blur(); await ready(page);
+  };
+  const retainedDisclosures = async (page, step) => {
+    for (const id of ['fertilizer-source-details', 'fertilizer-part-details']) {
+      assert.equal(await page.getByTestId(id).evaluate(element => element.open), true, `${id} remains open ${step}`);
+    }
   };
   const open = async (page) => {
     await go(page, 'nav-more'); await go(page, 'more-inventory'); await go(page, 'stock-kno3');
@@ -348,20 +355,24 @@ export async function runFertilizerJourneys({ browser, engine, click, fill, read
     await reveal(page, 'fertilizer-instruction'); await fill(page, 'fertilizer-instruction', `${original} Уточнение.`);
     assert.equal((await record(page)).ownerReviewed, false); assert.equal((await record(page)).dariReviewed, false);
     await select(page, 'fertilizer-greenhouse', 'yesiloz');
+    await retainedDisclosures(page, 'after native greenhouse keyboard changes');
     assert.deepEqual((await record(page)).groups[0].partIds, []);
     assert.match(await page.getByTestId('fertilizer-context-reset').innerText(), /част|выберите/i);
     assert.match(await page.getByTestId('fertilizer-auto-worker').innerText(), /Умар/);
     assert.deepEqual((await record(page)).source, source);
     assert.equal(await page.getByTestId('fertilizer-dose-component-1').inputValue(), '9.50');
     await select(page, 'fertilizer-area-mode', 'reference');
+    await retainedDisclosures(page, 'after native library keyboard changes');
     assert.equal(await page.locator('[data-fertilizer-field="part"]').count(), 5);
     assert.deepEqual((await record(page)).groups[0].partIds, []);
     await go(page, 'fertilizer-part-mix-1-demo-reference-yesiloz-1');
     await go(page, 'fertilizer-save'); await correctionReload(page);
+    await retainedDisclosures(page, 'immediately after reload');
     assert.equal((await record(page)).id, id); assert.equal((await snapshot(page)).fertilizer.records.length, 1);
     assert.deepEqual((await record(page)).groups[0].partIds, ['demo-reference-yesiloz-1']);
     const beforeRemove = (await record(page)).groups[0].components;
     await go(page, 'fertilizer-add-component-mix-1');
+    await retainedDisclosures(page, 'after adding a component');
     const extra = (await record(page)).groups[0].components.at(-1).id;
     await go(page, `fertilizer-remove-${extra}`);
     assert.deepEqual((await record(page)).groups[0].components, beforeRemove, 'Removing the added component preserves all existing doses and provenance');
