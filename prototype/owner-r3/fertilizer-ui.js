@@ -95,14 +95,63 @@ if (typeof window !== 'undefined') {
     if (saved && typeof saved === 'object' && !Array.isArray(saved)) viewStates = saved;
   } catch { /* UI persistence is optional. */ }
 }
-function growFertilizerText(root = document) {
+const textMeasurements = new WeakMap();
+let observedTextRoot = null, textResizeObserver = null, textStyleObserver = null, textGrowthFrame = 0;
+function growFertilizerText(root = document, force = false) {
   const scroll = window.scrollY;
   for (const textarea of root.querySelectorAll('.fertilizer-autogrow')) {
     if (!textarea.getClientRects().length) continue;
+    const style = getComputedStyle(textarea);
+    // Height is deliberately excluded: our own height writes must not create an observer loop.
+    const metrics = [textarea.value, textarea.clientWidth, style.fontFamily, style.fontSize,
+      style.fontWeight, style.fontStyle, style.lineHeight, style.letterSpacing, style.wordSpacing,
+      style.paddingTop, style.paddingBottom, style.paddingLeft, style.paddingRight,
+      style.borderTopWidth, style.borderBottomWidth, style.whiteSpace, style.wordBreak].join('|');
+    if (!force && textMeasurements.get(textarea) === metrics && textarea.scrollHeight <= textarea.clientHeight) continue;
     textarea.style.height = 'auto';
-    textarea.style.height = `${textarea.scrollHeight + 2}px`;
+    const border = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    textarea.style.height = `${Math.ceil(textarea.scrollHeight + border)}px`;
+    // Guard fractional layout rounding without masking a hidden textarea tail.
+    if (textarea.scrollHeight > textarea.clientHeight) {
+      textarea.style.height = `${Math.ceil(textarea.getBoundingClientRect().height + textarea.scrollHeight - textarea.clientHeight)}px`;
+    }
+    textMeasurements.set(textarea, metrics);
   }
   if (window.scrollY !== scroll) window.scrollTo(0, scroll);
+}
+function stopFertilizerTextObservation() {
+  textResizeObserver?.disconnect(); textStyleObserver?.disconnect();
+  if (textGrowthFrame) cancelAnimationFrame(textGrowthFrame);
+  observedTextRoot = null; textGrowthFrame = 0;
+}
+function scheduleFertilizerTextGrowth() {
+  if (!observedTextRoot?.isConnected) { stopFertilizerTextObservation(); return; }
+  if (textGrowthFrame) return;
+  textGrowthFrame = requestAnimationFrame(() => {
+    textGrowthFrame = 0;
+    if (observedTextRoot?.isConnected) growFertilizerText(observedTextRoot);
+    else stopFertilizerTextObservation();
+  });
+}
+function observeFertilizerText(root) {
+  stopFertilizerTextObservation();
+  observedTextRoot = root;
+  if (typeof ResizeObserver !== 'undefined') {
+    textResizeObserver = new ResizeObserver(scheduleFertilizerTextGrowth);
+    textResizeObserver.observe(root);
+    root.querySelectorAll('.fertilizer-autogrow').forEach((textarea) => textResizeObserver.observe(textarea));
+  }
+  if (typeof MutationObserver !== 'undefined') {
+    textStyleObserver = new MutationObserver(scheduleFertilizerTextGrowth);
+    textStyleObserver.observe(root, { attributes: true, subtree: true, attributeFilter: ['style', 'class', 'dir', 'rows'] });
+    // Inherited text scaling may be set on a page ancestor rather than the textarea itself.
+    for (let parent = root.parentElement; parent; parent = parent.parentElement) {
+      textStyleObserver.observe(parent, { attributes: true, attributeFilter: ['style', 'class', 'dir'] });
+    }
+  }
+  document.fonts?.ready.then(() => {
+    if (root.isConnected) growFertilizerText(root, true);
+  });
 }
 function rememberFertilizerView() {
   if (typeof document === 'undefined') return;
@@ -133,6 +182,7 @@ function prepareFertilizerView(id, stage) {
       if (saved?.open && Object.hasOwn(saved.open, details.dataset.fertilizerDisclosure)) details.open = saved.open[details.dataset.fertilizerDisclosure];
     }
     growFertilizerText(root);
+    observeFertilizerText(root);
     // Run after the host's route restoration so a reopened disclosure cannot reset focus/scroll.
     requestAnimationFrame(() => {
       if (frame !== viewFrame || !root.isConnected) { restoringView = false; return; }
@@ -163,7 +213,9 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   });
   window.addEventListener('scroll', () => { if (!restoringView) rememberFertilizerView(); }, { passive: true });
   window.addEventListener('pagehide', rememberFertilizerView);
-  window.addEventListener('resize', () => growFertilizerText());
+  window.addEventListener('resize', scheduleFertilizerTextGrowth);
+  window.addEventListener('hashchange', stopFertilizerTextObservation);
+  document.fonts?.addEventListener('loadingdone', () => growFertilizerText(document, true));
 }
 
 export function renderFertilizer(state, id, stage = 'edit') {

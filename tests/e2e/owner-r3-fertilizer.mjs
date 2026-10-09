@@ -272,15 +272,20 @@ export async function runFertilizerJourneys({ browser, engine, click, fill, read
         const rows = [...document.querySelectorAll('.fertilizer-review h1,.fertilizer-review h2,.fertilizer-review h3,.fertilizer-review p,.fertilizer-review span,.fertilizer-review strong,.fertilizer-review small,.fertilizer-review label,.fertilizer-review button,.fertilizer-review a,.fertilizer-review summary,.fertilizer-review dt,.fertilizer-review dd,.fertilizer-review textarea')].map(element => [element, parseFloat(getComputedStyle(element).fontSize)]);
         for (const [element,size] of rows) element.style.fontSize = `${size * 1.25}px`;
       });
-      await page.setViewportSize({width,height:843}); await page.setViewportSize({width,height:844}); await ready(page);
+      // A browser/user text-size change must expand the complete translation
+      // without depending on an unrelated viewport resize or another keystroke.
+      await ready(page);
       await layout(page, 'fertilizer/review-enhanced-text', width);
       await readableQuantities(page, width);
       assert.deepEqual(withoutScrollPositions(await snapshot(page)), withoutScrollPositions(beforeTextScale), 'Text scaling leaves every non-scroll state field unchanged');
-      const expandedDari = await page.getByTestId('fertilizer-dari').evaluate(element => ({client:element.clientHeight,scroll:element.scrollHeight}));
-      assert.ok(expandedDari.scroll <= expandedDari.client + 2, `Scaled Dari remains fully expanded at ${width}px`);
-      await screenshot(page, engine, 'fertilizer-review-enhanced-text', width, '125% text size and complete long Dari; presentation stress only, no fixture injection');
+      const expandedDari = await page.getByTestId('fertilizer-dari').evaluate(element => {
+        const style = getComputedStyle(element), box = element.getBoundingClientRect();
+        return {client:element.clientHeight,scroll:element.scrollHeight,width:box.width,height:box.height,font_size:style.fontSize,line_height:style.lineHeight,inline_height:element.style.height,overflow_y:style.overflowY,viewport_width:innerWidth,viewport_height:innerHeight};
+      });
       report.fertilizer_text_checks ??= [];
-      report.fertilizer_text_checks.push({engine,width,text_scale:1.25,dari_characters:longDari.length,status:'PASS'});
+      report.fertilizer_text_checks.push({engine,width,text_scale:1.25,dari_characters:longDari.length,font_change_without_viewport_resize:true,geometry:expandedDari,status:expandedDari.scroll <= expandedDari.client + 2 ? 'PASS' : 'FAIL'});
+      assert.ok(expandedDari.scroll <= expandedDari.client + 2, `Scaled Dari remains fully expanded without viewport resize at ${width}px: ${JSON.stringify(expandedDari)}`);
+      await screenshot(page, engine, 'fertilizer-review-enhanced-text', width, '125% text size and complete long Dari; presentation stress only, no fixture injection');
       await go(page, 'fertilizer-edit');
     }
     await page.setViewportSize({ width: 390, height: 844 });
