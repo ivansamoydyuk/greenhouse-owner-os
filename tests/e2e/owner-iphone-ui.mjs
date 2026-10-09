@@ -260,6 +260,9 @@ try {
   const preparedTasks = sourceTasks((await api(owner + '/confirmations')).items, source.id);
   assert.equal(preparedTasks.filter(p => p.revision.payload.original_instruction.startsWith('Сегодня полить')).length, 2, 'Both repeated source task slots survive');
   assert.equal(preparedTasks.filter(p => p.revision.payload.original_instruction.includes('Проверить давление')).length, 1, 'Pressure instruction survives independently');
+  const pressure = preparedTasks.find(p => p.revision.payload.original_instruction.includes('Проверить давление'));
+  assert.equal(pressure.revision.payload.worker_id ?? null, null, 'A generic TEST marker never identifies the synthetic worker');
+  assert.equal(pressure.revision.payload.language ?? null, null, 'Unknown worker identity never supplies a worker language');
   assert.equal(preparedTasks.filter(p => p.revision.payload.original_instruction.startsWith('Сверить каждую строку')).length, 4, 'Every explicit sibling instruction survives');
   // Isolate summary rendering from parser slot ordering. The normal TEST
   // revision path provides a repeated long title; source text stays immutable.

@@ -2,7 +2,7 @@
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from .preparation_language import corrected, date_value, entity_matches, fold, value, nonfinancial_modal, meta_or_report
+from .preparation_language import corrected, date_value, entity_matches, explicit_entity_mentions, fold, value, nonfinancial_modal, meta_or_report
 
 # Bounded verb forms: completed actions are intentionally absent.
 CATEGORIES={
@@ -20,7 +20,7 @@ CATEGORIES={
 def task_audience(raw, workers=()):
     t=fold(raw)
     if re.search(r'\b(?:для\s+меня|моя\s+задача|мне\s+(?:же\s+)?нужно|себе|я\s+(?:сам|завтра|сегодня))\b',t):return 'PERSONAL_TASK'
-    if entity_matches(raw,workers,'worker',inflect=True):return 'WORKER_TASK'
+    if explicit_entity_mentions(raw,workers,'worker',inflect=True):return 'WORKER_TASK'
     if nonfinancial_modal(t) and re.search(r'\b(?:он|она|один из)\b',t):return 'WORKER_TASK'
     if re.search(r'\b(?:работник\w*|брат(?:у|а)?|ребята|ты|вы|тебе|заедьте|езжайте|возьмите|пускай|пусть|берите|берешь|наливаешь|ставите|проходите)\b',t):return 'WORKER_TASK'
     # A named subject of a future third-person instruction remains a worker
@@ -62,7 +62,7 @@ def extract_task(raw,*,areas=(),workers=(),today=None):
     if re.search(r'(част[ьи]|верх|низ|средн)',t):gaps.append('Часть теплицы требует выбора из текущего справочника')
     # A person receiving help is not the grammatical assignee.
     subject=re.split(r'(?i)\b(?:помочь|помогать)\b',semantic)[0]
-    matches=entity_matches(subject,workers,'worker',inflect=True) if subject!=semantic else entity_matches(semantic,workers,'worker',inflect=True)
+    matches=entity_matches(subject,workers,'worker',inflect=True,require_explicit=True) if subject!=semantic else entity_matches(semantic,workers,'worker',inflect=True,require_explicit=True)
     if re.search(r'\bдля\s+меня\b',t):matches=[]
     f['suggested_worker_ids']=[str(value(matches[0],'id'))] if len(matches)==1 else []
     if len(matches)!=1:gaps.append('Выберите работников; неизвестное или неоднозначное имя не назначено')

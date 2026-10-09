@@ -47,7 +47,7 @@ def names(row, kind='name'):
     return [n for n in raw if n]
 
 
-def entity_matches(raw, refs, kind='name', *, inflect=False):
+def _entity_match_groups(raw, refs, kind='name', *, inflect=False):
     t=re.sub(r'\s+',' ',name_key(raw));exact=[];partial=[];qualified_spans=[]
     def positive(m):
         return not re.search(r'\bне\s+(?:(?:из|в|на|с|со)\s+)?$',t[max(0,m.start()-12):m.start()])
@@ -73,7 +73,22 @@ def entity_matches(raw, refs, kind='name', *, inflect=False):
         elif short:partial.append((row,short))
     # A qualified name suppresses only competing prefix matches at that same
     # mention. It must not erase a different person elsewhere in the sentence.
-    return exact+[row for row,spans in partial if any(not any(a<=start and end<=b for a,b in qualified_spans) for start,end in spans)]
+    unresolved=[row for row,spans in partial if any(not any(a<=start and end<=b for a,b in qualified_spans) for start,end in spans)]
+    return exact,unresolved
+
+
+def explicit_entity_mentions(raw, refs, kind='name', *, inflect=False):
+    """Audience evidence only; this list never resolves a sole assignee."""
+    return _entity_match_groups(raw,refs,kind,inflect=inflect)[0]
+
+
+def entity_matches(raw, refs, kind='name', *, inflect=False, require_explicit=False):
+    exact,unresolved=_entity_match_groups(raw,refs,kind,inflect=inflect)
+    # Candidate prefixes can explain ambiguity but are not registered aliases.
+    # An uncovered partial mention also prevents an unrelated exact match from
+    # silently becoming the sole identity in a multi-person instruction.
+    if require_explicit:return [] if unresolved else exact
+    return exact+unresolved
 
 
 SMALL={'ноль':0,'один':1,'одна':1,'одно':1,'одну':1,'два':2,'две':2,'три':3,'четыре':4,'пять':5,'шесть':6,'семь':7,'восемь':8,'девять':9,'десять':10,'одиннадцать':11,'двенадцать':12,'тринадцать':13,'четырнадцать':14,'пятнадцать':15,'шестнадцать':16,'семнадцать':17,'восемнадцать':18,'девятнадцать':19,'двадцать':20,'тридцать':30,'сорок':40,'пятьдесят':50,'шестьдесят':60,'семьдесят':70,'восемьдесят':80,'девяносто':90,'сто':100,'двести':200,'триста':300,'четыреста':400,'пятьсот':500,'шестьсот':600,'семьсот':700,'восемьсот':800,'девятьсот':900}
