@@ -42,6 +42,7 @@ test('CURRENT topology preserves four Imamli parts and distinct canonical refere
   }
   const state = fresh(), record = startFertilizerDraft(state, 'kno3'); dose(state, record, '10');
   assert.equal(record.areaMode, 'reference');
+  set(state, record, 'part', true, { groupId: 'mix-1', partId: 'demo-reference-imamli-1' });
   assert.equal(calculateFertilizer(state, record).needs[0].quantity, '50');
   assert.match(calculateFertilizer(state, record).warnings.join(' '), /схема полива/);
   assert.equal(calculateFertilizer(state, record).calculable, true);
@@ -213,7 +214,7 @@ test('DOM event adapter uses the same model, preserves text focus on input, hand
   assert.deepEqual(handleFertilizerEvent(state, { type: 'click', target: { closest: () => null } }), { handled: false });
 });
 
-test('DOM test IDs are unique and compact builder puts the selected product before parameters', () => {
+test('DOM test IDs are unique and greenhouse, recipient and explicit scope precede components', () => {
   const { state, record } = example(); addThree(state, record); set(state, record, 'allParts', true, { groupId: 'mix-1' });
   for (const stage of ['edit', 'review']) {
     const html = renderFertilizer(state, record.id, stage);
@@ -221,7 +222,9 @@ test('DOM test IDs are unique and compact builder puts the selected product befo
     assert.equal(new Set(ids).size, ids.length, `Unique actionable test IDs in ${stage}`);
   }
   const html = renderFertilizer(state, record.id);
-  assert.ok(html.indexOf('fertilizer-dose-component-1') < html.indexOf('fertilizer-greenhouse'));
+  for (const context of ['fertilizer-greenhouse', 'fertilizer-auto-worker', 'fertilizer-part-mix-1-p1']) {
+    assert.ok(html.indexOf(context) >= 0 && html.indexOf(context) < html.indexOf('fertilizer-dose-component-1'), `${context} is available before dosing`);
+  }
   assert.throws(() => addFertilizerComponent(state, record.id, 'mix-1', 'missing-stock-id'), /не найдено/);
 });
 
@@ -266,4 +269,132 @@ test('shared unknown physical mapping warning is displayed once with all affecte
   assert.equal((html.match(/схема полива \/ бочка неизвестны/g) || []).length, 1, 'Common warning is concise');
   for (const warning of mappingWarnings) assert.ok(html.includes(warning.split(':')[0]));
   assert.equal((html.match(/Полив неизвестен/g) || []).length, 4, 'Each calculated part still shows UNKNOWN');
+});
+
+test('new stock draft has zero owner-selected parts and cannot turn entered doses into a scoped total', () => {
+  const state = fresh(), before = ledger(state), record = startFertilizerDraft(state, 'kno3');
+  const source = structuredClone(record.source);
+  assert.deepEqual(record.groups[0].partIds, []);
+  dose(state, record, '3');
+  const result = calculateFertilizer(state, record);
+  assert.equal(result.calculable, false); assert.equal(result.totalAreaDa, null); assert.deepEqual(result.needs, []);
+  assert.match(result.issues.join(' '), /выберите части/i);
+  assert.match(renderFertilizer(state, record.id), /Выберите части/);
+  reviewed(state, record); assert.throws(() => confirmFertilizer(state, record.id, record.revision), /выберите части/i);
+  const storage = { value: null, getItem() { return this.value; }, setItem(key, value) { this.value = value; } };
+  assert.equal(persist(storage, state), true);
+  const loaded = loadState(storage), reopened = startFertilizerDraft(loaded, 'kno3');
+  assert.equal(reopened.id, record.id); assert.equal(loaded.fertilizer.records.length, 1);
+  assert.deepEqual(reopened.groups[0].partIds, []); assert.equal(reopened.groups[0].components[0].dosePerDa, '3');
+  assert.deepEqual(reopened.source, source); assert.deepEqual(ledger(loaded), before);
+});
+
+test('CURRENT four 5da parts with 3kg/2L/1kg per da conserve one, two, all and every-part quantities', () => {
+  const state = fresh(), record = startFertilizerDraft(state, 'kno3');
+  addThree(state, record);
+  ['3', '2', '1'].forEach((value, i) => dose(state, record, value, record.groups[0].components[i]));
+  for (const [partIds, totals, area] of [
+    [['demo-reference-imamli-1'], ['15', '10', '5'], '5'],
+    [['demo-reference-imamli-1', 'demo-reference-imamli-2'], ['30', '20', '10'], '10'],
+    [fertilizerParts('imamli').map(part => part.id), ['60', '40', '20'], '20'],
+  ]) {
+    for (const partId of partIds) set(state, record, 'part', true, { groupId: 'mix-1', partId });
+    const result = calculateFertilizer(state, record);
+    assert.deepEqual(result.needs.map(need => need.quantity), totals); assert.equal(result.totalAreaDa, area);
+    assert.deepEqual(result.needs.map(need => need.unit), ['kg', 'L', 'kg']);
+    assert.ok(result.needs.every(need => need.stockStatus === 'sufficient'));
+    assert.equal(result.groups[0].parts.length, partIds.length);
+    for (const part of result.groups[0].parts) {
+      assert.equal(part.areaDa, '5');
+      assert.deepEqual(part.components.map(item => item.quantity), ['15', '10', '5']);
+      assert.deepEqual(part.components.map(item => item.dosePerDa), ['3', '2', '1']);
+      assert.equal(part.barrelGroupId, null); assert.equal(part.irrigationGroupId, null);
+    }
+  }
+  const reopened = startFertilizerDraft(state, 'kno3');
+  assert.equal(reopened.id, record.id); assert.deepEqual(reopened.groups[0].partIds, fertilizerParts('imamli').map(part => part.id));
+});
+
+test('greenhouse and library changes clear scope and overrides while preserving meaningful doses and original source', () => {
+  const state = fresh(), record = startFertilizerDraft(state, 'kno3'); addThree(state, record);
+  const source = structuredClone(record.source), components = record.groups[0].components.map(item => ({ stockId: item.stockId, original: structuredClone(item.original), dose: item.dosePerDa, unit: item.unit }));
+  for (const [field, value, worker] of [['greenhouseId', 'yesiloz', 'umar'], ['areaMode', 'synthetic', 'umar'], ['areaMode', 'unknown', 'umar']]) {
+    set(state, record, 'allParts', true, { groupId: 'mix-1' });
+    set(state, record, 'override', '2.25', { groupId: 'mix-1', componentId: 'component-1', partId: record.groups[0].partIds[0] });
+    reviewed(state, record); set(state, record, field, value);
+    assert.deepEqual(record.groups[0].partIds, []);
+    assert.deepEqual(record.groups[0].components[0].overrides, {});
+    assert.deepEqual(record.groups[0].components.map(item => ({ stockId: item.stockId, original: item.original, dose: item.dosePerDa, unit: item.unit })), components);
+    assert.deepEqual(record.source, source); assert.equal(responsibleWorker(state, record.greenhouseId).id, worker);
+    assert.equal(record.ownerReviewed, false); assert.equal(record.dariReviewed, false); assert.equal(record.warningsReviewed, false);
+    assert.match(renderFertilizer(state, record.id), /fertilizer-context-reset/);
+  }
+});
+
+test('dose, scope, instruction, Dari, date and recipient corrections each revoke previous review authority', () => {
+  const changes = [
+    ['dosePerDa', '2', { groupId: 'mix-1', componentId: 'component-1' }],
+    ['part', true, { groupId: 'mix-1', partId: 'p2' }],
+    ['instruction', 'Не объединять части; каждую выполнить отдельно.'],
+    ['dari', 'هر بخش جدا؛ این متن تغییر کرده و هنوز بررسی نشده است.'],
+    ['date', '2026-10-10'],
+    ['workerOverrideId', 'umar'],
+  ];
+  for (const [field, value, context] of changes) {
+    const { state, record } = example(); dose(state, record, '1'); reviewed(state, record);
+    const revision = record.revision, source = structuredClone(record.source);
+    set(state, record, field, value, context);
+    assert.ok(record.revision > revision, field);
+    for (const flag of ['ownerReviewed', 'dariReviewed', 'warningsReviewed']) assert.equal(record[flag], false, `${field} revokes ${flag}`);
+    assert.throws(() => confirmFertilizer(state, record.id, revision), /Карточка изменилась/, field);
+    assert.throws(() => confirmFertilizer(state, record.id, record.revision), undefined, `${field} cannot confirm without a new complete review`);
+    assert.deepEqual(record.source, source); assert.equal(record.status, 'draft');
+  }
+});
+
+test('editor keeps optional formulas and source in secondary disclosure while full review retains every selected part', () => {
+  const state = fresh(), record = startFertilizerDraft(state, 'kno3'); addThree(state, record);
+  set(state, record, 'allParts', true, { groupId: 'mix-1' });
+  const instruction = 'Каждая часть отдельно. Не отправлять. Длинный исходный текст сохраняется целиком. '.repeat(8);
+  const dari = 'هر بخش جدا است؛ KNO3 15 kg، Multilex 10 L، Atocrop 5 kg. ارسال نشود. '.repeat(12);
+  set(state, record, 'instruction', instruction); set(state, record, 'dari', dari);
+  const editor = renderFertilizer(state, record.id), review = renderFertilizer(state, record.id, 'review');
+  assert.match(editor, /<details[^>]*data-testid="fertilizer-part-details"/);
+  assert.match(editor, /<details[^>]*data-testid="fertilizer-library-details"/);
+  assert.match(editor, /<details[^>]*data-testid="fertilizer-source-details"/);
+  assert.ok(editor.indexOf('fertilizer-total-kno3') < editor.indexOf('fertilizer-part-details'), 'Compact total precedes optional detailed formulas');
+  assert.ok(review.includes(instruction.trim())); assert.ok(review.includes(dari.trim()));
+  for (const part of fertilizerParts('imamli')) assert.match(review, new RegExp(`worker-part-mix-1-${part.id}`));
+  assert.match(review, /lang="fa" dir="rtl"/); assert.match(review, /Автоперевода нет/);
+});
+
+test('compact review keeps known synthetic irrigation and barrel mappings; confirmed task retains every source', () => {
+  const { state, record } = example(); addThree(state, record); set(state, record, 'allParts', true, { groupId: 'mix-1' });
+  for (const stage of ['review', 'task']) {
+    if (stage === 'task') { reviewed(state, record); confirmFertilizer(state, record.id, record.revision); }
+    const html = renderFertilizer(state, record.id, stage);
+    for (const part of ['1', '2', '3']) {
+      const card = html.match(new RegExp(`data-testid="worker-part-mix-1-p${part}">([\\s\\S]*?)</article>`))?.[1];
+      assert.ok(card, `${stage}: part ${part} retained`);
+      assert.match(card, new RegExp(`Полив ${part}`)); assert.match(card, new RegExp(`Бочка ${part}`));
+      if (stage === 'task') { assert.match(card, /Источник: İmamlı/); assert.match(card, /Источник: DEMO центральный склад/); }
+    }
+  }
+});
+
+test('same-name product from different stocks remains unambiguously mapped to each disjoint review part', () => {
+  const { state, record } = example(); dose(state, record, '1');
+  addFertilizerGroup(state, record.id); addFertilizerComponent(state, record.id, 'mix-2', 'kno3-sun');
+  dose(state, record, '2', record.groups[1].components[0], record.groups[1]);
+  set(state, record, 'part', true, { groupId: 'mix-2', partId: 'p2' });
+  const result = calculateFertilizer(state, record); assert.equal(result.overlapping, false);
+  assert.deepEqual(result.needs.map(need => [need.stockId, need.quantity]), [['kno3', '5'], ['kno3-sun', '10']]);
+  for (const stage of ['review', 'task']) {
+    if (stage === 'task') { reviewed(state, record); confirmFertilizer(state, record.id, record.revision); }
+    const html = renderFertilizer(state, record.id, stage);
+    for (const [group, part, location] of [['mix-1', 'p1', 'İmamlı'], ['mix-2', 'p2', 'Özvadi']]) {
+      const card = html.match(new RegExp(`data-testid="worker-part-${group}-${part}">([\\s\\S]*?)</article>`))?.[1];
+      assert.ok(card, `${stage}: ${group}/${part}`); assert.match(card, new RegExp(`Источник: ${location}`));
+    }
+  }
 });

@@ -1794,3 +1794,71 @@ main { padding-bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
 .fertilizer-builder .component-overrides[open] .field { margin-block: 8px; }
 .fertilizer-builder .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .fertilizer-builder .mix-component .input { margin-top: 0; }
+
+/* Bounded fertilizer editor/review correction. Other R3 screens retain their styling. */
+.fertilizer-builder .card, .fertilizer-review .card { padding: 16px; }
+.fertilizer-builder h2, .fertilizer-review h2 { font-size: 18px; line-height: 1.35; }
+.fertilizer-builder .card-header { margin-bottom: 4px; }
+.fertilizer-builder .note, .fertilizer-review .note { margin: 8px 0; }
+.fertilizer-builder .source-details, .fertilizer-review .source-details { margin-block: 4px; }
+.fertilizer-builder .source-details p, .fertilizer-review .source-details p { padding: 0; font-size: 13px; }
+.fertilizer-builder summary, .fertilizer-review summary { font-size: 14px; line-height: 1.45; }
+.fertilizer-builder .fertilizer-secondary { border-bottom: 1px solid var(--line); padding-inline: 4px; }
+.fertilizer-builder .fertilizer-meta .form-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.fertilizer-builder .fertilizer-meta .field { margin: 0; min-width: 0; }
+.fertilizer-builder .fertilizer-meta .input { min-width: 0; padding-inline: 10px; }
+.fertilizer-builder .fertilizer-recipient { margin: 12px 0; font-size: 14px; line-height: 1.45; }
+.fertilizer-builder .fertilizer-recipient small { display: block; color: var(--muted); font-size: 13px; }
+.fertilizer-builder .selected-scope, .fertilizer-review .selected-scope { font-size: 14px; line-height: 1.4; }
+.fertilizer-builder .selected-scope span, .fertilizer-review .selected-scope span { display: block; margin-top: 4px; font-size: 13px; color: var(--muted); }
+.fertilizer-builder .part-selector { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 4px 0 8px; }
+.fertilizer-builder .part-selector legend { padding: 10px 0 6px; }
+.fertilizer-builder .part-chip { min-height: 48px; padding: 8px 10px; font-size: 14px; }
+.fertilizer-builder .part-chip small { font-size: 13px; margin-top: 2px; }
+.fertilizer-builder .part-chip.all-parts { grid-column: 1 / -1; }
+.fertilizer-builder .mix-component { padding-block: 10px; gap: 6px 8px; }
+.fertilizer-builder .mix-component:last-child { border-bottom: 0; }
+.fertilizer-builder .component-product .input { padding-inline: 10px; }
+.fertilizer-builder .component-stock { margin: 0; }
+.fertilizer-builder .dose-control { min-height: 48px; }
+.fertilizer-builder .component-overrides summary { min-height: 48px; padding-block: 12px; font-size: 14px; }
+.fertilizer-builder .component-overrides[open] .field { margin-block: 8px; }
+.fertilizer-builder .mixture-card > .btn { margin-top: 6px; }
+.fertilizer-builder .fertilizer-totals, .fertilizer-review .fertilizer-totals { margin-block: 12px; }
+.fertilizer-builder .fertilizer-total-line, .fertilizer-review .fertilizer-total-line { padding: 8px 0; border-bottom: 1px solid #d1dfd0; font-size: 14px; }
+.fertilizer-builder .fertilizer-total-line .summary-pair, .fertilizer-review .fertilizer-total-line .summary-pair { gap: 10px; }
+.fertilizer-builder .stock-status, .fertilizer-review .stock-status { font-size: 13px; color: var(--green); }
+.fertilizer-builder .unknown-status, .fertilizer-review .unknown-status { color: #805a17; font-weight: 650; }
+.fertilizer-builder .totals-footnote, .fertilizer-review .totals-footnote { margin-bottom: 0; }
+.fertilizer-builder .calculation-group h3, .fertilizer-review .calculation-group h3 { font-size: 14px; margin: 10px 0 6px; line-height: 1.45; }
+.fertilizer-builder .part-calculation, .fertilizer-review .part-calculation { margin: 8px 0; padding: 10px 12px; }
+.fertilizer-builder .part-calculation .summary-pair, .fertilizer-review .part-calculation .summary-pair { font-size: 14px; gap: 8px; }
+.fertilizer-builder .calculation-line, .fertilizer-review .calculation-line { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 4px 8px; padding: 5px 0; font-size: 14px; }
+.fertilizer-builder .calculation-line > span, .fertilizer-review .calculation-line > span { text-align: right; }
+.fertilizer-builder .calculation-line small, .fertilizer-review .calculation-line small { display: block; font-size: 13px; font-weight: 400; line-height: 1.35; }
+.fertilizer-builder .calculation-line b, .fertilizer-review .calculation-line b { font-size: 16px; }
+.fertilizer-builder .override-mark, .fertilizer-review .override-mark { color: #805a17; }
+.fertilizer-review .fertilizer-review-context .selected-scope { margin-top: 8px; }
+.fertilizer-review .fertilizer-language .original-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.fertilizer-review .fertilizer-language > h2:not(:first-child) { margin-top: 14px; }
+.fertilizer-review .fertilizer-comparison { margin: 8px 0; padding: 0 10px 8px; border: 1px solid var(--line); border-radius: 12px; background: #f6f8f2; }
+.fertilizer-review .comparison-group { font-size: 13px; line-height: 1.45; }
+.fertilizer-review .comparison-part { padding-block: 4px; }
+.fertilizer-review .comparison-part > span { color: var(--muted); }
+.fertilizer-review .comparison-part p { margin: 1px 0; font-size: 14px; }
+.fertilizer-review .review-check { min-height: 48px; margin: 8px 0; font-size: 14px; line-height: 1.4; }
+.fertilizer-builder textarea.fertilizer-autogrow, .fertilizer-review textarea.fertilizer-autogrow { display: block; overflow: hidden; resize: none; min-height: 110px; max-height: none; box-sizing: border-box; }
+.fertilizer-review textarea.translation { font-size: 21px; line-height: 1.8; padding: 12px; }
+.fertilizer-builder .fertilizer-actions, .fertilizer-review .fertilizer-actions { margin-top: 12px; }
+.fertilizer-builder .notice ul, .fertilizer-review .notice ul { margin: 6px 0; padding-left: 20px; }
+.fertilizer-builder .notice p, .fertilizer-review .notice p { margin: 6px 0 0; }
+@media (max-width: 350px) {
+  .fertilizer-builder .fertilizer-meta .form-grid { grid-template-columns: minmax(0,1fr); }
+  .fertilizer-builder .calculation-line, .fertilizer-review .calculation-line { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+}
+/* Compact primary review rows keep the same type sizes, all quantities and full formulas. */
+.fertilizer-review .fertilizer-packet .calculation-line > span { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 3px 6px; max-width: 190px; }
+.fertilizer-review .fertilizer-packet .calculation-line > strong { overflow-wrap: anywhere; }
+/* Leave headroom for the visible, unchecked-review reminder without reducing text or targets. */
+.fertilizer-review .fertilizer-packet .part-calculation { padding-block: 8px; margin-block: 6px; }
+.fertilizer-review .fertilizer-packet .calculation-line { padding-block: 3px; }

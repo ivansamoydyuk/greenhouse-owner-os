@@ -105,7 +105,7 @@ export function startFertilizerDraft(state, stockId) {
     id: `fertilizer-${store.nextId++}`, sourceStockId: stockId, source: clone(product), synthetic: true,
     status: 'draft', revision: 1, nextGroupId: 2, nextComponentId: 2,
     greenhouseId: product.greenhouseId || 'imamli', areaMode: 'reference', date: DEMO_TODAY,
-    groups: [{ id: 'mix-1', label: 'Смесь 1', partIds: [fertilizerParts(product.greenhouseId || 'imamli', 'reference')[0].id], components: [makeComponent(product, 'component-1')] }],
+    groups: [{ id: 'mix-1', label: 'Смесь 1', partIds: [], components: [makeComponent(product, 'component-1')] }],
     instruction: '', dari: '', dariReviewed: false, ownerReviewed: false, warningsReviewed: false,
     workerOverrideId: '', workerOverrideReason: '', history: [], confirmedPacket: null,
   };
