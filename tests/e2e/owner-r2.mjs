@@ -85,4 +85,10 @@ try{
  for(const width of [320,390,768,1280]){await page.setViewportSize({width,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.equal(await page.locator('#owner-capture-bar').isVisible(),true);await page.evaluate(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));for(const button of document.querySelectorAll('#nav button,#owner-capture-bar button')){const box=button.getBoundingClientRect();if(box.width<44||box.height<44||box.left<0||box.right>innerWidth+1)throw Error('Owner touch target outside viewport or smaller than 44px');}});await page.screenshot({path:`${process.env.E2E_ARTIFACTS||'artifacts'}/owner-r2-${width}.png`,fullPage:true});await navigateOwner(page,'review');assert.equal(await page.evaluate(()=>document.querySelector('#sheet').scrollWidth<=document.querySelector('#sheet').clientWidth),true);await close();}
  assert.deepEqual((await api('/home')).finance.balances,before.finance.balances);assert.deepEqual(errors,[]);
  console.log('PASS R2 source-first, personal task revision/defer/confirm/done, unreadable photo/reject, offline retry, compact payment/unknown-cost stock/real Gorgun OCR confirmation, actual PDF picker/original/OCR/independent invoice review, responsive 320/390/768/1280');
+}catch(error){
+ const artifacts=process.env.E2E_ARTIFACTS||'artifacts';await fs.mkdir(artifacts,{recursive:true});
+ await page.screenshot({path:artifacts+'/owner-r2-failure.png',fullPage:true}).catch(()=>{});
+ await fs.writeFile(artifacts+'/owner-r2-failure.html',await page.content());
+ await fs.writeFile(artifacts+'/owner-r2-failure-errors.json',JSON.stringify({message:error.message,pageErrors:errors},null,2));
+ throw error;
 }finally{await browser.close();}

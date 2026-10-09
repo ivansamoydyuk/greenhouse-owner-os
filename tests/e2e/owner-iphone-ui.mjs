@@ -513,6 +513,8 @@ try {
     screenshots, fixtures, immutableOriginalSources: true, financeUnchanged: true, stockUnchanged: true, harvestUnchanged: true, errors}, null, 2));
   console.log('PASS automated iPhone UX regression: one-tap speech stack/fallback/transcript fencing, mode preservation, compact tasks, Russian dates under uk-UA, native selectors, sticky modal controls, simulated keyboard, 320/390/768/1280, unchanged independent domains and original sources. Physical iPhone/Safari acceptance remains separate.');
 } catch (error) {
+  await fs.writeFile(`${artifacts}/owner-iphone-failure.html`, await page.content());
+  await fs.writeFile(`${artifacts}/owner-iphone-failure-console.json`, JSON.stringify({message: String(error), errors}, null, 2));
   await page.screenshot({path: `${artifacts}/owner-iphone-failure.png`, fullPage: true}).catch(() => {});
   await fs.writeFile(`${artifacts}/owner-iphone-ui-failure.json`, JSON.stringify({ok: false, error: String(error),
     automatedSimulationOnly: true, physicalIphoneAcceptance: false, screenshots, errors}, null, 2));

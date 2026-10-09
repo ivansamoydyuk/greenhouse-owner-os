@@ -381,6 +381,8 @@ try {
   await fs.writeFile(`${artifacts}/owner-modern-ui.json`, JSON.stringify({ok: true, widths: [320, 390, 768, 1280], screenshots, presentationStress: {synthetic: true, amount: stress.amount, display: stress.display, databaseAmountsChanged: false, widths: [320, 390, 768, 1280]}, fixtureIds: {task: fixtures.task.id, harvest: fixtures.harvest.id, inventoryDraft: fixtures.inventory.id, proposals: fixtures.proposals}, financeUnchanged: true, stockUnchanged: true, errors}, null, 2));
   console.log('PASS modern owner UI: four-route navigation + More + history/reload, source-first photo/text/PDF previews, queue, operational modules, 320/390/768/1280, 44px named controls, dock clearance, scrollable dialogs, Escape/focus, loading/error recovery, unchanged Finance/stock');
 } catch (error) {
+  await fs.writeFile(`${artifacts}/owner-modern-failure.html`, await page.content());
+  await fs.writeFile(`${artifacts}/owner-modern-failure-console.json`, JSON.stringify({message: String(error), errors}, null, 2));
   await page.screenshot({path: `${artifacts}/owner-modern-failure.png`, fullPage: true}).catch(() => {});
   throw error;
 } finally {await browser.close();}
