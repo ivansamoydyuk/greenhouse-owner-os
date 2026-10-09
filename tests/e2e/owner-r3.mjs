@@ -173,12 +173,22 @@ async function main(browser,engine){
     await click(page,'nav-more');await click(page,'more-inventory');await click(page,'stock-kno3');await click(page,'stock-movements');await page.getByRole('heading',{name:'Движения',exact:true}).waitFor();assert.match(await page.locator('#main').innerText(),/Физический приход/);
   });
   await journey(browser,'8. Home → tasks → TEST worker → reviewed assignment',async page=>{
-    await click(page,'nav-tasks');await click(page,'tasks-workers');await click(page,'worker-muhammed');await click(page,'assign-open');
+    await click(page,'nav-tasks');await click(page,'tasks-workers');await click(page,'worker-muhammed');await click(page,'assign-open');assert.equal(await page.locator('.dock').count(),0,'Assignment opens as a focused page');assert.equal(await page.getByTestId('back').isVisible(),true);
     await click(page,'choose-worker');await click(page,'worker-option-muhammed');
     await page.getByTestId('assignment-confirm').waitFor();
     assert.match(await page.locator('#main').innerText(),/Не включать насос/);assert.match(await page.locator('.translation').innerText(),/پمپ را روشن نکنید/);
     assert.equal(await page.evaluate(()=>window.r3Demo.state().workerTask.translationReviewed),false,'Review is never automatically marked');
-    assert.match(await page.getByTestId('assignment-confirm').innerText(),/Проверил текст/);await screenshot(page,'chromium','state-assignment-before-confirmation',390,'Reviewed assignment before confirmation');await click(page,'assignment-confirm');
+    assert.match(await page.getByTestId('assignment-confirm').innerText(),/Проверил текст/);
+    assert.equal(await page.locator('.dock').count(),0,'Focused assignment hides capture/navigation dock');
+    for(const height of [844,460]){
+      await page.setViewportSize({width:390,height});
+      await page.getByTestId('back').evaluate(el=>el.scrollIntoView({block:'center'}));
+      assert.equal(await page.getByTestId('back').evaluate(el=>{const b=el.getBoundingClientRect();return b.top>=0&&b.bottom<=visualViewport.height;}),true,'Back remains reachable on focused assignment');
+      await page.getByTestId('assignment-confirm').evaluate(el=>el.scrollIntoView({block:'center'}));
+      assert.equal(await page.getByTestId('assignment-confirm').evaluate(el=>{const b=el.getBoundingClientRect(),hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return b.top>=0&&b.bottom<=visualViewport.height&&b.left>=0&&b.right<=visualViewport.width&&(hit===el||el.contains(hit));}),true,'Assignment CTA is fully inside visual viewport without overlay');
+      if(height===460)await screenshot(page,'chromium','state-assignment-reduced-height',390,'Focused assignment at reduced-height keyboard proxy');
+    }
+    await page.setViewportSize({width:390,height:844});await screenshot(page,'chromium','state-assignment-before-confirmation',390,'Focused reviewed assignment before confirmation');await click(page,'assignment-confirm');
     assert.match(await page.locator('#main').innerText(),/назначено|Назначено/);
   });
   try{await interruptions(browser);}catch(error){recordFailure('Interruption and regression checks',error);}

@@ -364,7 +364,7 @@ function settings() {
 function render({ focus = false } = {}) {
   const parts = route.split("/"),
     page = parts[0],
-    focused = page === "capture";
+    focused = page === "capture" || page === "assignment";
   let html;
   switch (page) {
     case "home":
