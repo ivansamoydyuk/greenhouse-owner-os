@@ -1522,3 +1522,9 @@ button[disabled] {
     padding: 16px;
   }
 }
+/* Capture actions share the available mobile width without min-content overflow. */
+.capture-bar .capture-button {
+  min-width: 0;
+  flex: 1 1 0;
+  padding-inline: 8px;
+}
