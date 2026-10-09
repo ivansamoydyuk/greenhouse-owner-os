@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {chromium,webkit} from 'playwright';
 import fs from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {runDailyJourneys} from './owner-r3-daily.mjs';
 
@@ -568,7 +569,7 @@ try{
     const browser=await type.launch({headless:true});
     try{await main(browser,engine);}finally{await browser.close();}
   }
-  assert.equal(report.daily_journeys.length,20,'Ten additive daily journeys in both engines');
+  assert.equal(report.daily_journeys.length,22,'Eleven additive daily journeys in both engines');
   assert.ok(report.daily_journeys.every(item=>item.status==='PASS'),'All daily journeys pass');
   assert.equal(report.daily_layout_checks.length,98,'Seven daily pages by seven widths by two engines');
   assert.equal(report.journeys.length,8);
@@ -593,11 +594,18 @@ try{
   process.exitCode=1;
 }finally{
   report.finished_at=new Date().toISOString();
-  await fs.writeFile(path.join(artifacts,'daily-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Trusted DOM clicks from Home, with explicit radial expansion counted. Both engines, ten additive daily journeys, 98 daily screen/width cases.',journeys:report.daily_journeys,layouts:report.daily_layout_checks},null,2)+'\n');
+  await fs.writeFile(path.join(artifacts,'daily-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Trusted DOM clicks from Home, with explicit radial expansion counted. Both engines, eleven additive daily journeys, 98 daily screen/width cases.',journeys:report.daily_journeys,layouts:report.daily_layout_checks},null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'browser-report.json'),JSON.stringify(report,null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Trusted DOM click events from Home, visible form entry events, actual manual field changes. Dropdown selection uses actual keyboard Home/Arrow/Enter events listed separately. Native file chooser/keyboard tap costs are unmeasured. Photo journey3 explicitly uses the prepared synthetic-source button; real file attachment is covered separately without claiming picker-tap counts.',journeys:report.journeys},null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'correction-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Ten additional trusted browser journeys in each engine. Source/current coherence, each stock/depot fact sheet, separate photo caption, both explicit contradiction resolutions, zero-entry Serkan/tomorrow recovery, compact Home worker signal, saved-task correction/prose guard/DONE/restore, and replaced/cleared conflict captions. Original eight Chromium journeys are retained separately.',journeys:report.correction_journeys},null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'money-regressions.json'),JSON.stringify({feature_sha:expectedSha,method:'Actual per-character Range glyph geometry. Every digit stays on one line inside its card/viewport; TRY remains visible and unclipped. Exact displayed values are compared with current demo state. Digits >=20px and currency >=12px. Intended and system-ui fallback stacks, normal and large values, Home and Finance, 320/390/700/768/820/900/1280, Chromium and WebKit.',cases:report.money_regressions},null,2)+'\n');
+  const artifactFiles=await fs.readdir(artifacts), manifest=[];
+  for(const file of artifactFiles.filter(f=>/\.(png|json|txt)$/.test(f)&&f!=='evidence-manifest.json')){
+    const bytes=await fs.readFile(path.join(artifacts,file));
+    manifest.push({file,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),part:file.endsWith('.png')?(file.includes('-daily-')?'daily':file.startsWith('chromium-')?'chromium-core':file.startsWith('webkit-')?'webkit-core':'metadata'):'metadata'});
+  }
+  await fs.writeFile(path.join(artifacts,'evidence-manifest.json'),JSON.stringify({feature_sha:expectedSha,parts:['chromium-core','webkit-core','daily','metadata'],files:manifest},null,2)+'\n');
+  for(const part of ['chromium-core','webkit-core','daily','metadata'])assert.ok(manifest.filter(f=>f.part===part).reduce((n,f)=>n+f.bytes,0)<25*1024*1024,`Evidence ${part} must fit the supported artifact transfer limit`);
   console.log(`R3 browser ${report.status}: ${report.screenshots.length} screenshots, ${report.journeys.length}/8 measured journeys, SHA ${expectedSha}`);
   console.log(`R3 correction evidence: ${report.correction_journeys.length}/20 added both-engine journeys; ${report.money_regressions.length}/112 money/font cases`);
   if(report.failure)console.error(report.failure.message);

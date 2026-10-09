@@ -61,15 +61,22 @@ let state = loadState(localStorage),
   inventoryQuery = "",
   lastRoute = route,
   captureAttempt = 0,
-  radialOpen = false;
+  radialOpen = false,
+  fileReadAttempt = 0,
+  unsavedCaptureId = null;
 const sheetDrafts = new Map();
 const app = document.querySelector("#app"),
   sheetRoot = document.querySelector("#sheet-root");
 const workerName = (id) =>
   state.workers.find((w) => w.id === id)?.name || "Не выбран";
 const save = () => {
-  if (!persist(localStorage, state))
-    toast("Память устройства недоступна. Не закрывайте страницу.");
+  const ok=persist(localStorage,state);
+  let warning=document.querySelector("#storage-warning");
+  if(!ok){
+    if(!warning){warning=document.createElement("aside");warning.id="storage-warning";warning.className="storage-warning";warning.setAttribute("role","alert");warning.dataset.testid="storage-warning";document.querySelector("#app").before(warning);}
+    warning.textContent="Не сохранено на устройстве. Изменения пока только в этой вкладке. Не закрывайте её; память браузера недоступна или переполнена.";
+  }else warning?.remove();
+  return ok;
 };
 function toast(t) {
   const el = document.querySelector("#toast");
@@ -146,12 +153,12 @@ function review() {
     .map(([v, l]) => FilterChip(l, v, f === v, "review"))
     .join(
       "",
-    )}</div>${list.length+dailyList.length ? `<div class="review-list">${dailyList.map(a=>`<section class="review-card"><span class="tag amber">Источник сохранён · DEMO</span><h2>${e(({expense:"Расход",harvest:"Полевой срез",payment:"Платёж",obligation:"Обязательство"})[a.kind]||"Действие")}</h2><p class="note">${e(a.input.purpose||a.kind)}</p>${link("Проверить",`daily/${a.id}`,"btn primary full",`review-${a.id}`)}</section>`).join("")}${list.map((p) => (p.status === "confirmed" ? `<section class="card"><span class="tag">Подтверждено в демо</span><h2 class="detail-title">${e(p.title)}</h2><p class="note">Только локальный demo-state.</p>${link("Исходник", `review/${p.id}`, "btn secondary")}</section>` : ReviewCard(p))).join("")}</div>` : EmptyState("Здесь пока пусто", f === "confirmed" ? "Подтверждённые демо-карточки появятся здесь." : "В этом разделе нет карточек на проверку.", btn("Показать все", "filter:review:all"))}`;
+    )}</div>${list.length+dailyList.length ? `<div class="review-list">${dailyList.map(a=>`<section class="review-card"><span class="tag amber">На проверке · DEMO</span><h2>${e(({expense:"Расход",harvest:"Полевой срез",payment:"Платёж",obligation:"Обязательство"})[a.kind]||"Действие")}</h2><p class="note">${e(a.input.purpose||a.kind)}</p>${link("Проверить",`daily/${a.id}`,"btn primary full",`review-${a.id}`)}</section>`).join("")}${list.map((p) => (p.status === "confirmed" ? `<section class="card"><span class="tag">Подтверждено в демо</span><h2 class="detail-title">${e(p.title)}</h2><p class="note">Только локальный demo-state.</p>${link("Исходник", `review/${p.id}`, "btn secondary")}</section>` : ReviewCard(p))).join("")}</div>` : EmptyState("Здесь пока пусто", f === "confirmed" ? "Подтверждённые демо-карточки появятся здесь." : "В этом разделе нет карточек на проверку.", btn("Показать все", "filter:review:all"))}`;
 }
 function sourceDetails(p) {
   const captures = state.sources.filter(s => s.id === p.id || s.proposalId === p.id);
   const file = captures.at(-1)?.file;
-  return `<section class="source-evidence"><span class="eyebrow">ОРИГИНАЛ</span><div class="source-original-layout"><p class="original-text" data-testid="source-original">${e(p.source)}</p>${p.image ? `<img class="source-document source-evidence-thumb" src="${e(p.image)}" alt="Источник: синтетический документ">` : ""}</div>${captures.filter(s => s.comment).map((s, i) => `<div class="owner-comment" data-testid="owner-comment"><span class="eyebrow">Комментарий владельца${i ? " · ещё один захват" : ""}</span><p>${e(s.comment)}</p></div>`).join("")}<details class="source-details"><summary>Исходник и история</summary>${p.sourceFacts?`<dl class="fact-list">${Object.entries(p.sourceFacts).filter(([k,v])=>v&&!["title","translation"].includes(k)).map(([k,v])=>fact(({place:"Теплица при вводе",when:"Когда при вводе",date:"Дата при вводе",worker:"ID выбранного работника"})[k]||k,v)).join("")}</dl>`:""}${file?.kind === "video" ? `<p class="notice">Видео-источник: ${e(file.name)}. Сохранён локально, анализ ИИ не выполнялся.</p>${file.fixture?videoPreview(file):`<div class="photo-preview">${videoPreview(file)}</div>`}` : ""}${file?.kind === "pdf" ? `<a class="btn secondary" href="${e(file.url)}" download="${e(file.name)}" data-testid="download-source-pdf">Скачать исходный PDF</a>` : ""}${p.image ? `<img class="source-full-document" src="${e(p.image)}" alt="Синтетический документ, исходник">` : ""}<p class="muted">Версия ${p.revision || 1}. Источник и комментарии сохранены отдельно, без изменений. Все записи здесь синтетические.</p></details></section>`;
+  return `<section class="source-evidence"><span class="eyebrow">ОРИГИНАЛ</span><div class="source-original-layout"><p class="original-text" data-testid="source-original">${e(p.source)}</p>${p.image ? `<img class="source-document source-evidence-thumb" src="${e(p.image)}" alt="Источник: синтетический документ">` : ""}</div>${captures.filter(s => s.comment).map((s, i) => `<div class="owner-comment" data-testid="owner-comment"><span class="eyebrow">Комментарий владельца${i ? " · ещё один захват" : ""}</span><p>${e(s.comment)}</p></div>`).join("")}<details class="source-details"><summary>Исходник и история</summary>${p.sourceFacts?`<dl class="fact-list">${Object.entries(p.sourceFacts).filter(([k,v])=>v&&!["title","translation"].includes(k)).map(([k,v])=>fact(({place:"Теплица при вводе",when:"Когда при вводе",date:"Дата при вводе",worker:"ID выбранного работника"})[k]||k,v)).join("")}</dl>`:""}${file?.kind === "video" ? `<p class="notice">Видео-источник: ${e(file.name)}. Удерживается в DEMO, анализ ИИ не выполнялся.</p>${file.fixture?videoPreview(file):`<div class="photo-preview">${videoPreview(file)}</div>`}` : ""}${file?.kind === "pdf" ? `<a class="btn secondary" href="${e(file.url)}" download="${e(file.name)}" data-testid="download-source-pdf">Скачать исходный PDF</a>` : ""}${p.image ? `<img class="source-full-document" src="${e(p.image)}" alt="Синтетический документ, исходник">` : ""}<p class="muted">Версия ${p.revision || 1}. Источник и комментарии сохранены отдельно, без изменений. Все записи здесь синтетические.</p></details></section>`;
 }
 function reviewDetail(id) {
   const p = state.proposals.find((x) => x.id === id);
@@ -199,6 +206,7 @@ function videoPreview(file) {
 }
 function selectCaptureMode(mode) {
   if(state.draft.mode===mode)return;
+  fileReadAttempt++;
   state.captureDrafts[state.draft.mode]=structuredClone(state.draft);
   state.draft=structuredClone(state.captureDrafts[mode]||{mode,text:"",comment:"",file:null,scenario:null});
   state.draft.mode=mode;
@@ -215,8 +223,8 @@ function capture(mode) {
     body = `<label class="capture-label" for="capture-input">Что нужно запомнить?</label><textarea id="capture-input" data-testid="capture-input" class="capture-input" placeholder="Например, что привезли или что нужно сделать…">${e(d.text)}</textarea><p class="note">Достаточно одного сообщения. Факты проверите в следующей карточке.</p>`;
   if (mode === "voice") body = voiceBody();
   if (mode === "photo")
-    body = `${d.file ? `<div class="photo-preview">${d.file.kind === "image" ? `<img src="${e(d.file.url)}" alt="Выбранный источник">` : `<section class="state">${icon("text")}<h2>Документ PDF</h2><p>Содержимое не распознаётся в этом прототипе.</p></section>`}<div class="file-name">${e(d.file.name)}</div></div>${btn("Выбрать другой", "clear-file", "text-button", "clear-file")}` : `<div class="file-buttons"><label class="file-label">${icon("camera")} Камера или изображение<input data-testid="photo-file" id="photo-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" capture="environment"></label><label class="file-label">${icon("text")} Выбрать PDF<input data-testid="pdf-file" id="pdf-file" type="file" accept="application/pdf"></label></div>`}<label class="field">Комментарий · необязательно<input class="input" data-testid="capture-comment" id="capture-comment" value="${e(d.comment)}" placeholder="Что важно на фото?"></label><p class="note">Ваш файл остаётся на устройстве. Для произвольного файла готовых ответов нет.</p>`;
-  if(mode === "video") body=`${d.file?.kind==="video"?`<div class="photo-preview">${videoPreview(d.file)}<div class="file-name">${e(d.file.name)}</div></div>${btn("Выбрать другой","clear-file","text-button","clear-file")}`:`<label class="file-label">${icon("video")} Выбрать видео<input id="video-file" data-testid="video-file" type="file" accept="video/mp4,video/webm,video/quicktime"></label>`}<label class="field">Комментарий · необязательно<input class="input" id="capture-comment" data-testid="capture-comment" value="${e(d.comment)}"></label><div class="notice amber">Только локальный DEMO-источник. ИИ не анализирует видео, OCR и видеообработки нет. Файл не отправляется на сервер.</div>`;
+    body = `${d.file ? `<div class="photo-preview">${d.file.kind === "image" ? `<img src="${e(d.file.url)}" alt="Выбранный источник">` : `<section class="state">${icon("text")}<h2>Документ PDF</h2><p>Содержимое не распознаётся в этом прототипе.</p></section>`}<div class="file-name">${e(d.file.name)}</div></div>${btn("Выбрать другой", "clear-file", "text-button", "clear-file")}` : `<p class="note">Локальный DEMO: один файл до 512 КБ. Большие изображения и документы здесь не сохраняются.</p><div class="file-buttons"><label class="file-label">${icon("camera")} Камера или изображение<input data-testid="photo-file" id="photo-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" capture="environment"></label><label class="file-label">${icon("text")} Выбрать PDF<input data-testid="pdf-file" id="pdf-file" type="file" accept="application/pdf"></label></div>`}<label class="field">Комментарий · необязательно<input class="input" data-testid="capture-comment" id="capture-comment" value="${e(d.comment)}" placeholder="Что важно на фото?"></label><p class="note">Ваш файл остаётся на устройстве. Для произвольного файла готовых ответов нет.</p>`;
+  if(mode === "video") body=`${d.file?.kind==="video"?`<div class="photo-preview">${videoPreview(d.file)}<div class="file-name">${e(d.file.name)}</div></div>${btn("Выбрать другой","clear-file","text-button","clear-file")}`:`<p class="note">Локальный DEMO: MP4 / WebM / MOV до 512 КБ. Для обычного видео с телефона используйте синтетический пример ниже. Совместимость кодека зависит от браузера.</p><label class="file-label">${icon("video")} Выбрать видео<input id="video-file" data-testid="video-file" type="file" accept="video/mp4,video/webm,video/quicktime"></label>`}<label class="field">Комментарий · необязательно<input class="input" id="capture-comment" data-testid="capture-comment" value="${e(d.comment)}"></label><div class="notice amber">Только локальный DEMO-источник. ИИ не анализирует видео, OCR и видеообработки нет. Файл не отправляется на сервер.</div>`;
   const saveButton =
     mode !== "voice" || d.text
       ? btn("Сохранить в демо", "capture-save", "primary full", "capture-save")
@@ -528,6 +536,8 @@ function navigate(to) {
   location.hash = to;
 }
 window.addEventListener("hashchange", () => {
+  fileReadAttempt++;
+  unsavedCaptureId=null;
   if (radialOpen) setRadial(false, { historyChange: false, focus: false });
   captureAttempt++;
   saving = false;
@@ -690,7 +700,11 @@ function stopVoice() {
     } catch {}
   }
 }
-async function captureSave() {
+async function captureSave(retry = false) {
+  if(unsavedCaptureId && retry){
+    if(!save()){saveError="Источник есть только в памяти вкладки. Запись на устройстве не удалась; повторите после освобождения памяти. Не закрывайте эту вкладку.";render();return;}
+    const id=unsavedCaptureId;unsavedCaptureId=null;saveError="";navigate("review/"+id);return;
+  }
   if (!state.draft.text.trim() && !state.draft.file) {
     toast("Добавьте текст или выберите источник.");
     document.querySelector("#capture-input")?.focus();
@@ -721,7 +735,7 @@ async function captureSave() {
   }
   const p = prepare(state);
   state.captureDrafts[state.draft.mode]=structuredClone(state.draft);
-  save();
+  if(!save()){unsavedCaptureId=p.id;saveError="Источник есть только в памяти вкладки. Запись на устройстве не удалась. Не закрывайте вкладку; после освобождения памяти повторите сохранение.";render();return;}
   navigate("review/" + p.id);
 }
 document.addEventListener("input", (ev) => {
@@ -770,21 +784,11 @@ document.addEventListener("change", async (ev) => {
   if (!["photo-file", "pdf-file", "video-file"].includes(el.id)) return;
   const f = el.files?.[0];
   if (!f) return;
-  const supported = [
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-    "application/pdf",
-    "video/mp4", "video/webm", "video/quicktime",
-  ].includes(f.type);
-  if (!supported) {
-    toast("Этот файл не удалось открыть. Выберите другое фото или PDF.");
-    return;
-  }
-  if (f.size > 5 * 1024 * 1024) {
-    toast("Для демо выберите файл меньше 5 МБ.");
-    return;
-  }
+  const allowed={"photo-file":["image/jpeg","image/png","image/webp"],"pdf-file":["application/pdf"],"video-file":["video/mp4","video/webm","video/quicktime"]};
+  const mediaName=el.id==="video-file"?"видео MP4, WebM или MOV":el.id==="pdf-file"?"документ PDF":"фото JPEG, PNG или WebP";
+  if(!allowed[el.id].includes(f.type)){toast(`Этот файл не удалось открыть. Выберите ${mediaName}.`);return;}
+  if(f.size>512*1024){toast("Для локального DEMO выберите файл до 512 КБ или синтетический пример. Большие файлы не сохраняются.");return;}
+  const originDraft=state.draft,originMode=state.draft.mode,attempt=++fileReadAttempt;
   try {
     const url = await new Promise((resolve, reject) => {
       const r = new FileReader();
@@ -792,6 +796,7 @@ document.addEventListener("change", async (ev) => {
       r.onerror = reject;
       r.readAsDataURL(f);
     });
+    if(attempt!==fileReadAttempt||state.draft!==originDraft||state.draft.mode!==originMode||route!=="capture/"+originMode)return;
     state.draft.file = {
       name: f.name,
       kind: f.type.startsWith("video/") ? "video" : f.type === "application/pdf" ? "pdf" : "image",
@@ -998,6 +1003,7 @@ document.addEventListener("click", async (ev) => {
     state.draft.scenario="video"; save();render();return;
   }
   if (action === "clear-file") {
+    fileReadAttempt++;
     state.draft.file = null;
     state.draft.scenario = null;
     save();
@@ -1005,10 +1011,11 @@ document.addEventListener("click", async (ev) => {
     return;
   }
   if (action === "capture-save" || action === "capture-retry") {
-    await captureSave();
+    await captureSave(action === "capture-retry");
     return;
   }
   if (action === "capture-edit") {
+    unsavedCaptureId=null;
     saveError = "";
     render();
     return;

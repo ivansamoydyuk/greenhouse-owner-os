@@ -1633,3 +1633,4 @@ main { padding-bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
 .radial-item:active { transform: translateX(var(--fan-x)) translateY(var(--fan-y)); }
 .radial-menu { pointer-events: none; }
 .radial-item { pointer-events: auto; }
+.storage-warning { max-width:1120px; margin:0 auto; padding:14px 18px; background:#faece9; border-bottom:1px solid #ddaba6; color:#7b2823; font-size:14px; line-height:1.45; }

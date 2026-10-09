@@ -79,6 +79,45 @@ jobs:
           retention-days: 14
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-r3-chromium-core-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            artifacts/owner-r3-evidence/chromium-*.png
+            !artifacts/owner-r3-evidence/chromium-*-daily-*.png
+          overwrite: true
+          retention-days: 14
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-r3-webkit-core-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            artifacts/owner-r3-evidence/webkit-*.png
+            !artifacts/owner-r3-evidence/webkit-*-daily-*.png
+          overwrite: true
+          retention-days: 14
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-r3-daily-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            artifacts/owner-r3-evidence/*-daily-*.png
+          overwrite: true
+          retention-days: 14
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-r3-metadata-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            artifacts/owner-r3-evidence/*.json
+            artifacts/owner-r3-evidence/checkout-sha.txt
+          overwrite: true
+          retention-days: 14
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
         if: success()
         with:
           name: owner-r3-static-build-${{ github.event.pull_request.head.sha || github.sha }}

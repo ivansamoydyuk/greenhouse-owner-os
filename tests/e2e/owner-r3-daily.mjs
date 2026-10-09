@@ -345,6 +345,46 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
     await go(page,'back');await go(page,'capture-photo');assert.equal((await stateOf(page)).draft.text,'');await go(page,'demo-photo');await go(page,'capture-save');await page.getByTestId('confirm-proposal').waitFor();assert.match(await page.locator('#main').innerText(),/Чек депо/);assert.equal((await stateOf(page)).tasks.length,before.tasks.length);
   });
 
+  await journey('media type/size guards, interrupted reader, and failed local storage with idempotent retry', async page => {
+    await go(page,'capture-video');
+    await page.getByTestId('video-file').setInputFiles({name:'SYNTHETIC.png',mimeType:'image/png',buffer:Buffer.from('TEST')});
+    assert.match(await page.locator('#toast').innerText(),/видео MP4/);assert.equal((await stateOf(page)).draft.file,null);
+    await page.getByTestId('video-file').setInputFiles({name:'SYNTHETIC-large.mp4',mimeType:'video/mp4',buffer:Buffer.alloc(512*1024+1)});
+    assert.match(await page.locator('#toast').innerText(),/до 512 КБ/);assert.equal((await stateOf(page)).draft.file,null);
+    await page.getByTestId('video-file').setInputFiles({name:'SYNTHETIC-green-frame.mp4',mimeType:'video/mp4',buffer:Buffer.from('AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMxbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAA+gAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAlx0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAA+gAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAGAAAABAAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAPoAAAAAAABAAAAAAHUbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAAAQABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABf21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAT9zdGJsAAAAv3N0c2QAAAAAAAAAAQAAAK9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAGAAQABIAAAASAAAAAAAAAABFUxhdmM2MS4xOS4xMDEgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAANWF2Y0MBZAAK/+EAGGdkAAqs2UYmwEQAAAMABAAAAwAQPEiWWAEABmjr48siwP34+AAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAAXeAAAAAAAAAAYc3R0cwAAAAAAAAABAAAAAgAAIAAAAAAUc3RzcwAAAAAAAAABAAAAAQAAABxzdHNjAAAAAAAAAAEAAAABAAAAAgAAAAEAAAAcc3RzegAAAAAAAAAAAAAAAgAAAuAAAAAPAAAAFHN0Y28AAAAAAAAAAQAAA2EAAABhdWR0YQAAAFltZXRhAAAAAAAAACFoZGxyAAAAAAAAAABtZGlyYXBwbAAAAAAAAAAAAAAAACxpbHN0AAAAJKl0b28AAAAcZGF0YQAAAAEAAAAATGF2ZjYxLjcuMTAzAAAACGZyZWUAAAL3bWRhdAAAAq0GBf//qdxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjQgcjMxMDggMzFlMTlmOSAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjMgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0yIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yIHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9NDAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4wMACAAAAAK2WIhAAU//7s2n4FNtyOTufSkInVjmKemJnYualmddMKRGzPC/FP46g6MskAAAALQZohbEEv/rUqjyg=','base64')});
+    await page.getByTestId('video-preview').waitFor();
+    await page.getByTestId('video-preview').evaluate(video=>new Promise((resolve,reject)=>{if(video.readyState>=1)return resolve();video.addEventListener('loadedmetadata',resolve,{once:true});video.addEventListener('error',()=>reject(Error('Synthetic local MP4 preview did not decode')),{once:true});}));
+    assert.equal(await page.getByTestId('video-preview').evaluate(v=>v.videoWidth),96,'A real tiny generated video has a local decoded preview');
+    await go(page,'clear-file');
+    await page.evaluate(()=>{
+      const Native=window.FileReader;window.__restoreReader=()=>{window.FileReader=Native;};
+      window.FileReader=class{readAsDataURL(){window.__finishRead=()=>{this.result='data:video/mp4;base64,VEVTVA==';this.onload();};}};
+    });
+    await page.getByTestId('video-file').setInputFiles({name:'SYNTHETIC-interrupted.mp4',mimeType:'video/mp4',buffer:Buffer.from('TEST')});
+    await go(page,'back');await go(page,'capture-text');await fill(page,'capture-input','TEST независимый текстовый черновик');
+    await page.evaluate(()=>{window.__finishRead();window.__restoreReader();});
+    const interrupted=await stateOf(page);assert.equal(interrupted.draft.mode,'text');assert.equal(interrupted.draft.file,null);assert.equal(interrupted.draft.text,'TEST независимый текстовый черновик');assert.equal(interrupted.captureDrafts.video.file,null);
+    const before=interrupted.sources.length;
+    await page.evaluate(()=>{const original=Storage.prototype.setItem;window.__restoreStorage=()=>{Storage.prototype.setItem=original;};Storage.prototype.setItem=function(){throw new DOMException('Synthetic quota test','QuotaExceededError');};});
+    await go(page,'capture-save');await page.getByTestId('capture-retry').waitFor();
+    assert.match(await page.getByTestId('storage-warning').innerText(),/Не сохранено на устройстве/);
+    assert.match(await page.locator('#main').innerText(),/только в памяти вкладки/);
+    assert.equal((await stateOf(page)).sources.length,before+1);assert.equal(await page.getByTestId('confirm-proposal').count(),0);
+    await screenshot(page,engine,'daily-storage-failure',390,'Persistent storage failure is explicit; source remains only in current tab');
+    await go(page,'capture-retry');assert.equal((await stateOf(page)).sources.length,before+1,'Failed retry never duplicates original');
+    await page.evaluate(()=>window.__restoreStorage());await go(page,'capture-retry');await page.getByText('Нужна ручная проверка',{exact:true}).waitFor();
+    assert.equal((await stateOf(page)).sources.length,before+1);assert.equal(await page.getByTestId('storage-warning').count(),0);
+    await correctionReload(page);assert.equal((await stateOf(page)).sources.length,before+1);assert.equal((await stateOf(page)).sources.at(-1).text,'TEST независимый текстовый черновик');
+    await go(page,'nav-home');await go(page,'capture-text');await fill(page,'capture-input','TEST предыдущий несохранённый источник');
+    await page.evaluate(()=>{const original=Storage.prototype.setItem;window.__restoreStorage=()=>{Storage.prototype.setItem=original;};Storage.prototype.setItem=function(){throw new DOMException('Synthetic quota test','QuotaExceededError');};});
+    await go(page,'capture-save');await page.getByTestId('capture-retry').waitFor();
+    await go(page,'capture-edit');await fill(page,'capture-input','TEST новый видимый источник');await page.evaluate(()=>window.__restoreStorage());
+    await go(page,'capture-save');await page.getByText('Нужна ручная проверка',{exact:true}).waitFor();
+    assert.equal((await stateOf(page)).sources.at(-1).text,'TEST новый видимый источник','New visible Save never silently retries the abandoned source');
+    assert.match(await page.getByTestId('source-original').innerText(),/TEST новый видимый источник/);
+
+  });
+
   await journey('seven-width daily pages and financial text geometry through actual contextual navigation', async page => {
     const shot = async (name, label, width) => {
       await page.evaluate(() => window.scrollTo(0, 0)); await ready(page);
