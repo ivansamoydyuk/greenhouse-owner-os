@@ -33,7 +33,7 @@ class CaptureConfirm(StrictModel):
     reviewed: dict
     confirmed: Literal[True]
 
-AREA_ALIASES={'İmamlı':('имамлы','имаммлы','imamlı','imamli'), 'Özvadi':('озвади','özvadi','ozvadi'), 'Yeşilöz':('ешилоз','ешилёз','yeşilöz','yesiloz')}
+from .preparation_language import AREA_ALIASES, corrected, date_value, entity_matches, fold, money_amount, source_currency, value
 
 def extract(text, *, counterparties=(), areas=(), accounts=(), products=(), locations=(), workers=(), today=None):
     from .tasks_capture import extract_task
@@ -46,7 +46,7 @@ def extract(text, *, counterparties=(), areas=(), accounts=(), products=(), loca
     harvest=extract_harvest(text,counterparties=counterparties,areas=areas,today=today)
     if harvest:return harvest
     today=today or datetime.now(ZoneInfo('Europe/Istanbul')).date()
-    t=text.casefold();f={};gaps=[]
+    t=fold(corrected(text,counterparties=counterparties,areas=areas,workers=workers,locations=locations));f={};gaps=[]
     if not text.strip():return 'UNRESOLVED',{},['Напишите событие или продиктуйте его.']
     advance='аванс' in t
     if any(x in t for x in ('банан','урожай','депо')) and (('должен мне' in t or 'должны мне' in t or 'продал' in t or 'сдал' in t) and not advance):
@@ -59,19 +59,15 @@ def extract(text, *, counterparties=(), areas=(), accounts=(), products=(), loca
     elif 'должен мне' in t or 'должны мне' in t:f.update(kind='obligation',direction='receivable',obligation_class='OPERATIONAL')
     elif 'должен' in t or 'должны' in t:f.update(kind='obligation',direction='payable',obligation_class='OPERATIONAL')
     else:route='UNRESOLVED';gaps.append('Уточните событие: долг, оплата или аванс.')
-    amounts=re.findall(r'(?<![\w.+-])(\d+(?:[ \u00a0]\d{3})*(?:[,.]\d{1,2})?)\s*(лир\w*|доллар\w*|евро|грив\w*|грн|try|usd|eur|uah|₺|₴|\$)(?!\w)',t)
-    if len(amounts)==1:
-        value,cur=amounts[0];f['amount']=value.replace(' ','').replace('\u00a0','').replace(',','.')
-        f['currency']='TRY' if cur.startswith(('лир','try','₺')) else 'USD' if cur.startswith(('доллар','usd','$')) else 'UAH' if cur.startswith(('грив','грн','uah','₴')) else 'EUR'
+    amount=money_amount(t)
+    currency=source_currency(t,None)
+    if amount and currency:f.update(amount=amount,currency=currency)
     else:gaps.append('Укажите одну точную сумму и валюту.')
-    matches=[]
-    for cp in counterparties:
-        # Only bounded known first-name stems; no approximate unseen-party creation.
-        first=cp.name.casefold().split()[0]
-        if cp.name.casefold() in t or (len(first)>=4 and re.search(r'(?<!\w)'+re.escape(first)+r'(?:у|а|ом)?(?!\w)',t)):matches.append(cp)
-    if len(matches)==1:f['counterparty_id']=str(matches[0].id)
+    matches=entity_matches(t,counterparties,inflect=True)
+    if len(matches)==1:f['counterparty_id']=str(value(matches[0],'id'))
     else:gaps.append('Выберите контрагента из справочника; неизвестное имя нужно добавить вручную.')
-    if re.search(r'\bсегодня\b',t):f['event_date']=today.isoformat()
+    event,_=date_value(t,today)
+    if event:f['event_date']=event
     else:gaps.append('Укажите дату события. Дата ввода и обещанный срок оплаты её не заменяют.')
     due=re.findall(r'(?:заплачу|заплатить|оплаты|оплатят|заплатят)\s+(\d{1,2})\s+(октября|ноября|декабря)\s+(20\d{2})',t)
     if len(due)==1:
@@ -80,14 +76,12 @@ def extract(text, *, counterparties=(), areas=(), accounts=(), products=(), loca
         except ValueError:gaps.append('Исправьте срок оплаты.')
     elif 'следующей неделе' in t:gaps.append('Укажите точную обещанную дату оплаты: «на следующей неделе» неоднозначно.')
     elif re.search(r'\d{1,2}\s+(октября|ноября|декабря)',t):gaps.append('Укажите год ожидаемой оплаты; он не подставляется автоматически.')
-    mentioned=[]
-    for a in areas:
-        if any(alias in t for alias in AREA_ALIASES.get(a.name,(a.name.casefold(),))):mentioned.append(a)
+    mentioned=entity_matches(t,areas,'area')
     if len(mentioned)==1 and 'amount' in f and f.get('kind')=='obligation':
         f['attributions']=[{'work_area_id':str(mentioned[0].id),'amount':f['amount']}]
     elif len(mentioned)>1:gaps.append('Несколько теплиц: укажите суммы распределения; пропорции не вычисляются автоматически.')
     f['attributions']=f.get('attributions',[])
-    account_matches=[a for a in accounts if a.name.casefold() in t]
+    account_matches=entity_matches(t,accounts)
     if len(account_matches)==1:f['money_account_id']=str(account_matches[0].id)
     if f.get('kind')=='payment' or f.get('principal_received'):
         if len(account_matches)!=1:gaps.append('Укажите счёт или кассу и проверьте валюту.')

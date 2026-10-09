@@ -1,0 +1,22 @@
+{
+  "version": "post-evaluation-audience-diagnostic-v1.1",
+  "status": "EXPOSED_DIAGNOSTIC_NOT_UNSEEN",
+  "base_corpus_sha256": "1321173a79c494ee1db7e824cc3798035de225d879cf4cb931b6a403f3c87249",
+  "base_scorer_sha256": "09036c0d426dbfe7bdae6982a36673b9c9aa87f98d76e05ffca856266434242c",
+  "first_unseen_report_sha256": "8fc37d3c65976ae0056383e670898791ff978157c3e2a3226d3543c0be1974ff",
+  "case_ids": ["GOLD-0125", "GOLD-0126", "GOLD-0235", "GOLD-0236", "GOLD-0237"],
+  "audience_classification": "NOT_DETERMINABLE_FROM_SUPPLIED_EXCERPT",
+  "route_denominator_exclusions": 5,
+  "rationale": "These five retained excerpts contain task instructions but no independently identifiable audience. Both PERSONAL-only and WORKER-only labels relied on omitted surrounding context. Numbering and second-person grammar do not independently establish an owner or worker recipient.",
+  "diagnostic_task_kinds": ["PERSONAL_TASK", "WORKER_TASK"],
+  "required_unknown_fields": ["worker_id", "greenhouse_id", "planned_date"],
+  "invariants": [
+    "Original corpus, scorer and first result remain unchanged",
+    "Audience classification is excluded, never credited as correct",
+    "At most one task proposal; no other authoritative proposal kind",
+    "Original instruction remains in the action-bearing original_instruction, or absent that in a PERSONAL_TASK title; arbitrary notes do not excuse a different action",
+    "No invented worker, site, date, assignment, translation or owner approval",
+    "All-UNRESOLVED output is a coverage gap, never successful task extraction",
+    "All determinate cases retain the original exact route, field and safety checks"
+  ]
+}

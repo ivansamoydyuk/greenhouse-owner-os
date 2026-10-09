@@ -54,15 +54,50 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
     eid=UUID(profile['entity']['id'])
     from greenhouse_owner_os.services.dimensions import provision_owner_dimensions
     provision_owner_dimensions(factory,eid,actor,profile['opening']['id'])
+    review_fixture={}
     if os.getenv('R2_REVIEW_FIXTURES')=='1':
-        # Explicit TEST references only; no stock, cash, debt or real worker seeded.
+        # Explicit disposable TEST references only; no stock, cash, or debt seeded.
         fixture_client=TestClient(setup_app)
         def fixture(path,payload,key):
             response=fixture_client.post('/v1/entities/'+str(eid)+path,json=payload,headers={'Idempotency-Key':'test:r2-preview:'+key})
             if response.status_code not in (200,201):raise RuntimeError('R2 preview reference setup failed')
+            return response.json()
         fixture('/inventory/products',dict(name='TEST KNO3',aliases=['KNO3'],base_unit='kg',currency='TRY',source='test:r2-review-fixture'),'product')
         fixture('/inventory/locations',dict(name='İmamlı',source='test:r2-review-fixture'),'location')
         fixture('/counterparties',dict(name='Görgün',role='depot',source='test:r2-review-fixture'),'depot')
+        # One authored example proves the reviewed-rendering path, not a general
+        # translation service. It remains unassigned and has no external contact.
+        worker=fixture('/workers',dict(display_name='TEST Muhammed',native_name='TEST محمد',language='fa',
+            notes='Синтетический работник только для закрытого TEST preview.',
+            source='test:r2-review-fixture'),'worker-muhammed')
+        from uuid import uuid5,NAMESPACE_URL
+        areas=fixture_client.get('/v1/entities/'+str(eid)+'/tasks').json()['areas']
+        greenhouse=next(a for a in areas if a['kind']=='greenhouse' and a['name']=='İmamlı')
+        original='TEST Muhammed, проверьте трубу в İmamlı 2026-10-10.'
+        rendered='TEST Muhammed، لوله را در گلخانهٔ İmamlı در تاریخ ۲۰۲۶-۱۰-۱۰ بررسی کنید.'
+        source=fixture('/owner/captures',dict(client_capture_id=str(uuid5(NAMESPACE_URL,str(eid)+':test-iphone-task-v1')),
+            captured_at='2026-10-09T00:00:00+03:00',timezone='Europe/Istanbul',mode='text',text=original),'worker-source')
+        source=fixture_client.get('/v1/entities/'+str(eid)+'/owner/captures/'+source['id']).json()
+        if len(source.get('proposals',[]))!=1:raise RuntimeError('TEST worker proposal was not prepared')
+        proposal_id=source['proposals'][0]['id']
+        proposal_path='/owner/confirmations/'+proposal_id
+        proposal=fixture_client.get('/v1/entities/'+str(eid)+proposal_path+'/preview').json()
+        if proposal['action_type']!='WORKER_TASK':raise RuntimeError('TEST fixture must remain a worker task')
+        if proposal['state']!='CONFIRMED_NONPOSTING':
+            payload={**proposal['revision']['payload'],'title':'TEST Проверить трубу · пример назначения',
+                'worker_id':worker['id'],'language':'fa','rendered_text':rendered,
+                'greenhouse_id':greenhouse['id'],'planned_date':'2026-10-10'}
+            proposal=fixture(proposal_path+'/revise',dict(expected_version=proposal['version'],payload=payload,
+                reason='TEST: заранее подготовленный пример перевода только для этого поручения.'),'worker-review')
+            if proposal['revision']['missing']:raise RuntimeError('TEST worker fixture is incomplete')
+            fixture(proposal_path+'/confirm',dict(expected_version=proposal['version'],
+                preview_digest=proposal['revision']['preview_digest'],confirmed=True,
+                reason='TEST: создать только черновик для проверки назначения владельцем.'),'worker-draft')
+        tasks=fixture_client.get('/v1/entities/'+str(eid)+'/tasks').json()['tasks']
+        example=next(t for t in tasks if t['title']=='TEST Проверить трубу · пример назначения')
+        review_fixture={'worker_id':worker['id'],'task_id':example['id'],'source_id':source['id'],
+            'translation_scope':'ONE_AUTHORED_TEST_EXAMPLE','real_dispatch':False}
+
     cookie_value=secrets.token_urlsafe(48)
     def owner(request:Request):
         if not hmac.compare_digest(request.cookies.get('preview_session',''),cookie_value):
@@ -130,7 +165,7 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
 
     @app.get('/preview/config')
     def config(actor_id=Depends(owner)):
-        return {'entity_id':str(eid),'environment':'TEST_PREVIEW','actual_operations':False,'r2_fixtures':os.getenv('R2_REVIEW_FIXTURES')=='1','feature_sha':os.getenv('OWNER_PREVIEW_FEATURE_SHA',os.getenv('GITHUB_SHA'))}
+        return {'entity_id':str(eid),'environment':'TEST_PREVIEW','actual_operations':False,'r2_fixtures':os.getenv('R2_REVIEW_FIXTURES')=='1','worker_assignment_fixture':review_fixture,'feature_sha':os.getenv('OWNER_PREVIEW_FEATURE_SHA',os.getenv('GITHUB_SHA'))}
 
     @app.get('/preview/fixtures/gorgun.png')
     def representative_receipt(actor_id=Depends(owner)):

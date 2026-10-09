@@ -72,6 +72,10 @@ class TaskProposal(StrictModel):
     language: Literal['ru','tr','fa','uz'] | None = None
     rendered_text: str | None = Field(default=None, max_length=10000)
     note: str | None = Field(default=None, max_length=2000)
+    # Preparation metadata only. Omitting absent additions preserves the exact
+    # serialized shape (and approval digest) of existing task snapshots.
+    category: str | None = Field(default=None, min_length=1, max_length=100, exclude_if=lambda v:v is None)
+    relative_time_context: str | None = Field(default=None, min_length=1, max_length=250, exclude_if=lambda v:v is None)
 
 class DepotProposal(StrictModel):
     depot_id: UUID | None = None

@@ -27,18 +27,7 @@ def js(v):return json.dumps(v,ensure_ascii=False,default=str)
 def now():return datetime.now(timezone.utc)
 def reminder_eligible(first_unresolved,current,state):return state not in TERMINAL and current-first_unresolved>timedelta(hours=36)
 
-def source_currency(raw):
-    """A visible daily TRY candidate must never override an explicit currency."""
-    matches=set()
-    for currency,pattern in {
-        'TRY':r'(?i)(?<!\w)(?:TRY|лир\w*|₺)(?!\w)',
-        'USD':r'(?i)(?<!\w)(?:USD|доллар\w*|\$)(?!\w)',
-        'EUR':r'(?i)(?<!\w)(?:EUR|евро|€)(?!\w)',
-        'UAH':r'(?i)(?<!\w)(?:UAH|грн|грив\w*|₴)(?!\w)',
-    }.items():
-        if re.search(pattern,raw):matches.add(currency)
-    if re.search(r'(?i)\b(?:GBP|RUB|CHF|AED|CNY|JPY|AUD|CAD|INR|руб\w*|фунт\w*)\b',raw):return None
-    return next(iter(matches)) if len(matches)==1 else None if matches else 'TRY'
+from .preparation_language import source_currency
 
 class OwnerCaptureService:
     def __init__(self,factory,recognizer=None):
@@ -166,97 +155,25 @@ class OwnerCaptureService:
                 rows(u,"UPDATE core.processing_jobs SET state='FAILED',error_code='PREPARATION_FAILED',retry_at=clock_timestamp()+interval '1 minute',lease_token=NULL,lease_until=NULL WHERE id=:id AND lease_token=:t RETURNING id",id=j['id'],t=token);u.commit()
 
     def prepare(self,u,s,out):
-        raw=out.get('preparation_text',out['text']) or '';refs=lambda m:list(u.session.scalars(select(m).where(m.entity_id==s['e'])))
-        # Explicit separate text statements are independent actions, even when
-        # their kinds coincide. Never split photographed/PDF table lines.
-        statements=[x.strip() for x in raw.splitlines() if x.strip()]
-        if not s['binary'] and len(statements)>1 and all(re.match(r'(?i)^(должен|заплатил|оплатил|привезли|сегодня полить|завтра .*починит|fatura)\b',x) for x in statements):
-            result=[]
-            for statement in statements:result.extend(self.prepare(u,s,dict(out,text=statement)))
-            return result
-        refs_kw=dict(counterparties=refs(CounterpartyRow),areas=refs(WorkAreaRow),accounts=refs(MoneyAccountRow),
-                     products=rows(u,'SELECT * FROM inventory.products WHERE entity_id=:e',e=s['e']),
-                     locations=rows(u,'SELECT * FROM inventory.locations WHERE entity_id=:e',e=s['e']),workers=rows(u,'SELECT * FROM workers.people WHERE entity_id=:e',e=s['e']))
-        route,f,_=extract(raw,today=s['day'],**refs_kw)
-        provenance={}
-        if route=='TASKS' or re.search(r'(?i)\b(починит|полить|закрыть окна|открыть окна)\b',raw):
-            from .tasks_capture import extract_task
-            if route!='TASKS':
-                task=extract_task(re.sub('(?i)починит','починить',raw),areas=refs_kw['areas'],workers=refs_kw['workers'],today=s['day']);f=task[1] if task else {}
-            workers=f.get('suggested_worker_ids',[])
-            payload=dict(title=raw[:200],original_instruction=raw,greenhouse_id=f.get('greenhouse_id'),planned_date=f.get('planned_date'),worker_id=workers[0] if len(workers)==1 else None)
-            worker=next((w for w in refs_kw['workers'] if str(w['id'])==str(payload['worker_id'])),None)
-            if worker:payload['language']=worker['language']
-            for k in payload:provenance[k]={'category':'SOURCE FACT' if k in ('title','original_instruction') else 'INFERENCE','source_text':raw}
-            # An unknown named worker stays a worker proposal, never becomes finance
-            # or silently becomes a personal task assigned to the owner.
-            kind='WORKER_TASK' if workers or re.search(r'(?i)(починит|работник|асыф|инаят|умар|мухам)',raw) else 'PERSONAL_TASK'
-            return [(kind,payload,provenance)]
-        if route=='INVENTORY':
-            kind='STOCK_RECEIPT' if f.get('kind')=='receipt' else 'STOCK_APPLICATION' if f.get('kind')=='application' else 'UNRESOLVED'
-            if kind=='UNRESOLVED':return [(kind,dict(note=raw[:2000]),{})]
-            return [(kind,dict(event_date=f.get('event_date') or s['day'].isoformat(),lines=f['lines'],notes=raw[:2000]),{'event_date':{'category':'INFERENCE','basis':'capture_date'}})]
-        depot=self._depot_text(raw,refs_kw['counterparties'])
-        if depot:
+        from .owner_preparation import prepare_owner_source, INTERPRETATION_VERSION
+        refs=lambda m:list(u.session.scalars(select(m).where(m.entity_id==s['e'])))
+        references=dict(counterparties=refs(CounterpartyRow),areas=refs(WorkAreaRow),accounts=refs(MoneyAccountRow),
+                        products=rows(u,'SELECT * FROM inventory.products WHERE entity_id=:e',e=s['e']),
+                        locations=rows(u,'SELECT * FROM inventory.locations WHERE entity_id=:e',e=s['e']),
+                        workers=rows(u,'SELECT * FROM workers.people WHERE entity_id=:e',e=s['e']))
+        result=prepare_owner_source(out.get('preparation_text',out['text']) or '',today=s['day'],refs=references,binary=bool(s['binary']),pages=out.get('pages',[]))
+        for kind,payload,provenance in result:
+            if kind!='DEPOT_RECEIPT' or not payload.get('depot_id'):continue
             learned=[]
-            if depot['depot_id']:
-                for idx,line in enumerate(depot['lines']):
-                    mapping=rows(u,'SELECT * FROM harvest.depot_quality_mappings WHERE depot_id=:d AND original_label=:l ORDER BY version DESC LIMIT 1',d=depot['depot_id'],l=line['original_quality_name'].casefold())
-                    if mapping:depot['qualities'][idx]=mapping[0]['quality'];learned.append(mapping[0])
-            if learned:provenance['qualities']={'category':'LEARNED DEFAULT','accepted_mapping_versions':learned}
-            return [('DEPOT_RECEIPT',depot,{'lines':{'category':'SOURCE FACT','pages':out.get('pages',[])},'qualities':provenance.get('qualities',{'category':'INFERENCE','basis':'depot_scoped_unverified_candidate'})})]
-        direct_expense=bool(re.search(r'(?i)(купил|потратил|расход|заправил)',raw) and re.search(r'(?i)(бензин|топлив|fuel|benzin|мелоч)',raw))
-        if direct_expense:route='FINANCE';f['kind']='direct_expense'
-        if route=='FINANCE' and f.get('kind'):
-            if f.get('direction') in ('in','receivable') or f.get('obligation_class')=='STRATEGIC':
-                return [('UNRESOLVED',dict(note='Для входящей оплаты / стратегического события используйте точный ручной режим. '+raw[:1500]),{})]
-            amount=f.get('amount')
-            if not amount:
-                n=re.findall(r'(?<![\w.+-])(\d+(?:[ \u00a0]\d{3})*(?:[,.]\d{1,2})?)(?!\w)',raw)
-                if len(n)==1:amount=n[0].replace(' ','').replace('\u00a0','').replace(',','.')
-            payload=dict(amount=amount,currency=source_currency(raw),event_date=f.get('event_date') or s['day'].isoformat(),
-                         counterparty_id=f.get('counterparty_id'),description=raw[:2000],due_date=f.get('due_date'),money_account_id=f.get('money_account_id'),attributions=f.get('attributions',[]))
-            for k,v in payload.items():provenance[k]={'category':'UNKNOWN' if v is None else 'INFERENCE' if k in ('event_date','currency','counterparty_id','money_account_id') else 'SOURCE FACT','source_text':raw}
-            return [('DIRECT_EXPENSE' if direct_expense else 'PAYMENT' if f['kind']=='payment' else 'PAYABLE',payload,provenance)]
-        if re.search(r'(?i)(fatura|invoice|счёт поставщика)',raw):
-            # Invoice is not evidence that goods arrived or cash was paid.
-            return [('PAYABLE',dict(description=raw[:2000],event_date=s['day'].isoformat(),currency=source_currency(raw)),{}),('INVOICE_MATCH',dict(note=raw[:2000]),{})]
-        return [('UNRESOLVED',dict(note=raw[:2000] or 'Текст не распознан. Оригинал сохранён.'),{})]
+            for idx,line in enumerate(payload['lines']):
+                mapping=rows(u,'SELECT * FROM harvest.depot_quality_mappings WHERE depot_id=:d AND original_label=:l ORDER BY version DESC LIMIT 1',d=payload['depot_id'],l=line['original_quality_name'].casefold())
+                if mapping:payload['qualities'][idx]=mapping[0]['quality'];learned.append(mapping[0])
+            if learned:provenance['qualities']={'category':'LEARNED DEFAULT','accepted_mapping_versions':learned,'interpretation_version':INTERPRETATION_VERSION}
+        return result
 
     def _depot_text(self,raw,parties):
-        if not re.search(r'(?i)(grand|birinci|ikinci|i̇kinci|alacak)',raw):return None
-        lines=[];qualities=[];unreadable=[]
-        number=lambda v:v.replace('.','').replace(',','.') if ',' in v else v
-        for line in raw.splitlines():
-            label=re.search(r'(?i)\b(Grand|Birinci|İkinci|Ikinci|Sera|Yerli)\b',line)
-            if not label:
-                if len(re.findall(r'(?<!\w)\d+(?:[.,]\d+)*(?!\w)',line))>=3 and not re.match(r'^\s*\d{2}[./]\d{2}[./]20\d{2}\s*$',line):unreadable.append(line[:1000])
-                continue
-            nums=re.findall(r'(?<!\w)\d+(?:[.,]\d+)*(?!\w)',line[label.end():])
-            # Bounded labelled format [count optional] kg, price, amount.
-            # Other/partial layouts retain source and require owner input.
-            if len(nums) not in (3,4):unreadable.append(line[:1000]);continue
-            try:
-                kg,price,amount=[number(v) for v in nums[-3:]]
-                if any(Decimal(v)<=0 for v in (kg,price,amount)):unreadable.append(line[:1000]);continue
-                ln=dict(original_quality_name=label.group(),net_weight_kg=kg,unit_price=price,stated_amount=amount,source_line=line[:1000])
-                if len(nums)==4 and nums[0].isdigit():ln['count']=int(nums[0])
-                lines.append(ln)
-                qualities.append({'grand':'HIGHEST','birinci':'FIRST','ikinci':'SECOND','i̇kinci':'SECOND'}.get(label.group().casefold()))
-            except Exception:unreadable.append(line[:1000]);continue
-        match=[p for p in parties if p.counterparty_type in ('depot','customer','both') and p.name.casefold() in raw.casefold()]
-        dates=re.findall(r'(?<!\d)(\d{2})[./](\d{2})[./](20\d{2})(?!\d)',raw)
-        event=None
-        if len(set(dates))==1:
-            try:d,m,y=dates[0];event=date(int(y),int(m),int(d)).isoformat()
-            except ValueError:pass
-        totals=re.findall(r'(?im)(?:alacak|toplam)\s*[:=]?\s*(\d+(?:[.,]\d+)*)',raw)
-        alacak=re.findall(r'(?im)alacak\s*[:=]?\s*(\d+(?:[.,]\d+)*)',raw)
-        # Görgün candidates are only available when that depot is identified;
-        # other depots require receipt-specific owner classification.
-        if not match or 'görgün' not in match[0].name.casefold():qualities=[None for _ in lines]
-        return dict(depot_id=str(match[0].id) if len(match)==1 else None,event_date=event,lines=lines,qualities=qualities,currency=source_currency(raw),
-                    stated_total=number(totals[0]) if len(set(totals))==1 else None,alacak_value=number(alacak[0]) if len(alacak)==1 else None,unreadable_lines=unreadable)
+        from .owner_preparation import depot_text
+        return depot_text(raw,parties)
 
     def _proposal(self,u,e,i,lock=False):
         p=rows(u,'SELECT * FROM core.proposed_actions WHERE id=:i AND entity_id=:e'+(' FOR UPDATE' if lock else ''),i=i,e=e)
@@ -325,7 +242,7 @@ class OwnerCaptureService:
         elif kind in ('PERSONAL_TASK','WORKER_TASK'):
             required('title','Задача');scoped('core.work_areas',fields.get('greenhouse_id'))
             if kind=='WORKER_TASK':
-                required('worker_id','Работник');required('planned_date','Дата');required('greenhouse_id','Теплица')
+                required('worker_id','Работник');required('planned_date','На какой день следующей недели поставить?' if fields.get('relative_time_context')=='следующая неделя' else 'Дата');required('greenhouse_id','Теплица')
                 worker=scoped('workers.people',fields.get('worker_id'))
                 if worker and fields.get('language')!=worker['language']:missing.append('Проверьте язык выбранного работника')
                 if worker and worker['language']!='ru' and not fields.get('rendered_text'):missing.append('Проверенный перевод: задача пока не отправляется')
@@ -537,7 +454,18 @@ class OwnerCaptureService:
                 r['average_bunch_weight']=str(Decimal(r['count_covered_kg'])/Decimal(r['count'])) if r['count'] else None
                 r['count_coverage_complete']=r['count_covered_kg']==r['kg']
                 r['count_basis']='CONFIRMED_DEPOT_LINES'
-            tasks=rows(u,"SELECT * FROM core.owner_tasks WHERE entity_id=:e AND owner_id=:a AND state='TO_DO' ORDER BY planned_date NULLS LAST,created_at LIMIT 3",e=e,a=a)
+            # Display-only context is read from the immutable, actually approved
+            # proposal revision. It never rewrites task title/note/date or R1.
+            tasks=rows(u,"""SELECT t.*,r.payload->>'category' category,
+                r.payload->>'relative_time_context' relative_time_context,
+                r.payload->>'original_instruction' original_instruction
+                FROM core.owner_tasks t
+                LEFT JOIN core.confirmation_effects c ON c.owner_task_id=t.id
+                    AND c.proposal_id=t.proposal_id AND c.entity_id=t.entity_id AND c.actor_id=t.owner_id
+                LEFT JOIN core.proposal_revisions r ON r.proposal_id=c.proposal_id
+                    AND r.version=c.version AND r.entity_id=c.entity_id
+                WHERE t.entity_id=:e AND t.owner_id=:a AND t.state='TO_DO'
+                ORDER BY t.planned_date NULLS LAST,t.created_at LIMIT 3""",e=e,a=a)
             count=rows(u,"SELECT count(*) n,count(*) FILTER(WHERE first_unresolved_at<clock_timestamp()-interval '36 hours') overdue FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED')",e=e)[0]
             task_count=rows(u,"SELECT count(*) n FROM core.owner_tasks WHERE entity_id=:e AND owner_id=:a AND state='TO_DO'",e=e,a=a)[0]['n']
             return dict(id=str(e),owner_id=str(a),as_of=now().isoformat(),finance=v,season_start=str(date(year,10,1)),season_end=str(date(year+1,10,1)),season=season,tasks=tasks,task_count=task_count,confirmations=count,
