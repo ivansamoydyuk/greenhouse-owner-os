@@ -216,14 +216,19 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
     document.querySelectorAll('[data-source-retry]').forEach(b=>b.onclick=guard(async()=>{if(!active(t))return;b.disabled=true;try{await api(t.root+`/captures/${b.dataset.sourceRetry}/retry-preparation`,{});if(!active(t))return;notice('Оригинал сохранён. Запрошена отдельная подготовка.');await sources(offset);}finally{if(active(t))b.disabled=false;}}));
   }
   async function sync(){
-    const t=session();if(!t.scope||(syncing?.generation===t.generation&&syncing.scope===t.scope)||!navigator.onLine)return;syncing=t;
-    try{for(const record of await pendingList(t.scope)){
+    const t=session();if(!t.scope||!navigator.onLine)return;
+    // Every caller waits for the same session's in-flight upload, rather than
+    // mistaking a busy queue for completed durable acknowledgement.
+    if(syncing?.generation===t.generation&&syncing.scope===t.scope)return syncing.promise;
+    const job={...t};syncing=job;
+    job.promise=(async()=>{try{for(const record of await pendingList(t.scope)){
       if(!sameSession(t))return;
       const r=await api(t.root+'/captures',record.body);
       if(!sameSession(t))return;
       if(!r.server_saved||r.client_capture_id!==record.body.client_capture_id)throw Error('Система не подтвердила сохранение источника');
       await pendingDelete(record.key);if(!sameSession(t))return;onCaptureSynced?.(record.body.client_capture_id);notice('Сохранено в системе. Действия ещё не подтверждены.');
-    }if(sameSession(t))await pendingBadge();}finally{if(syncing===t)syncing=null;}
+    }if(sameSession(t))await pendingBadge();}finally{if(syncing===job)syncing=null;}})();
+    return job.promise;
   }
   function capture(mode='text'){
     const t=begin();if(!t.scope)return;
@@ -309,7 +314,12 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
         onCaptureSynced=id=>{if(id===body.client_capture_id){statusText('Сохранено в системе; действия ещё не подтверждены.','server');button.textContent='Сохранено в системе';}};
         if(!navigator.onLine){statusText('Сохранено на телефоне. В системе ещё нет; отправим при восстановлении связи и открытом приложении.','pending');return;}
         statusText('Сохранено на телефоне. Отправляем в систему…','uploading');
-        try{await sync();}catch{statusText('Сохранено на телефоне. Отправим при восстановлении связи и открытом приложении.','pending');return;}
+        try{
+          await sync();if(!active(t))return;
+          // The awaited upload may have snapshotted the queue before this
+          // capture was committed. Start a fresh pass for its durable record.
+          if((await pendingList(t.scope)).some(r=>r.body.client_capture_id===body.client_capture_id)){if(!active(t))return;await sync();}
+        }catch{statusText('Сохранено на телефоне. Отправим при восстановлении связи и открытом приложении.','pending');return;}
         if(!active(t))return;
         // A concurrently running sync may have started before this source was saved.
         if((await pendingList(t.scope)).some(r=>r.body.client_capture_id===body.client_capture_id)){statusText('На телефоне. Отправка ожидается; повторите с главного экрана.','pending');return;}

@@ -8,7 +8,7 @@ const ownerData=()=>({preview:{},owner:{owner_id:'owner-a',finance:{entity_name:
 
 // Small deterministic DOM harness: real callbacks execute, reads/API responses can
 // finish out of order, and each dialog render has a distinct identity.
-function harness({data=ownerData(),items=[proposal()],navigate,online=false,dock=true}={}){
+function harness({data=ownerData(),items=[proposal()],navigate,online=false,dock=true,onWrite=()=>{}}={}){
  const previous=new Map(['document','window','navigator','indexedDB','FileReader'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
  const nodes=new Map(),groups=new Map(),readers=[],requests=[],calls=[],notices=[],records=new Map(),windowEvents=new Map(),documentEvents=new Map();let html='',currentData=data;
  const makeNode=(id='')=>({id,dataset:{},attributes:{},events:{},children:[],open:false,hidden:false,disabled:false,textContent:'',value:'',files:[],firstElementChild:null,elements:{},classList:{toggle(){},remove(){}},setAttribute(key,value){this.attributes[key]=value;},removeAttribute(key){delete this.attributes[key];},focus(){this.focused=true;},addEventListener(key,fn){this.events[key]=fn;},append(child){this.children.push(child);nodes.set('#'+child.id,child);},querySelector(query){if(query==='[type=submit]')return this.submit;if(query==='[data-r2-mode]')return this.buttons?.[0]||null;return null;},querySelectorAll(){return this.buttons||[];},click(){return this.onclick?.()??this.events.click?.();},close(){this.open=false;this.events.close?.();},set innerHTML(value){this._html=value;if(this.id==='owner-capture-bar')this.buttons=[...value.matchAll(/data-r2-mode="([^"]+)"/g)].map(m=>{const b=makeNode();b.dataset.r2Mode=m[1];return b;});},get innerHTML(){return this._html||'';}});
@@ -19,7 +19,7 @@ function harness({data=ownerData(),items=[proposal()],navigate,online=false,dock
  globalThis.window={addEventListener:(key,fn)=>windowEvents.set(key,fn),confirm:()=>true};
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:online}});
  globalThis.FileReader=class{constructor(){this.readyState=0;readers.push(this);}readAsDataURL(file){this.file=file;this.readyState=1;}abort(){this.readyState=2;this.aborted=true;}finish(url){this.result=url;this.readyState=2;this.onload?.();}};
- globalThis.indexedDB={open(){const r={};queueMicrotask(()=>{r.result={close(){},transaction(){const tx={};tx.objectStore=()=>({getAll(){const result={result:[...records.values()]};queueMicrotask(()=>{result.onsuccess?.();tx.oncomplete?.();});return result;},put(record){records.set(record.key,record);queueMicrotask(()=>tx.oncomplete?.());},delete(key){records.delete(key);queueMicrotask(()=>tx.oncomplete?.());}});return tx;}};r.onsuccess();});return r;}};
+ globalThis.indexedDB={open(){const r={};queueMicrotask(()=>{r.result={close(){},transaction(){const tx={};tx.objectStore=()=>({getAll(){const result={result:[...records.values()]};queueMicrotask(()=>{result.onsuccess?.();tx.oncomplete?.();});return result;},put(record){records.set(record.key,record);onWrite(record);queueMicrotask(()=>tx.oncomplete?.());},delete(key){records.delete(key);queueMicrotask(()=>tx.oncomplete?.());}});return tx;}};r.onsuccess();});return r;}};
  const api=(path,body)=>{calls.push({path,body});if(path.includes('/confirmations?'))return Promise.resolve({items,preparing:0,next_offset:null});return new Promise((resolve,reject)=>requests.push({path,body,resolve,reject}));};
  const openSheet=(title,markup)=>{html=title+markup;nodes.get('#sheet-content').firstElementChild={};nodes.get('#sheet').open=true;for(const key of nodes.keys())if(key.startsWith('#r2-'))nodes.delete(key);groups.clear();for(const match of markup.matchAll(/\bid="([^"]+)"/g))nodes.set('#'+match[1],makeNode(match[1]));for(const attr of ['r2-open','r2-edit','r2-later','r2-evidence','capture-mode']){const datasetKey=attr.replace(/-([a-z])/g,(_,x)=>x.toUpperCase());groups.set(`[data-${attr}]`,[...markup.matchAll(new RegExp(`data-${attr}="([^"]+)"`,'g'))].map(m=>{const b=makeNode();b.dataset[datasetKey]=m[1];return b;}));}for(const formId of ['r2-source-form','r2-edit-form']){const form=nodes.get('#'+formId);if(form){form.submit=makeNode();for(const match of markup.matchAll(/<(?:input|select|textarea)[^>]*name="([^"]+)"/g))form.elements[match[1]]=makeNode();}}};
  const ui=ownerR2({api,openSheet,reload:async()=>{},getData:()=>currentData,getEntity:()=> 'entity',notice:message=>notices.push(message),advanced(){},navigate});
@@ -174,5 +174,51 @@ test('failed file encoding restores editable controls without claiming a saved o
  const h=harness();try{
   h.ui.capture('photo');const form=h.nodes.get('#r2-source-form'),input=h.nodes.get('#r2-file');input.files=[{name:'proof.png',type:'image/png',size:5}];const saving=form.onsubmit({preventDefault(){},target:form});h.readers[0].onerror();await saving;
   assert.equal(form.elements.text.disabled,false);assert.equal(input.disabled,false);assert.equal(form.submit.disabled,false);assert.ok(h.groups.get('[data-capture-mode]').every(b=>!b.disabled));assert.equal(h.records.size,0);assert.equal(h.nodes.get('#r2-source-status').dataset.state,'failed');
+ }finally{h.cleanup();}
+});
+
+for(const inclusion of ['already in snapshot','saved after snapshot'])test(`capture waits for a concurrent sync: ${inclusion}`,async()=>{
+ let background;const h=harness({online:true,onWrite:()=>{if(inclusion==='already in snapshot')background=h.ui.sync();}});try{
+  const prior={key:'entity:owner-a:prior',scope:'entity:owner-a',body:{client_capture_id:'prior',text:'Earlier offline source'}};
+  h.records.set(prior.key,prior);
+  if(inclusion==='saved after snapshot'){background=h.ui.sync();await tick();assert.equal(h.requests.length,1);}
+  h.ui.capture('text');const form=h.nodes.get('#r2-source-form');form.elements.text.value='Exact new source';
+  const saving=form.onsubmit({preventDefault(){},target:form});await tick();
+  assert.equal(h.nodes.get('#sheet').open,true);
+  h.requests[0].resolve({server_saved:true,client_capture_id:'prior'});await tick();
+  assert.equal(h.requests.length,2,'new source must be sent by the awaiting save');
+  const savedRequest=h.requests[1];assert.equal(savedRequest.body.text,'Exact new source');
+  assert.equal(h.nodes.get('#sheet').open,true,'no close before matching server acknowledgement');
+  savedRequest.resolve({server_saved:true,client_capture_id:savedRequest.body.client_capture_id});
+  await Promise.all([saving,background]);
+  assert.equal(h.nodes.get('#sheet').open,false,'acknowledged active capture must close');
+  assert.equal(h.records.size,0);assert.equal(h.calls.filter(c=>c.path.endsWith('/captures')).length,2);
+ }finally{h.cleanup();}
+});
+
+for(const failure of ['network failure','mismatched acknowledgement'])test(`concurrent capture retains its original on ${failure}`,async()=>{
+ let background;const h=harness({online:true,onWrite:()=>{background=h.ui.sync();}});try{
+  h.ui.capture('text');const form=h.nodes.get('#r2-source-form');form.elements.text.value='Durable source';
+  const saving=form.onsubmit({preventDefault(){},target:form});await tick();
+  const result=Promise.allSettled([saving,background]),request=h.requests[0];
+  if(failure==='network failure')request.reject(Error('Disconnected'));else request.resolve({server_saved:true,client_capture_id:'another-capture'});
+  await result;
+  assert.equal(h.nodes.get('#sheet').open,true);assert.equal(h.records.size,1);
+  assert.equal([...h.records.values()][0].body.text,'Durable source');
+  assert.equal(h.nodes.get('#r2-source-status').dataset.state,'pending');assert.equal(form.submit.disabled,true);
+  assert.equal(h.notices.length,0);
+ }finally{h.cleanup();}
+});
+
+for(const interruption of ['closed capture','new capture','logout and owner switch'])test(`late shared upload cannot close or change ${interruption}`,async()=>{
+ let background;const h=harness({online:true,onWrite:()=>{background=h.ui.sync();}});try{
+  h.ui.capture('text');const form=h.nodes.get('#r2-source-form');form.elements.text.value='Earlier private source';
+  const saving=form.onsubmit({preventDefault(){},target:form});await tick();const request=h.requests[0];
+  if(interruption==='logout and owner switch'){h.ui.logout();h.changeOwner();}
+  h.nodes.get('#sheet').close();if(interruption!=='closed capture')h.ui.capture('text');const next=h.nodes.get('#r2-source-form'),status=h.nodes.get('#r2-source-status');const beforeStatus=status.textContent;next.elements.text.value='New view';
+  request.resolve({server_saved:true,client_capture_id:request.body.client_capture_id});await Promise.all([saving,background]);
+  assert.equal(h.nodes.get('#sheet').open,interruption!=='closed capture');assert.equal(next.elements.text.value,'New view');assert.equal(next.submit.disabled,interruption==='closed capture');
+  assert.equal(status.textContent,beforeStatus);assert.equal(h.calls.length,1);
+  if(interruption==='logout and owner switch'){assert.equal(h.records.size,1);assert.deepEqual(h.notices,[]);}
  }finally{h.cleanup();}
 });
