@@ -338,3 +338,5 @@ test("R3 free-text timing edit clears conflicting exact date", () => {
   assert.equal(s.tasks[0].when, "Следующая неделя");
   assert.equal(s.tasks[0].source, "Синтетическая личная задача");
 });
+
+test("R3 reviewed/rejected proposal remains immutable while original is retained", () => { const s=initialState(); updateFact(s,"clarify","amount",2500); confirm(s,"clarify",2); assert.throws(()=>updateFact(s,"clarify","amount",9000),/READ_ONLY/); s.proposals[1].status="rejected"; assert.throws(()=>updateFact(s,"depot-review","amount",1),/READ_ONLY/); assert.match(s.proposals[1].source,/37 200/); });

@@ -182,6 +182,7 @@ export function updateFact(state, id, key, value) {
     state.proposals.find((x) => x.id === id) ||
     state.tasks.find((x) => x.id === id);
   if (!p) throw Error("Missing card");
+  if (state.proposals.includes(p) && !["pending", "deferred"].includes(p.status)) throw Error("READ_ONLY");
   p[key] = value;
   if (key === "when") p.date = null;
   p.revision = (p.revision || 0) + 1;

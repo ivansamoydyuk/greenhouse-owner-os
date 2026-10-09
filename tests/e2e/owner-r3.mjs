@@ -10,7 +10,7 @@ const expectedSha=process.env.OWNER_PREVIEW_FEATURE_SHA;
 assert.match(expectedSha||'',/^[a-f0-9]{40}$/,'Set the exact build SHA before browser verification');
 assert.ok(process.env.PREVIEW_SECRET,'An ephemeral preview key is required');
 await fs.mkdir(artifacts,{recursive:true});
-const report={feature_sha:expectedSha,started_at:new Date().toISOString(),screenshots:[],journeys:[],checks:[],limitations:['Chromium/WebKit automation is not physical iPhone verification.','Native microphone recording and a real iPhone software keyboard are not asserted by these tests.','Speech unavailable/error fallback is exercised without substituting a transcript for live microphone input.','Click totals are trusted browser DOM interactions, not physical iPhone tap estimates. Native picker/keyboard UI is not measured; the photo journey explicitly chooses a prepared synthetic source.'],errors:[],failures:[]};
+const report={feature_sha:expectedSha,started_at:new Date().toISOString(),screenshots:[],journeys:[],checks:[],limitations:['Chromium/WebKit automation is not physical iPhone verification.','Native microphone recording and a real iPhone software keyboard are not asserted by these tests.','Speech unavailable/error fallback is exercised without substituting a transcript for live microphone input.','Click totals are trusted browser DOM interactions, not physical iPhone tap estimates. Native picker/keyboard UI is not measured; the photo journey explicitly chooses a prepared synthetic source.'],errors:[],failures:[],tool_diagnostics:[]};
 const SCENARIO='Нужно переделать полив на Озвади на следующей неделе';
 const screens=[['home','Главная'],['review','Проверка'],['capture/voice','Голос'],['capture/photo','Фото'],['capture/text','Текст'],['tasks','Задачи'],['task/irrigation','Карточка задачи'],['finance/receivable','Финансы'],['harvest','Урожай'],['inventory','Склад'],['workers','Работники'],['more','Ещё']];
 let currentPage;
@@ -25,6 +25,7 @@ async function newPage(browser) {
   assert.equal(config.feature_sha,expectedSha);
   assert.equal(config.backend_connected,false);
   await context.addInitScript(()=>{
+    window.__r3Csp=[];document.addEventListener('securitypolicyviolation',event=>window.__r3Csp.push({sample:event.sample,directive:event.effectiveDirective,blocked_uri:event.blockedURI}));
     const visible=e=>!!(e.getClientRects().length&&!e.closest('[hidden]'));
     let activeForms=new Set();
     const metrics={active:false,clicks:[],forms:[],inputs:[],keys:[]};
@@ -50,7 +51,7 @@ async function newPage(browser) {
   });
   const page=await context.newPage();currentPage=page;
   page.on('pageerror',error=>report.errors.push({type:'pageerror',message:error.message}));
-  page.on('console',message=>{if(message.type()==='error')report.errors.push({type:'console',message:message.text()});});
+  page.on('console',message=>{if(message.type()==='error')report.errors.push({type:'console',message:message.text(),location:message.location(),during_screenshot:!!page.__r3TakingScreenshot});});
   context.on('request',request=>{
     const url=new URL(request.url());
     if(!['http:','https:'].includes(url.protocol))return;
@@ -63,27 +64,47 @@ async function ready(page){await page.locator('#main h1').waitFor();await page.e
 async function route(page,name){await page.goto(base+'/#'+(name==='capture/voice'?'home':name));await ready(page);if(name==='capture/voice'){await click(page,'capture-voice');await page.getByTestId('voice-fallback').waitFor({timeout:15000});}await page.evaluate(()=>window.scrollTo(0,0));}
 async function click(page,id){const target=page.getByTestId(id),href=await target.getAttribute('href');await target.click();if(href?.startsWith('#'))await page.waitForFunction(hash=>location.hash===hash,href);await ready(page);}
 async function fill(page,id,value){const field=page.getByTestId(id);await field.click();if(await field.evaluate(el=>el.tagName==='SELECT')){const target=await field.evaluate((el,label)=>[...el.options].findIndex(option=>option.textContent===label),value);assert.ok(target>=0,'Requested select choice exists');for(const key of ['Home',...Array(target).fill('ArrowDown'),'Enter']){await page.keyboard.press(key);await page.evaluate(key=>window.__r3Metrics.key(key),key);}assert.equal(await field.inputValue(),value);}else await field.fill(value);await field.blur();}
+async function rawShot(page,options){
+  const firstError=report.errors.length;page.__r3TakingScreenshot=true;
+  try{return await page.screenshot({...options,caret:'initial'});}finally{
+    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r))).catch(()=>{});
+    const violations=await page.evaluate(()=>window.__r3Csp?.splice(0)||[]).catch(()=>[]);
+    for(const violation of violations){
+      // Playwright's verified screenshotter source injects exactly "body {}" to
+      // synchronize WebKit animations. Keep CSP enabled and prove that sample
+      // before classifying this tooling-only diagnostic outside app failures.
+      if(violation.sample?.trim()==='body {}'&&/^style-src/.test(violation.directive)&&violation.blocked_uri==='inline'){
+        const index=report.errors.findIndex((entry,i)=>i>=firstError&&entry.during_screenshot&&entry.type==='console'&&entry.message.startsWith('Refused to apply a stylesheet because its hash, its nonce, or'));
+        if(index>=0){const [entry]=report.errors.splice(index,1);report.tool_diagnostics.push({...entry,...violation,source:'Playwright WebKit screenshot animation synchronization; CSP correctly blocked the empty stylesheet'});}
+      }else report.errors.push({type:'csp',...violation});
+    }
+    page.__r3TakingScreenshot=false;
+  }
+}
 async function screenshot(page,engine,routeName,width,label){
   const file=`${engine}-${String(width)}-${routeName.replaceAll('/','-')}.png`;
-  await page.screenshot({path:path.join(artifacts,file),fullPage:true});
-  report.screenshots.push({file,feature_sha:expectedSha,engine,width,screen:label,route:'#'+routeName,full_page:true});
-  if(width===390){await page.evaluate(()=>window.scrollTo(0,0));const viewportFile=file.replace('.png','-viewport.png');await page.screenshot({path:path.join(artifacts,viewportFile),fullPage:false});report.screenshots.push({file:viewportFile,feature_sha:expectedSha,engine,width,height:page.viewportSize().height,screen:label,route:'#'+routeName,full_page:false});}
+  const pixels=await rawShot(page,{path:path.join(artifacts,file),fullPage:true}),pixelWidth=pixels.readUInt32BE(16);
+  if(pixelWidth!==width)recordFailure(`${engine} screenshot ${width} #${routeName}`,new Error(`PNG width ${pixelWidth}px differs from requested viewport ${width}px`));
+  report.screenshots.push({file,feature_sha:expectedSha,engine,width,pixel_width:pixelWidth,screen:label,route:'#'+routeName,full_page:true});
+  const overflow=await page.evaluate(async expected=>{await new Promise(r=>requestAnimationFrame(r));return Math.max(document.documentElement.scrollWidth,document.body.scrollWidth)>expected+1;},width);if(overflow)recordFailure(`${engine} after-screenshot ${width} #${routeName}`,new Error('Body/document overflow after screenshot reflow'));
+  if(width===390){await page.evaluate(()=>window.scrollTo(0,0));const viewportFile=file.replace('.png','-viewport.png');await rawShot(page,{path:path.join(artifacts,viewportFile),fullPage:false});report.screenshots.push({file:viewportFile,feature_sha:expectedSha,engine,width,height:page.viewportSize().height,screen:label,route:'#'+routeName,full_page:false});}
 }
 async function layout(page,routeName,width){
-  const problems=await page.evaluate(()=>{
+  const problems=await page.evaluate(expectedWidth=>{
     const out=[];
-    if(document.documentElement.scrollWidth>innerWidth+1)out.push('Horizontal page overflow');
+    if(Math.max(document.documentElement.scrollWidth,document.body.scrollWidth)>expectedWidth+1)out.push('Horizontal page overflow beyond requested CSS viewport');
     const meta=document.querySelector('meta[name=viewport]')?.content||'';
     if(/user-scalable\s*=\s*no|maximum-scale\s*=\s*1(?:\D|$)/i.test(meta))out.push('Text/page zoom is restricted');
     for(const el of document.querySelectorAll('a,button,input:not([type=file]):not([type=hidden]),select,textarea')){
       const b=el.getBoundingClientRect();
       if(!b.width||!b.height||getComputedStyle(el).visibility==='hidden')continue;
       if(b.width<43.5||b.height<43.5)out.push(`Touch target below 44px: ${el.dataset.testid||el.textContent.trim().slice(0,40)} ${Math.round(b.width)}×${Math.round(b.height)}`);
-      if((b.left<-.5||b.right>innerWidth+.5)&&!el.closest('.filters'))out.push(`Control outside viewport: ${el.dataset.testid||el.tagName}`);
+      if((b.left<-.5||b.right>expectedWidth+.5)&&!el.closest('.filters'))out.push(`Control outside viewport: ${el.dataset.testid||el.tagName}`);
     }
+    for(const row of document.querySelectorAll('.stock-row')){const quantity=row.querySelector('.stock-quantity')?.getBoundingClientRect();if(!quantity)continue;for(const text of row.querySelectorAll(':scope > div strong,:scope > div p')){const range=document.createRange();range.selectNodeContents(text);if([...range.getClientRects()].some(b=>b.right>quantity.left-8&&b.top<quantity.bottom&&b.bottom>quantity.top))out.push(`Stock text touches quantity: ${text.textContent}`);}}
     if(document.querySelectorAll('dialog[open],[role=dialog][aria-modal=true]').length>1)out.push('Multiple modal layers');
     return out;
-  });
+  },width);
   assert.deepEqual(problems,[],`${width}px #${routeName}: ${problems.join('; ')}`);
   const covered=await page.evaluate(async()=>{const dock=document.querySelector('.dock'),last=document.querySelector('#main')?.lastElementChild;if(!dock||!last)return false;window.scrollTo(0,document.documentElement.scrollHeight);await new Promise(r=>requestAnimationFrame(r));const hidden=last.getBoundingClientRect().bottom>dock.getBoundingClientRect().top+1;window.scrollTo(0,0);return hidden;});
   assert.equal(covered,false,`${width}px #${routeName}: bottom content is covered by capture/navigation dock`);
@@ -91,7 +112,7 @@ async function layout(page,routeName,width){
     for(const mode of ['photo','voice','text'])assert.equal(await page.getByTestId('capture-'+mode).isVisible(),true,`${mode} capture is available`);
   }
 }
-async function captureFailure(page){if(!page.isClosed()){await page.screenshot({path:path.join(artifacts,'failure.png'),fullPage:true}).catch(()=>{});await fs.writeFile(path.join(artifacts,'failure.html'),await page.content()).catch(()=>{});}}
+async function captureFailure(page){if(!page.isClosed()){await rawShot(page,{path:path.join(artifacts,'failure.png'),fullPage:true}).catch(()=>{});await fs.writeFile(path.join(artifacts,'failure.html'),await page.content()).catch(()=>{});}}
 function recordFailure(stage,error){report.failures.push({stage,message:error.message,stack:error.stack});console.error(`${stage}: ${error.message}`);}
 async function journey(browser,name,run){
   const {context,page}=await newPage(browser);
@@ -205,6 +226,9 @@ async function interruptions(browser){
     await route(page,'workers');const beforeWorker=await page.getByTestId('worker-muhammed').innerText();
     await route(page,'assignment/worker-task');await click(page,'choose-worker');await click(page,'worker-option-muhammed');await route(page,'workers');assert.equal(await page.getByTestId('worker-muhammed').innerText(),beforeWorker,'Selecting a worker does not count as assignment');
     await click(page,'worker-muhammed');assert.equal(await page.getByTestId('task-worker-task').count(),0,'Draft is not presented as assigned');await click(page,'assign-open');await click(page,'assignment-confirm');await route(page,'worker/muhammed');await page.getByTestId('task-worker-task').waitFor();await click(page,'task-worker-task');assert.match(await page.locator('#main').innerText(),/TEST Мухаммед/);
+    await page.evaluate(()=>window.r3Demo.reset());await route(page,'review/unknown-review');await click(page,'reject:unknown-review');await click(page,'nav-more');await click(page,'more-sources');await click(page,'source-unknown-review');await page.getByText('Исходник и история',{exact:true}).click();assert.match(await page.locator('#main').innerText(),/TEST: общий итог на второй странице не виден/);assert.equal(await page.getByTestId('confirm-proposal').count(),0);
+    await route(page,'review/clarify');await click(page,'edit-amount');await fill(page,'fact-input','1,10');await click(page,'sheet-save');await click(page,'confirm-proposal');await route(page,'review/clarify');assert.equal(await page.getByTestId('edit-amount').count(),0,'Confirmed detail is read-only');
+    report.checks.push('Rejected source remains discoverable through More → Sources; rejected and confirmed details offer no confirmation or amount edit');
     report.checks.push('Browser Back restores exact review-card focus; 1,10 TRY preserved; selecting worker creates no assigned count/detail before reviewed confirmation');
     await context.addInitScript(()=>{Object.defineProperty(window,'SpeechRecognition',{configurable:true,value:undefined});Object.defineProperty(window,'webkitSpeechRecognition',{configurable:true,value:undefined});});
     await route(page,'home');await page.reload();await ready(page);await click(page,'capture-voice');await page.getByText('Голосовой ввод недоступен',{exact:true}).waitFor();await screenshot(page,'chromium','state-voice-unsupported-simulated',390,'Controlled unsupported-speech capability simulation');await click(page,'voice-fallback');await page.getByTestId('capture-input').waitFor();
@@ -226,7 +250,7 @@ try{
 }catch(error){
   report.status='FAIL';report.failure={message:error.message,stack:error.stack};
   if(currentPage&&!currentPage.isClosed()){
-    await currentPage.screenshot({path:path.join(artifacts,'failure.png'),fullPage:true}).catch(()=>{});
+    await rawShot(currentPage,{path:path.join(artifacts,'failure.png'),fullPage:true}).catch(()=>{});
     await fs.writeFile(path.join(artifacts,'failure.html'),await currentPage.content()).catch(()=>{});
   }
   process.exitCode=1;
