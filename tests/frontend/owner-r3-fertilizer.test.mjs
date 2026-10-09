@@ -241,3 +241,29 @@ test('known CURRENT area supports local per-part confirmation after UNKNOWN phys
   assert.deepEqual(ledger(state), before);
   assert.doesNotMatch(renderFertilizer(state, record.id, 'task'), /Учебный пример площадей/);
 });
+
+
+test('compact product selection preserves separately readable place, stock and dose unit', () => {
+  const { state, record } = example(); addThree(state, record);
+  const html = renderFertilizer(state, record.id);
+  assert.match(html, /component-product/);
+  assert.match(html, /component-stock/);
+  assert.match(html, /DEMO центральный склад · запас 125 L/);
+  assert.match(html, /<option value="demo-multilex" selected>Multilex<\/option>/);
+  assert.match(html, /<option value="kno3" selected>KNO₃ · İmamlı<\/option>/);
+  assert.match(html, /<option value="kno3-sun" >KNO₃ · Özvadi<\/option>/);
+  assert.match(html, /На 1 da/);
+  assert.match(html, /L\/da/);
+});
+
+test('shared unknown physical mapping warning is displayed once with all affected parts', () => {
+  const state = fresh(), record = startFertilizerDraft(state, 'kno3');
+  dose(state, record, '1'); set(state, record, 'allParts', true, { groupId: 'mix-1' });
+  const result = calculateFertilizer(state, record);
+  const mappingWarnings = result.warnings.filter(warning => warning.includes('схема полива / бочка неизвестны'));
+  assert.equal(mappingWarnings.length, 4, 'Underlying evidence remains per part');
+  const html = renderFertilizer(state, record.id);
+  assert.equal((html.match(/схема полива \/ бочка неизвестны/g) || []).length, 1, 'Common warning is concise');
+  for (const warning of mappingWarnings) assert.ok(html.includes(warning.split(':')[0]));
+  assert.equal((html.match(/Полив неизвестен/g) || []).length, 4, 'Each calculated part still shows UNKNOWN');
+});

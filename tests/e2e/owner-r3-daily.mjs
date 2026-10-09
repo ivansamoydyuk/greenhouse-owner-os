@@ -2,6 +2,7 @@
 // All mutations below use trusted UI clicks and field/keyboard entry. The public
 // read-only demo snapshot is inspected for cross-view and accounting assertions.
 import assert from 'node:assert/strict';
+import { syntheticPixelPng } from '../fixtures/owner-r3-media.mjs';
 
 const WIDTHS = [320, 390, 700, 768, 820, 900, 1280];
 const stateOf = page => page.evaluate(() => window.r3Demo.state());
@@ -358,7 +359,7 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
     assert.match(await page.locator('#toast').innerText(),/фото JPEG/);assert.equal((await stateOf(page)).draft.file,null);
     await page.getByTestId('photo-file').setInputFiles({name:'SYNTHETIC-large.png',mimeType:'image/png',buffer:Buffer.alloc(512*1024+1)});
     assert.match(await page.locator('#toast').innerText(),/до 512 КБ/);assert.equal((await stateOf(page)).draft.file,null);
-    await page.getByTestId('photo-file').setInputFiles({name:'SYNTHETIC-pixel.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5VQAAAAASUVORK5CYII=','base64')});
+    await page.getByTestId('photo-file').setInputFiles({name:'SYNTHETIC-pixel.png',mimeType:'image/png',buffer:syntheticPixelPng()});
     await page.locator('.photo-preview img').waitFor();
     await page.locator('.photo-preview img').evaluate(image=>image.decode());
     assert.equal(await page.locator('.photo-preview img').evaluate(image=>image.naturalWidth),1,'A real tiny synthetic PNG is decoded locally');

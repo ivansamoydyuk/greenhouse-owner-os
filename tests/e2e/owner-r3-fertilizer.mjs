@@ -30,6 +30,7 @@ export async function runFertilizerJourneys({ browser, engine, click, fill, read
   };
   const open = async (page) => {
     await go(page, 'nav-more'); await go(page, 'more-inventory'); await go(page, 'stock-kno3');
+    await screenshot(page, engine, 'fertilizer-stock-product-detail', 390, 'B05 product detail with existing stock, unit, source location and contextual task action');
     await go(page, 'stock-fertilizer');
     assert.equal((await record(page)).areaMode, 'reference', 'Real greenhouse topology is the default reference');
     assert.equal((await record(page)).groups[0].components[0].dosePerDa, '', '180kg stock is not a dosage');
@@ -146,6 +147,18 @@ export async function runFertilizerJourneys({ browser, engine, click, fill, read
       await page.setViewportSize({ width, height: 844 }); await ready(page);
       await page.evaluate(() => window.scrollTo(0, 0));
       await layout(page, 'fertilizer/builder', width);
+      const componentGeometry = await page.locator('.mix-component').evaluateAll(rows => rows.map(row => {
+        const box = row.getBoundingClientRect(), select = row.querySelector('select'), dose = row.querySelector('[data-fertilizer-field="dosePerDa"]');
+        return { height: box.height, width: box.width, selectHeight: select.getBoundingClientRect().height, doseHeight: dose.getBoundingClientRect().height, font: parseFloat(getComputedStyle(select).fontSize), stock: row.querySelector('.component-stock').textContent };
+      }));
+      assert.equal(componentGeometry.length, 3);
+      for (const item of componentGeometry) {
+        assert.ok(item.height <= 230, `Compact component at ${width}px: ${item.height}px, without hiding facts`);
+        assert.ok(item.selectHeight >= 48 && item.doseHeight >= 48, 'Compact controls retain 48px targets');
+        assert.ok(item.font >= 16, 'Product stays readable');
+        assert.match(item.stock, /запас/);
+      }
+
       await screenshot(page, engine, 'fertilizer-builder', width, 'B06 compact multiple fertilizers with per-da doses and separate teaching topology');
       await go(page, 'fertilizer-review');
       await layout(page, 'fertilizer/review', width);
