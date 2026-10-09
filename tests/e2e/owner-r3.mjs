@@ -423,7 +423,10 @@ async function correctionJourneys(browser,engine){
   });
   await correctionJourney(browser,engine,'Photo: replacing or clearing the prepared conflict caption cannot fabricate a contradiction',async page=>{
     for(const [name,caption] of [['replaced','Проверьте только дату документа.'],['cleared','']]){
-      await page.evaluate(()=>window.r3Demo.reset());await route(page,'home');await click(page,'capture-photo');await click(page,'demo-photo-conflict');await fill(page,'capture-comment',caption);
+      // Already on Home for the first case; use the actual navigation link
+      // between cases. Same-URL page.goto can reload WebKit and lose metrics.
+      if(await page.evaluate(()=>location.hash)!=='#home')await click(page,'nav-home');
+      await page.evaluate(()=>window.r3Demo.reset());await ready(page);await click(page,'capture-photo');await click(page,'demo-photo-conflict');await fill(page,'capture-comment',caption);
       assert.equal(await page.evaluate(()=>window.r3Demo.state().draft.scenario),'receipt','Editing the exact prepared contradiction caption leaves the conflict storyboard');
       await click(page,'capture-save');await page.getByTestId('confirm-proposal').waitFor();
       const receipt=await proposal(page,'depot-review');assert.equal(receipt.kg,1200);assert.equal(!!receipt.captionConflict,false);assert.equal(await page.getByTestId('caption-conflict').count(),0);assert.doesNotMatch(await page.locator('#main').innerText(),/1[\s\u00a0]100/,'Generic or blank caption never generates the removed 1 100 kg assertion');
