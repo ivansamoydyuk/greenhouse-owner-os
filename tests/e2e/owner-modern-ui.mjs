@@ -151,7 +151,7 @@ try {
   await sheet().locator('#r2-source-status').filter({hasText: 'Добавьте текст или файл'}).waitFor();
   assert.equal(await sheet().getByRole('button', {name: 'Сохранить источник', exact: true}).isEnabled(), true);
   await screenshot('capture-validation', 390);
-  await sheet().getByLabel('Текст / расшифровка').fill(sourceText);
+  await sheet().locator('textarea[name=text]').fill(sourceText);
   await sheet().getByRole('button', {name: 'Сохранить источник', exact: true}).click();
   await sheet().waitFor({state: 'hidden'});
   const capture = await poll(async () => (await checkedApi(owner + '/captures')).items.find(s => s.text === sourceText), 'TEST source was not saved');
@@ -210,7 +210,7 @@ try {
     for (const mode of ['text', 'photo', 'pdf']) {
       const opener = page.locator(`[data-r2-mode=${mode === 'text' ? 'text' : 'photo'}]`);
       await opener.click();
-      await sheet().getByLabel('Текст / расшифровка').fill('TEST · Привезли 100 кг KNO3 в İmamlı. Оригинал сохраняется до проверки.');
+      await (await revealOwnerControl(sheet().locator('textarea[name=text]'))).fill('TEST · Привезли 100 кг KNO3 в İmamlı. Оригинал сохраняется до проверки.');
       if (mode !== 'text') {
         await sheet().locator('#r2-file').setInputFiles({name: mode === 'photo' ? 'TEST-fatura.png' : 'TEST-fatura.pdf', mimeType: mode === 'photo' ? 'image/png' : 'application/pdf', buffer: mode === 'photo' ? photo : pdf});
         const preview = sheet().locator('#r2-file-preview');
@@ -226,7 +226,7 @@ try {
         }
         await sheet().locator('[data-capture-mode=text]').click();
         assert.equal(await sheet().locator('#r2-file').evaluate(input => input.files.length), 1, 'Mode switch preserves selected original');
-        assert.match(await sheet().getByLabel('Текст / расшифровка').inputValue(), /100 кг/);
+        assert.match(await sheet().locator('textarea[name=text]').inputValue(), /100 кг/);
         await sheet().locator('[data-capture-mode=photo]').click();
       }
       await dialogLayout(`${width}/capture-${mode}`); await screenshot(`capture-${mode}`, width);

@@ -366,3 +366,73 @@ blockquote { margin: 14px 0; padding: 14px; background: var(--background); borde
   dialog[open] { animation: appear .16s ease-out; }
   @keyframes appear { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
 }
+
+/* Physical-phone refinement: one focused sheet, with the active viewport (not
+   the covered layout viewport) as its boundary when the keyboard is present. */
+body.sheet-open .owner-dock { visibility: hidden; pointer-events: none; }
+#sheet { scroll-padding-top: 92px; scroll-padding-bottom: 24px; }
+.sheet-header { position: sticky; top: -26px; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -26px -26px 16px; padding: 18px 26px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.sheet-header #sheet-title { flex: 1; min-width: 0; margin: 0; padding: 0; overflow-wrap: anywhere; }
+.sheet-header .close { float: none; flex: 0 0 44px; width: 44px; height: 44px; margin: 0; border-radius: 50%; background: var(--subtle); }
+#sheet input, #sheet select, #sheet textarea { scroll-margin-top: 100px; scroll-margin-bottom: 24px; }
+.capture-flow { display: flex; flex-direction: column; gap: 12px; }
+.capture-flow .capture-modes { margin: 0 0 8px; }
+.capture-flow details { margin: 0; }
+.capture-flow details > summary { min-height: 44px; display: flex; align-items: center; }
+.capture-flow details > summary[hidden] { display: none; }
+.capture-flow .capture-evidence { margin: 0; }
+.capture-flow textarea { min-height: 180px; font-size: 19px; line-height: 1.55; padding: 16px; }
+.capture-flow[data-capture-active="photo"] textarea { min-height: 100px; }
+.capture-flow .capture-source-empty { min-height: 210px; }
+.capture-flow .capture-preview-image { max-height: 340px; }
+.capture-flow .capture-guidance { margin: 4px 0; font-size: 13px; color: var(--muted); }
+.capture-voice-panel { padding: 16px; border-radius: 16px; background: var(--green-soft); }
+.capture-voice-state { font-size: 19px; font-weight: 650; margin: 0 0 12px; }
+.capture-voice-actions { display: flex; gap: 8px; }
+.capture-voice-actions button { flex: 1; }
+.capture-status:empty { display: none; }
+.capture-status[data-state="dictating"], .capture-status[data-state="server"] { color: var(--green); background: var(--green-soft); }
+.capture-flow > button[type="submit"] { margin-top: 4px; }
+.task-intent-form, .task-intent-editor, .task-primary-fields { display: grid; gap: 12px; }
+.task-intent-form textarea, .task-intent-editor > label > textarea { min-height: 130px; font-size: 18px; line-height: 1.5; }
+.task-facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 16px; }
+.task-fact, .date-editor { min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.task-fact > summary, .date-editor > summary, .date-chip { min-height: 44px; padding: 11px 14px; color: var(--green); font-weight: 600; overflow-wrap: anywhere; }
+.task-fact[open] { flex: 1 1 100%; }
+.task-fact[open] > label, .task-fact[open] > input, .task-fact[open] > select, .task-fact[open] > p, .date-editor[open] > input { margin: 0 12px 12px; width: calc(100% - 24px); }
+.task-fact select, .date-editor input { min-height: 48px; font-size: 16px; }
+.task-extra, .task-advanced { border-top: 1px solid var(--line); margin: 12px 0; padding-top: 4px; }
+.task-extra > summary, .task-advanced > summary { min-height: 48px; display: flex; align-items: center; color: var(--muted); font-weight: 600; }
+.task-extra[open], .task-advanced[open] { padding-bottom: 16px; }
+.task-translation, .task-assignment-copy { border: 1px solid var(--line); padding: 16px; border-radius: 14px; margin: 12px 0; background: #fafbf8; overflow-wrap: anywhere; }
+.task-translation textarea, .task-assignment-copy textarea { min-height: 110px; }
+.task-assignment-preview { display: grid; gap: 12px; }
+.task-assignment-exception { color: var(--warning); background: var(--warning-soft); padding: 14px; border-radius: 14px; line-height: 1.5; }
+.task-assignment-review { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.review-empty-help { color: var(--muted); max-width: 34em; margin: 20px auto 0; }
+@media (max-width: 620px) {
+  #sheet { position: fixed; inset: var(--sheet-viewport-top, 0px) 0 auto; margin: 6px auto; width: calc(100% - 12px); height: calc(var(--sheet-viewport-height, 100dvh) - 12px); max-height: calc(var(--sheet-viewport-height, 100dvh) - 12px); padding: 0; border-radius: 19px; }
+  #sheet-content { padding: 16px 16px max(24px, env(safe-area-inset-bottom)); min-height: 100%; }
+  .sheet-header { top: -1px; margin: -16px -16px 16px; padding: max(12px, env(safe-area-inset-top)) 16px 10px; }
+  .sheet-header #sheet-title { font-size: 21px; }
+  #sheet .capture-flow textarea { min-height: 165px; }
+  #sheet .capture-flow .capture-preview-image { max-height: min(40dvh, 340px); }
+  #sheet .capture-flow .capture-source-empty { min-height: min(28dvh, 210px); }
+  #sheet .task-facts { gap: 7px; }
+  #sheet .task-fact { flex: 1 1 auto; }
+  #sheet .task-fact[open] { flex-basis: 100%; }
+  #sheet form > button.primary:last-of-type, #sheet .owner-review-actions { position: sticky; bottom: 0; z-index: 2; box-shadow: 0 8px 0 8px var(--surface); }
+  #sheet .owner-review-actions { padding: 12px 0 0; background: var(--surface); }
+  #sheet form > button.primary:last-of-type { min-height: 48px; width: 100%; }
+}
+.capture-flow > .capture-modes { order: 0; }
+.capture-flow > .capture-voice-panel { order: 1; }
+.capture-flow > .capture-text-panel { order: 2; }
+.capture-flow > .capture-attachments { order: 3; }
+.capture-flow > .capture-status { order: 4; }
+.capture-flow > button[type=submit] { order: 5; }
+.capture-flow[data-capture-active="photo"] > .capture-attachments { order: 2; }
+.capture-flow[data-capture-active="photo"] > .capture-text-panel { order: 3; }
+.task-fact > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.task-fact > summary span { font-size: 12px; font-weight: 400; color: var(--muted); }
+.task-fact > summary strong { font-weight: 600; }
