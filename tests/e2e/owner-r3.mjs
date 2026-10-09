@@ -82,12 +82,14 @@ async function rawShot(page,options){
   }
 }
 async function screenshot(page,engine,routeName,width,label){
+  await page.locator('#toast.show').waitFor({state:'hidden',timeout:6000});
+  const originalScroll=await page.evaluate(()=>({x:scrollX,y:scrollY}));
   const file=`${engine}-${String(width)}-${routeName.replaceAll('/','-')}.png`;
   const pixels=await rawShot(page,{path:path.join(artifacts,file),fullPage:true}),pixelWidth=pixels.readUInt32BE(16);
   if(pixelWidth!==width)recordFailure(`${engine} screenshot ${width} #${routeName}`,new Error(`PNG width ${pixelWidth}px differs from requested viewport ${width}px`));
   report.screenshots.push({file,feature_sha:expectedSha,engine,width,pixel_width:pixelWidth,screen:label,route:'#'+routeName,full_page:true});
   const overflow=await page.evaluate(async expected=>{await new Promise(r=>requestAnimationFrame(r));return Math.max(document.documentElement.scrollWidth,document.body.scrollWidth)>expected+1;},width);if(overflow)recordFailure(`${engine} after-screenshot ${width} #${routeName}`,new Error('Body/document overflow after screenshot reflow'));
-  if(width===390){await page.evaluate(()=>window.scrollTo(0,0));const viewportFile=file.replace('.png','-viewport.png');await rawShot(page,{path:path.join(artifacts,viewportFile),fullPage:false});report.screenshots.push({file:viewportFile,feature_sha:expectedSha,engine,width,height:page.viewportSize().height,screen:label,route:'#'+routeName,full_page:false});}
+  if(width===390){await page.evaluate(position=>window.scrollTo(position.x,position.y),originalScroll);const viewportFile=file.replace('.png','-viewport.png');await rawShot(page,{path:path.join(artifacts,viewportFile),fullPage:false});report.screenshots.push({file:viewportFile,feature_sha:expectedSha,engine,width,height:page.viewportSize().height,screen:label,route:'#'+routeName,full_page:false});}
 }
 async function layout(page,routeName,width){
   const problems=await page.evaluate(expectedWidth=>{
@@ -204,7 +206,7 @@ async function interruptions(browser){
     await route(page,'capture/text');await page.setViewportSize({width:390,height:460});await fill(page,'capture-input',SCENARIO);
     await page.getByTestId('capture-save').scrollIntoViewIfNeeded();assert.equal(await page.getByTestId('capture-save').isVisible(),true);
     await page.getByTestId('capture-input').focus();await page.keyboard.press('Tab');
-    assert.ok(await page.evaluate(()=>document.activeElement!==document.body),'Keyboard tab keeps reachable controls');await screenshot(page,'chromium','state-keyboard-height-proxy',390,'Reduced-height keyboard proxy, not native iPhone keyboard');
+    assert.ok(await page.evaluate(()=>document.activeElement!==document.body),'Keyboard tab keeps reachable controls');await page.getByTestId('capture-save').evaluate(el=>el.scrollIntoView({block:'center'}));assert.equal(await page.getByTestId('capture-save').evaluate(el=>{const b=el.getBoundingClientRect();return b.top>=0&&b.bottom<=visualViewport.height&&b.left>=0&&b.right<=visualViewport.width;}),true,'Primary action fits fully inside reduced visual viewport after scrolling');await screenshot(page,'chromium','state-keyboard-height-proxy',390,'Reduced-height keyboard proxy, not native iPhone keyboard');
     await page.setViewportSize({width:390,height:844});
     await route(page,'settings');await click(page,'toggle-error');await route(page,'capture/text');await fill(page,'capture-input',SCENARIO);await click(page,'capture-save');await page.getByTestId('capture-retry').waitFor();
     assert.equal(await page.evaluate(()=>window.r3Demo.state().draft.text),SCENARIO);await screenshot(page,'chromium','state-save-error',390,'Preparation error preserving the source');
@@ -217,7 +219,7 @@ async function interruptions(browser){
     await click(page,'refresh-stale');assert.equal(await page.locator('dialog[open]').count(),0);await click(page,'confirm-proposal');
     assert.equal(await page.evaluate(()=>window.r3Demo.state().proposals.find(p=>p.id==='clarify').status),'confirmed');
     await route(page,'review');await click(page,'review-harvest');await click(page,'review-depot-review');await page.goBack();await ready(page);assert.equal(await page.getByTestId('review-harvest').getAttribute('aria-pressed'),'true','Back retains queue filter');assert.equal(await page.getByTestId('review-depot-review').evaluate(el=>el===document.activeElement),true,'Browser Back restores focus to the exact review card');
-    await page.evaluate(()=>window.r3Demo.reset());await route(page,'settings');await click(page,'toggle-empty');await page.getByText('Здесь пока пусто',{exact:true}).waitFor();await screenshot(page,'chromium','state-empty-review',390,'Empty review');
+    await page.evaluate(()=>window.r3Demo.reset());await route(page,'settings');await click(page,'toggle-empty');await page.getByText('Здесь пока пусто',{exact:true}).waitFor();assert.equal(await page.getByTestId('review-confirmed').evaluate(el=>{const b=el.getBoundingClientRect();return b.left>=0&&b.right<=visualViewport.width;}),true,'Selected empty-state filter stays inside viewport');await screenshot(page,'chromium','state-empty-review',390,'Empty review');
     await route(page,'settings');await click(page,'toggle-large');await layout(page,'finance/receivable',390);await screenshot(page,'chromium','state-large-finance',390,'Large amount');await page.setViewportSize({width:320,height:844});await layout(page,'finance/receivable',320);await screenshot(page,'chromium','state-large-finance',320,'Large amount');
     report.checks.push('Real UI state controls: empty queue, large amount 320/390, preparation error/retry without duplication, offline draft recovery, stale confirmation blocked, Back preserves review filter');
     await page.setViewportSize({width:390,height:844});await page.evaluate(()=>window.r3Demo.reset());

@@ -75,6 +75,7 @@ jobs:
         with:
           name: owner-r3-browser-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           path: artifacts/owner-r3-evidence/
+          overwrite: true
           retention-days: 14
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
@@ -82,6 +83,7 @@ jobs:
         with:
           name: owner-r3-static-build-${{ github.event.pull_request.head.sha || github.sha }}
           path: artifacts/owner-r3-build/
+          overwrite: true
           retention-days: 14
           if-no-files-found: error
       - name: Stop loopback preview
@@ -158,12 +160,14 @@ jobs:
         with:
           name: owner-r3-private-access
           path: artifacts/owner-r3-private-access.txt
+          overwrite: true
           retention-days: 1
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: owner-r3-preview-metadata
           path: artifacts/owner-r3-preview.json
+          overwrite: true
           retention-days: 1
       - name: Keep access open until exact expiry
         run: |

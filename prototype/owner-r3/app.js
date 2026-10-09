@@ -433,6 +433,14 @@ function render({ focus = false } = {}) {
     pending(state).length,
     focused,
   );
+  // Keep the selected horizontal filter visible without moving the page vertically.
+  for (const filters of document.querySelectorAll(".filters")) {
+    const selected = filters.querySelector(".selected");
+    if (!selected) continue;
+    const box = filters.getBoundingClientRect(), item = selected.getBoundingClientRect();
+    if (item.right > box.right) filters.scrollLeft += item.right - box.right;
+    else if (item.left < box.left) filters.scrollLeft -= box.left - item.left;
+  }
   if (focus) document.querySelector("#main")?.focus({ preventScroll: true });
   save();
 }
