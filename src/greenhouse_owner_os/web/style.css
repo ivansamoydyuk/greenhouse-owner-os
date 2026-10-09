@@ -369,9 +369,9 @@ blockquote { margin: 14px 0; padding: 14px; background: var(--background); borde
 
 /* Physical-phone refinement: one focused sheet, with the active viewport (not
    the covered layout viewport) as its boundary when the keyboard is present. */
-body.sheet-open .owner-dock { visibility: hidden; pointer-events: none; }
+body:has(#sheet[open]) .owner-dock { visibility: hidden; pointer-events: none; }
 #sheet { scroll-padding-top: 92px; scroll-padding-bottom: 24px; }
-.sheet-header { position: sticky; top: -26px; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -26px -26px 16px; padding: 18px 26px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.sheet-header { position: sticky; top: -26px; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -26px 0 16px; padding: 18px 0 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .sheet-header #sheet-title { flex: 1; min-width: 0; margin: 0; padding: 0; overflow-wrap: anywhere; }
 .sheet-header .close { float: none; flex: 0 0 44px; width: 44px; height: 44px; margin: 0; border-radius: 50%; background: var(--subtle); }
 #sheet input, #sheet select, #sheet textarea { scroll-margin-top: 100px; scroll-margin-bottom: 24px; }
@@ -413,7 +413,7 @@ body.sheet-open .owner-dock { visibility: hidden; pointer-events: none; }
 @media (max-width: 620px) {
   #sheet { position: fixed; inset: var(--sheet-viewport-top, 0px) 0 auto; margin: 6px auto; width: calc(100% - 12px); height: calc(var(--sheet-viewport-height, 100dvh) - 12px); max-height: calc(var(--sheet-viewport-height, 100dvh) - 12px); padding: 0; border-radius: 19px; }
   #sheet-content { padding: 16px 16px max(24px, env(safe-area-inset-bottom)); min-height: 100%; }
-  .sheet-header { top: -1px; margin: -16px -16px 16px; padding: max(12px, env(safe-area-inset-top)) 16px 10px; }
+  .sheet-header { top: -1px; margin: -16px 0 16px; padding: max(12px, env(safe-area-inset-top)) 0 10px; }
   .sheet-header #sheet-title { font-size: 21px; }
   #sheet .capture-flow textarea { min-height: 165px; }
   #sheet .capture-flow .capture-preview-image { max-height: min(40dvh, 340px); }

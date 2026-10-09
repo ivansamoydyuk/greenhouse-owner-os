@@ -47,5 +47,11 @@ try{
  // Restore every synthetic successful posting via UI, in dependency order.
  for(const[kind,id]of tracked.reverse()){await open(kind,id);if(await sheet().getByRole('button',{name:'Отменить операцию',exact:true}).isVisible())await reverse();}
  view=await projection();assert.deepEqual(view.balances.TRY,{cash:'0.00',payable:'2600.00',receivable:'0.00',advance_paid:'0.00',advance_received:'0.00'});
- await close();await navigateOwner(page,'overview');await (await revealOwnerControl(page.locator('#reconcile'))).click();await page.getByText('Сверка пройдена',{exact:false}).waitFor();await page.screenshot({path:`${process.env.E2E_ARTIFACTS||'artifacts'}/finance-review-390.png`,fullPage:true});assert.deepEqual(errors,[]);console.log('PASS: cleanup/reversed synthetic operations, Serkan unpaid 2600 TRY, cash 0, reconciliation, no browser errors');
+ await close();await navigateOwner(page,'overview');await (await revealOwnerControl(page.locator('#reconcile'))).click();await page.getByText('Сверка пройдена',{exact:false}).waitFor();await page.setViewportSize({width:390,height:844});assert.equal(page.viewportSize().width,390);await page.screenshot({path:`${process.env.E2E_ARTIFACTS||'artifacts'}/finance-review-390.png`,fullPage:true});assert.deepEqual(errors,[]);console.log('PASS: cleanup/reversed synthetic operations, Serkan unpaid 2600 TRY, cash 0, reconciliation, no browser errors');
+}catch(error){
+ const artifacts=process.env.E2E_ARTIFACTS||'artifacts';await fs.mkdir(artifacts,{recursive:true});
+ await page.screenshot({path:artifacts+'/finance-failure.png',fullPage:true}).catch(()=>{});
+ await fs.writeFile(artifacts+'/finance-failure.html',await page.content());
+ await fs.writeFile(artifacts+'/finance-failure-errors.json',JSON.stringify({message:error.message,pageErrors:errors},null,2));
+ throw error;
 }finally{await browser.close();}
