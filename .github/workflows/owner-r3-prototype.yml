@@ -1,0 +1,176 @@
+name: Owner R3 isolated design prototype
+
+on:
+  pull_request:
+    branches: [06-owner-ui-r2-modern-dashboard]
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: owner-r3-design-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  OWNER_PREVIEW_FEATURE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  browser:
+    name: Static prototype and real mobile browser gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Exact clean checkout and unchanged protected application
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$OWNER_PREVIEW_FEATURE_SHA"
+          test -z "$(git status --porcelain)"
+          if [ -n "$BASE_SHA" ]; then
+            git diff --exit-code "$BASE_SHA" HEAD -- src/ alembic/ openapi/ config/ schema_v2.sql pyproject.toml package.json package-lock.json .github/workflows/owner-finance-preview.yml .github/workflows/postgresql-verification.yml
+          fi
+          mkdir -p artifacts/owner-r3-evidence
+          git rev-parse HEAD > artifacts/owner-r3-evidence/checkout-sha.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Retain existing frontend checks and verify isolated static build
+        run: |
+          npm ci
+          npm run test:ui
+          test -z "$(git status --porcelain --untracked-files=no)"
+          node scripts/r3_preview.mjs build artifacts/owner-r3-build
+          node scripts/r3_preview.mjs verify artifacts/owner-r3-build
+          node scripts/r3_preview.mjs self-test artifacts/owner-r3-build
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+      - name: Start loopback-only authenticated synthetic browser target
+        run: |
+          PREVIEW_SECRET=$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")
+          echo "::add-mask::$PREVIEW_SECRET"
+          echo "PREVIEW_SECRET=$PREVIEW_SECRET" >> "$GITHUB_ENV"
+          export PREVIEW_SECRET R3_LOCAL_TEST=1 PREVIEW_PORT=4173 R3_BUILD_DIR="$PWD/artifacts/owner-r3-build"
+          node scripts/r3_preview.mjs serve > "$RUNNER_TEMP/r3-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/r3-server.pid"
+          for i in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:4173/health > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/r3-server.log"
+          exit 1
+      - name: Exact-SHA screens, responsive checks, eight measured journeys and interruption checks
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/owner-r3-evidence
+        run: node tests/e2e/owner-r3.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-r3-browser-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/owner-r3-evidence/
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: owner-r3-static-build-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/owner-r3-build/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Stop loopback preview
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/r3-server.pid" ]; then kill "$(cat "$RUNNER_TEMP/r3-server.pid")" || true; fi
+
+  preview:
+    name: Owner review window (explicit rerun after visual review)
+    needs: browser
+    if: github.run_attempt > 1 || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 43
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: owner-r3-static-build-${{ github.event.pull_request.head.sha || github.sha }}
+          path: r3-build
+      - name: Verify preserved build and launch existing approved TEST tunnel
+        run: |
+          node r3-build/server.mjs verify r3-build
+          node --input-type=module -e "import fs from 'node:fs'; if(JSON.parse(fs.readFileSync('r3-build/manifest.json')).feature_sha!==process.env.OWNER_PREVIEW_FEATURE_SHA) throw Error('Wrong build SHA');"
+          mkdir -p artifacts
+          curl --fail --location --retry 2 -o "$RUNNER_TEMP/cloudflared" https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-linux-amd64
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          "$RUNNER_TEMP/cloudflared" tunnel --no-autoupdate --protocol http2 --url http://127.0.0.1:4173 > "$RUNNER_TEMP/r3-tunnel.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/r3-tunnel.pid"
+          for i in $(seq 1 60); do
+            preview_url=$(sed -n 's/.*\(https:\/\/[a-z0-9-]*\.trycloudflare\.com\).*/\1/p' "$RUNNER_TEMP/r3-tunnel.log" | head -1)
+            if [ -n "$preview_url" ]; then break; fi
+            sleep 1
+          done
+          test -n "$preview_url"
+          export PREVIEW_PUBLIC_ORIGIN="$preview_url"
+          export PREVIEW_SECRET=$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")
+          echo "::add-mask::$PREVIEW_SECRET"
+          export PREVIEW_EXPIRES_AT=$(node -e "console.log(new Date(Date.now()+35*60*1000).toISOString())")
+          export R3_BUILD_DIR="$PWD/r3-build" PREVIEW_PORT=4173
+          echo "PREVIEW_EXPIRES_AT=$PREVIEW_EXPIRES_AT" >> "$GITHUB_ENV"
+          node r3-build/server.mjs serve > "$RUNNER_TEMP/r3-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/r3-server.pid"
+          for i in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:4173/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --silent --fail --retry 10 --retry-delay 2 "$preview_url/health" > /dev/null
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs/promises';
+          const base=process.env.PREVIEW_PUBLIC_ORIGIN;
+          assert.equal((await fetch(base+'/preview/config')).status,401);
+          assert.equal((await fetch(base+'/app.js')).status,401);
+          const response=await fetch(base+'/preview/login',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({secret:process.env.PREVIEW_SECRET})});
+          assert.equal(response.status,200);
+          const cookie=response.headers.get('set-cookie');
+          for(const flag of ['Secure','HttpOnly','SameSite=Strict'])assert.ok(cookie.includes(flag));
+          const headers={Cookie:cookie.split(';')[0]};
+          const config=await (await fetch(base+'/preview/config',{headers})).json();
+          assert.equal(config.feature_sha,process.env.OWNER_PREVIEW_FEATURE_SHA);
+          assert.equal(config.expires_at,process.env.PREVIEW_EXPIRES_AT);
+          assert.equal(config.backend_connected,false);
+          assert.equal((await fetch(base+'/',{headers})).status,200);
+          assert.equal((await fetch(base+'/app.js',{headers})).status,200);
+          assert.equal((await fetch(base+'/v1/entities',{headers})).status,404);
+          await fs.writeFile('artifacts/owner-r3-private-access.txt',`Owner UI R3 TEST prototype\nURL: ${base}\nAccess key: ${process.env.PREVIEW_SECRET}\nExact build SHA: ${config.feature_sha}\nExpires at (UTC): ${config.expires_at}\nSynthetic data only; no real accounts or backend operations.\nThe key is private. The saved build can be relaunched with a fresh key and expiry.\n`);
+          await fs.writeFile('artifacts/owner-r3-preview.json',JSON.stringify({url:base,feature_sha:config.feature_sha,expires_at:config.expires_at,backend_connected:false},null,2));
+          await fs.appendFile(process.env.GITHUB_STEP_SUMMARY,`### R3 authenticated TEST design prototype\n\nURL: ${base}\n\nExact build: ${config.feature_sha}\n\nExpires at (UTC): ${config.expires_at}\n\nAccess key is only in the private owner-r3-private-access artifact. No backend connected.\n`);
+          console.log('External HTTPS authentication, exact SHA, absolute expiry and no-business-API checks PASS');
+          JS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owner-r3-private-access
+          path: artifacts/owner-r3-private-access.txt
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owner-r3-preview-metadata
+          path: artifacts/owner-r3-preview.json
+          retention-days: 1
+      - name: Keep access open until exact expiry
+        run: |
+          node --input-type=module -e "const remaining=Date.parse(process.env.PREVIEW_EXPIRES_AT)-Date.now(); if(remaining>0)await new Promise(resolve=>setTimeout(resolve,remaining));"
+      - name: Stop preview and tunnel
+        if: always()
+        run: |
+          for process_file in "$RUNNER_TEMP/r3-server.pid" "$RUNNER_TEMP/r3-tunnel.pid"; do
+            if [ -f "$process_file" ]; then kill "$(cat "$process_file")" || true; fi
+          done
