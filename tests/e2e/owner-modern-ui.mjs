@@ -40,7 +40,12 @@ const close = async () => {
   await sheet().waitFor({state: 'hidden'});
 };
 async function screenshot(name, width) {
-  await page.evaluate(async () => {await document.fonts.ready; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));});
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    for(const dialog of document.querySelectorAll('dialog[open]'))await Promise.all(dialog.getAnimations().map(animation=>animation.finished));
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    for(const dialog of document.querySelectorAll('dialog[open]'))if(getComputedStyle(dialog).opacity!=='1')throw Error('Open sheet must be opaque before capture');
+  });
   const file = `${artifacts}/owner-modern-${name}-${width}.png`;
   await page.screenshot({path: file, fullPage: true});
   screenshots.push(file);
@@ -94,6 +99,7 @@ async function dialogLayout(label) {
   await sheet().evaluate(async dialog => {await Promise.all(dialog.getAnimations().map(animation => animation.finished));});
   assert.deepEqual(await sheet().evaluate(dialog => {
     const b = dialog.getBoundingClientRect(), failures = [];
+    if(getComputedStyle(dialog).opacity!=='1')failures.push('Dialog is translucent');
     if (b.left < -1 || b.right > innerWidth + 1 || b.top < -1 || b.bottom > innerHeight + 1) failures.push('Dialog outside viewport: '+JSON.stringify({rect:{x:b.x,y:b.y,width:b.width,height:b.height,bottom:b.bottom},viewport:{width:innerWidth,height:innerHeight,visualHeight:window.visualViewport?.height,visualTop:window.visualViewport?.offsetTop},style:document.documentElement.getAttribute('style')}));
     if (dialog.scrollWidth > dialog.clientWidth + 1) failures.push('Horizontal dialog overflow');
     const content = dialog.querySelector('#sheet-content');

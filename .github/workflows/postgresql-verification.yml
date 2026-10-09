@@ -11,7 +11,7 @@ permissions:
 jobs:
   owner-r2-browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:17.11
@@ -35,6 +35,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Record exact clean checkout
+        run: |
+          test "$(git rev-parse HEAD)" = '${{ github.event.pull_request.head.sha || github.sha }}'
+          test -z "$(git status --porcelain)"
+          mkdir -p artifacts
+          git rev-parse HEAD > artifacts/checkout-sha.txt
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.15'
@@ -57,7 +63,7 @@ jobs:
           path: artifacts/
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:17.11
@@ -80,6 +86,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Record exact clean checkout
+        run: |
+          test "$(git rev-parse HEAD)" = '${{ github.event.pull_request.head.sha || github.sha }}'
+          test -z "$(git status --porcelain)"
+          mkdir -p artifacts
+          git rev-parse HEAD > artifacts/checkout-sha.txt
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.15'
@@ -125,26 +137,37 @@ jobs:
         run: pytest tests/integration/test_postgres_opening.py -v
       - name: PostgreSQL integration and concurrency tests
         run: |
-          timeout --signal=TERM --kill-after=10s 300s pytest tests/integration -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/integration.xml"
+          timeout --signal=TERM --kill-after=10s 600s pytest tests/integration -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/integration.xml"
           python - <<'PY'
           import os
           import xml.etree.ElementTree as ET
           cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'integration.xml')).findall('.//testcase')
-          assert len(cases) >= 569, 'PostgreSQL tests did not execute'
+          assert len(cases) >= 604, 'PostgreSQL tests did not execute'
           assert not any(case.find('skipped') is not None for case in cases), 'PostgreSQL tests skipped'
           workers = [case for case in cases if 'test_postgres_workers' in case.get('classname', '')]
           assert len(workers) >= 125, 'Workers adversarial gate did not execute'
+          for module, minimum in [('test_postgres_owner_language_benchmark', 21), ('test_postgres_owner_language_preparation', 9), ('test_postgres_owner_actor_scope', 3)]:
+              assert sum(module in case.get('classname', '') for case in cases) >= minimum, 'Owner language boundary gate did not execute: ' + module
           PY
       - name: Complete regression suite
         run: |
-          timeout --signal=TERM --kill-after=10s 300s pytest -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/finance.xml"
+          timeout --signal=TERM --kill-after=10s 900s pytest -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/finance.xml"
           python - <<'PY'
           import os
           import xml.etree.ElementTree as ET
           cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'finance.xml')).findall('.//testcase')
-          assert len(cases) >= 745, 'Complete regression suite did not execute'
+          assert len(cases) >= 1180, 'Complete regression suite did not execute'
           assert not any(case.find('skipped') is not None for case in cases), 'Finance tests skipped'
           PY
+      - name: Owner language training and generated-variant safety gate
+        run: |
+          mkdir -p artifacts/owner-language
+          python scripts/generate_owner_language_variants.py
+          python scripts/owner_language_benchmark.py --require-safety --out artifacts/owner-language/train-report.json
+          python scripts/owner_language_benchmark.py --require-safety --corpus artifacts/owner-language/semantic_variants.jsonl --out artifacts/owner-language/semantic-report.json
+          python scripts/owner_language_benchmark.py --require-safety --corpus artifacts/owner-language/noise_variants.jsonl --out artifacts/owner-language/noise-report.json
+      - name: Preserve raw exposed failures and verify separate audience diagnostic
+        run: python scripts/run_owner_language_exposed_ci.py
       - name: Verify artifacts
         run: python scripts/verify_artifacts.py
       - name: Validate owner-confirmed opening in disposable database only

@@ -1,0 +1,16 @@
+{
+  "version": "public-assertion-curation-v1",
+  "source_evidence_retained_owner_only": true,
+  "existing_assertions_relaxed": false,
+  "pre_evaluation_assertion_completion": true,
+  "training_field_additions": 20,
+  "training_cases_affected": 16,
+  "holdout_cases_unchanged": 187,
+  "holdout_field_additions": 12,
+  "holdout_provenance_and_review_additions": 16,
+  "notes": [
+    "Missing source-backed assertions were completed before first holdout evaluation. Original private snapshots remain preserved.",
+    "Unverified aliases remain unbound; requested-prefill gaps are measured separately.",
+    "Review candidates never constitute owner approval or authoritative posting."
+  ]
+}

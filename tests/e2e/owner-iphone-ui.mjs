@@ -73,7 +73,9 @@ const textInput = () => sheet().locator('textarea[name=text]');
 const ready = () => page.waitForFunction(() => document.querySelector('#app')?.getAttribute('aria-busy') === 'false');
 const settle = () => page.evaluate(async () => {
   await document.fonts.ready;
+  for(const dialog of document.querySelectorAll('dialog[open]'))await Promise.all(dialog.getAnimations().map(animation=>animation.finished));
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  for(const dialog of document.querySelectorAll('dialog[open]'))if(getComputedStyle(dialog).opacity!=='1')throw Error('Open sheet must be opaque before capture');
 });
 const close = async () => {
   if (await sheet().isVisible()) await sheet().getByRole('button', {name: 'Закрыть', exact: true}).click();
@@ -102,6 +104,7 @@ async function modalLayout(label, primary = null) {
   assert.deepEqual(await sheet().evaluate(dialog => {
     const failures = [], visible = window.isVisibleOwnerControl, viewport = window.visualViewport;
     const top = viewport.offsetTop, bottom = top + viewport.height, d = dialog.getBoundingClientRect();
+    if (getComputedStyle(dialog).opacity !== '1') failures.push('Sheet is translucent');
     if (d.left < -1 || d.right > innerWidth + 1 || d.top < top - 1 || d.bottom > bottom + 1) failures.push('Sheet outside current visual viewport');
     if (document.documentElement.scrollWidth > innerWidth + 1 || dialog.scrollWidth > dialog.clientWidth + 1) failures.push('Horizontal overflow');
     if (visible(document.querySelector('#owner-dock'))) failures.push('Dock remains visible behind modal');
@@ -322,7 +325,10 @@ try {
     assert.equal(await sheet().locator('#task-greenhouse').inputValue(), areas[0].id, 'Native select retains explicitly selected greenhouse');
     const primary = sheet().getByRole('button', {name: 'Создать черновик задачи', exact: true});
     await modalLayout(`${width}/task-common`, primary); await shot('task-common');
-    if (width === 390) await keyboardLayout('task-common', sheet().locator('#task-description'), primary);
+    if (width === 390) {
+      await keyboardLayout('task-common', sheet().locator('#task-description'), primary);
+      await keyboardLayout('task-greenhouse-selector', sheet().locator('#task-greenhouse'), primary);
+    }
     await (await revealOwnerControl(sheet().locator('#task-planned'))).fill('2026-10-15');
     await sheet().locator('#task-planned').dispatchEvent('change');
     const ruDate = await page.evaluate(() => new Intl.DateTimeFormat('ru-RU', {timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric'}).format(new Date('2026-10-15T12:00:00Z')));
@@ -493,7 +499,7 @@ try {
     } finally {await workerContext.close();}
     await close();
   } else {
-    assert.equal(config.worker_assignment_fixture ?? null, null, 'Authored fixture never leaks into a preview that has not enabled it');
+    assert.deepEqual(config.worker_assignment_fixture, {}, 'Disabled authored fixture has no worker, task, source or prepared rendering metadata');
     fixtures.authoredWorkerAssignment = {skipped: true, reason: 'r2_fixtures disabled; general assignment coverage ran'};
   }
 

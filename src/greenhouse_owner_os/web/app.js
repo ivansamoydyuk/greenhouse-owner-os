@@ -94,7 +94,12 @@ function keepSheetFocusVisible(){
  requestAnimationFrame(()=>{
   if(!sheet.open||focused!==document.activeElement)return;
   const field=focused.getBoundingClientRect(),header=$('#sheet-content .sheet-header').getBoundingClientRect(),viewport=window.visualViewport;
-  const bottom=(viewport?.offsetTop||0)+(viewport?.height||window.innerHeight)-20;
+  let bottom=(viewport?.offsetTop||0)+(viewport?.height||window.innerHeight)-20;
+  const action=sheet.querySelector('form > button.primary:last-of-type,.owner-review-actions');
+  if(action&&getComputedStyle(action).position==='sticky'){
+   const actionTop=action.getBoundingClientRect().top;
+   if(actionTop>header.bottom+40)bottom=Math.min(bottom,actionTop-12);
+  }
   if(field.bottom>bottom)sheet.scrollTop+=field.bottom-bottom;
   else if(field.top<header.bottom+12)sheet.scrollTop-=header.bottom+12-field.top;
  });

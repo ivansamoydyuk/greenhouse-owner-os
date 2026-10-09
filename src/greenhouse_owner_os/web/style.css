@@ -363,8 +363,6 @@ blockquote { margin: 14px 0; padding: 14px; background: var(--background); borde
   button { transition: background-color .15s, border-color .15s; }
   #refresh[aria-busy=true] .ui-icon { animation: refresh-spin 1s linear infinite; }
   @keyframes refresh-spin { to { transform: rotate(360deg); } }
-  dialog[open] { animation: appear .16s ease-out; }
-  @keyframes appear { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
 }
 
 /* Physical-phone refinement: one focused sheet, with the active viewport (not
@@ -443,4 +441,14 @@ body:has(#sheet[open]) .owner-dock { visibility: hidden; pointer-events: none; }
 }
 @media (max-width: 350px) {
   .sheet-header #sheet-title { font-size: 19px; }
+}
+
+/* Stable opaque sheets keep source/review text legible from the first frame. */
+dialog[open] { opacity: 1; }
+.section-tabs button { white-space: nowrap; padding-inline: 10px; min-width: 84px; }
+.stock-quantity-label { display: block; font-size: 12px; font-weight: 400; color: var(--muted); line-height: 1.4; letter-spacing: 0; }
+@media (max-width: 620px) {
+  #sheet .owner-review-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  #sheet .owner-review-actions button { min-width: 0; width: 100%; padding: 12px 8px; white-space: nowrap; }
+  #sheet #task-form > button.primary, #sheet #task-assign-form > button.primary { position: static; box-shadow: none; }
 }

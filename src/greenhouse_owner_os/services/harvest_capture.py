@@ -2,10 +2,10 @@
 import re
 from datetime import datetime,date
 from zoneinfo import ZoneInfo
-from greenhouse_owner_os.services.capture import AREA_ALIASES
+from .preparation_language import AREA_ALIASES, corrected, date_value, entity_matches, fold, value
 
 def extract_harvest(text,*,counterparties=(),areas=(),today=None):
-    t=text.casefold();f={};g=[]
+    t=fold(corrected(text,areas=areas,counterparties=counterparties));f={};g=[]
     if not any(w in t for w in ('срезал','срезали','срезано','деревьев','принял','депо','банан','урожай')):return None
     # Actual payments/advances keep their existing Finance path.
     if any(w in t for w in ('аванс','получил деньги','получил оплату','депо заплатил','депо оплатил')):return None
@@ -13,14 +13,17 @@ def extract_harvest(text,*,counterparties=(),areas=(),today=None):
     if any(w in t for w in ('срезал','срезали','срезано')):f['kind']='report'
     elif ('машин' in t or 'грузовик' in t) and ('отправил' in t or 'отправили' in t):f['kind']='batch'
     else:f['kind']='settlement'
-    if re.search(r'\bсегодня\b',t):f['event_date']=today.isoformat()
+    event,_=date_value(t,today)
+    if event:f['event_date']=event
     else:g.append('Укажите дату события; дата ввода её не заменяет.')
     matches=[]
     aliases={**AREA_ALIASES,'Özvadi':(*AREA_ALIASES['Özvadi'],'poncho'),'Yeşilöz':(*AREA_ALIASES['Yeşilöz'],'arabik'),'İmamlı':(*AREA_ALIASES['İmamlı'],'green house','greenhouse')}
     for a in areas:
-        if getattr(a,'kind','greenhouse')!='greenhouse':continue
-        found=next((re.search(r'(?<!\w)'+re.escape(w)+r'(?!\w)',t) for w in aliases.get(a.name,(a.name.casefold(),)) if re.search(r'(?<!\w)'+re.escape(w)+r'(?!\w)',t)),None)
-        if found:matches.append((a,text[found.start():found.end()]))
+        if getattr(a,'kind','greenhouse')!='greenhouse' or value(a,'active',True) is False:continue
+        found=next((re.search(r'(?<!\w)'+re.escape(w)+r'(?!\w)',t) for w in [fold(a.name),*(fold(n) for n in aliases.get(a.name,()))] if re.search(r'(?<!\w)'+re.escape(w)+r'(?!\w)',t)),None)
+        if found:
+            source_name=next((m.group() for alias in [a.name,*aliases.get(a.name,())] if (m:=re.search(r'(?<!\w)'+re.escape(alias)+r'(?!\w)',text,re.I))),None)
+            matches.append((a,source_name or text))
     if len(matches)==1:f.update(original_greenhouse=matches[0][1],greenhouse_id=str(matches[0][0].id))
     else:g.append('Выберите теплицу; неизвестное или смешанное место не угадывается.')
     if f['kind']=='report':
