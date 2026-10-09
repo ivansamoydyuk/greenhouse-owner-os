@@ -1,5 +1,6 @@
 import {labels,paths,statuses,escape as e,money,exact,command,errorMessage,localDay} from './core.js';
 import {globalCapture} from './capture.js';
+import {containDialogTab} from './dialog.js';
 import {harvestUI} from './harvest.js';
 import {inventoryUI} from './inventory.js';
 import {tasksUI} from './tasks.js';
@@ -161,6 +162,8 @@ window.visualViewport?.addEventListener('resize',()=>{measureDock();keepSheetFoc
 window.visualViewport?.addEventListener('scroll',measureSheetViewport);
 window.addEventListener('resize',measureSheetViewport);
 sheet.addEventListener('focusin',keepSheetFocusVisible);
+sheet.addEventListener('keydown',event=>containDialogTab(sheet,event));
+confirm.addEventListener('keydown',event=>containDialogTab(confirm,event));
 sheet.addEventListener('close',()=>{sheetRevision++;document.body.classList.remove('sheet-open');if(sheetReturnFocus?.isConnected)sheetReturnFocus.focus({preventScroll:true});else $('#nav .active')?.focus({preventScroll:true});});
 $('#refresh').onclick=safe(reload);
 sheet.addEventListener('cancel',ev=>{if(busy)ev.preventDefault();else sheetRevision++;});

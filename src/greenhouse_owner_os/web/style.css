@@ -436,3 +436,11 @@ body:has(#sheet[open]) .owner-dock { visibility: hidden; pointer-events: none; }
 .task-fact > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
 .task-fact > summary span { font-size: 12px; font-weight: 400; color: var(--muted); }
 .task-fact > summary strong { font-weight: 600; }
+.capture-mode > span { white-space: nowrap; }
+.capture-mode > svg { flex-shrink: 0; }
+@media (max-width: 620px) {
+  #sheet form > button.primary:last-of-type { margin-bottom: 18px; }
+}
+@media (max-width: 350px) {
+  .sheet-header #sheet-title { font-size: 19px; }
+}
