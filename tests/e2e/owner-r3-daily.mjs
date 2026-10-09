@@ -156,7 +156,7 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
     const action = await saveAction(page), saved = await stateOf(page), original = sourceOf(saved, action);
     assert.equal(saved.daily.fieldReports.length, before.daily.fieldReports.length, 'Save has not confirmed a field report');
     assert.equal(original.structuredOriginal.bunches, '18'); assert.equal(original.structuredOriginal.greenhouseId, 'imamli');
-    assert.match(await page.locator('#main').innerText(), /UNKNOWN/);
+    assert.match(await page.locator('#main').innerText(), /неизвест/i);
     await confirmAction(page);
     const after = await stateOf(page), field = after.daily.fieldReports.find(r => r.id === action.id);
     assert.equal(field.bunches, 18); assert.equal(field.kg, null); assert.equal(field.revenueMinor, null); assert.equal(field.receiptId, null);
@@ -185,7 +185,7 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
     const state = await stateOf(page), d = state.daily, totals = financeOf(state);
     assert.equal(d.period.from, '2026-09-01'); assert.equal(d.period.to, '2026-10-09');
     const overview = await page.getByTestId('finance-overview').innerText();
-    for (const label of ['Выручка', 'Операционные расходы', 'Операционный результат', 'Денежные поступления', 'Денежные выплаты', 'Дебиторская задолженность', 'Кредиторская задолженность', '1 сентября — 9 октября 2026', 'TRY', 'Неполные данные', 'Не рассчитан', 'UNKNOWN']) assert.ok(overview.includes(label), label);
+    for (const label of ['Выручка', 'Операционные расходы', 'Операционный результат', 'Денежные поступления', 'Денежные выплаты', 'Дебиторская задолженность', 'Кредиторская задолженность', '1 сентября — 9 октября 2026', 'TRY', 'Неполные данные', 'Не рассчитан', 'неизвестен']) assert.ok(overview.includes(label), label);
     assert.equal(d.completeness.openingCashKnown, false); assert.equal(d.completeness.operatingCoverageComplete, false);
     assert.notEqual(totals.revenue, totals.received); assert.notEqual(totals.expense, totals.paid);
     assert.deepEqual(totals, {revenue: 23536500, expense: 26720000, received: 15500000, paid: 25800000, receivable: 8036500, payable: 3420000});
@@ -315,7 +315,7 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
     const receipt = (await stateOf(page)).daily.receipts.find(r => r.id === 'depot-sep17');
     assert.equal(receipt.lines.filter(l => l.quality === 'II').length, 2);
     assert.ok(receipt.allocations.every(a => a.provenance === 'derived-estimate' && a.kg === null && a.revenueMinor === null));
-    assert.match(await page.locator('#main').innerText(), /DERIVED ESTIMATE/);
+    assert.match(await page.locator('#main').innerText(), /Расчётная оценка/);
     assert.match(await page.locator('#main').innerText(), /Rolling Alacak/);
     await go(page, 'depot-link-open'); await go(page, 'reconcile-depots'); await go(page, 'depot-add');
     await go(page, 'depot-capture'); await page.getByTestId('photo-file').waitFor();

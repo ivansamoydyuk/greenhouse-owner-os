@@ -273,3 +273,10 @@ test('media source cannot interpret hidden text as a prepared personal task',asy
     const p=prepare(s);assert.equal(p.type,'unknown');assert.equal(s.tasks.length,3);assert.equal(s.sources[0].text,text);assert.equal(s.sources[0].file.kind,mode==='photo'?'image':'video');
   }
 });
+
+test('daily owner-facing copy uses clear Russian for source provenance and unknown values',async()=>{
+  const ui=await import('../../prototype/owner-r3/daily-ui.js');const s=initialState();projectDaily(s);
+  const screens=[ui.financeOverview(s),ui.quickForm(s,'expense'),ui.quickForm(s,'harvest'),ui.depotList(s),ui.depotDetail(s,'depot-sep17'),ui.reconcile(s),ui.invoiceNotice(s)];
+  for(const html of screens)assert.doesNotMatch(html,/Synthetic DEMO|synthetic DEMO|SOURCE FACT|OWNER CORRECTION|DERIVED ESTIMATE|UNKNOWN|manual-candidate|date-candidate|бизнес-запросов/);
+  assert.match(ui.quickForm(s,'expense'),/Текст сохраняется без автоматического разбора/);assert.match(ui.quickForm(s,'harvest'),/Вес неизвестен/);assert.match(ui.depotDetail(s,'depot-sep17'),/Расчётная оценка/);assert.match(ui.depotList(s),/По источнику/);assert.match(ui.financeOverview(s),/начальный баланс неизвестен/);
+});
