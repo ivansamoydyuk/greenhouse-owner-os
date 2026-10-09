@@ -11,6 +11,11 @@ assert.match(expectedSha||'',/^[a-f0-9]{40}$/,'Set the exact build SHA before br
 assert.ok(process.env.PREVIEW_SECRET,'An ephemeral preview key is required');
 await fs.mkdir(artifacts,{recursive:true});
 const report={feature_sha:expectedSha,started_at:new Date().toISOString(),screenshots:[],journeys:[],checks:[],limitations:['Chromium/WebKit automation is not physical iPhone verification.','Native microphone recording and a real iPhone software keyboard are not asserted by these tests.','Speech unavailable/error fallback is exercised without substituting a transcript for live microphone input.','Click totals are trusted browser DOM interactions, not physical iPhone tap estimates. Native picker/keyboard UI is not measured; the photo journey explicitly chooses a prepared synthetic source.'],errors:[],failures:[],tool_diagnostics:[]};
+// Keep the original eight Chromium journey records and their gate unchanged.
+// The design-lock corrections below are separately measured in BOTH engines.
+report.correction_journeys=[];
+report.money_regressions=[];
+report.limitations.push('The original eight measured journeys and interruption suite remain Chromium-only. Added design-lock correction journeys and the complete money/font matrix run in both Chromium and WebKit.');
 const SCENARIO='Нужно переделать полив на Озвади на следующей неделе';
 const screens=[['home','Главная'],['review','Проверка'],['capture/voice','Голос'],['capture/photo','Фото'],['capture/text','Текст'],['tasks','Задачи'],['task/irrigation','Карточка задачи'],['finance/receivable','Финансы'],['harvest','Урожай'],['inventory','Склад'],['workers','Работники'],['more','Ещё']];
 let currentPage;
@@ -130,6 +135,287 @@ async function journey(browser,name,run){
   }finally{await context.close();}
 }
 
+async function correctionJourney(browser,engine,name,run){
+  const {context,page}=await newPage(browser);
+  await page.evaluate(()=>window.__r3Metrics.start());
+  let status='PASS',failure;
+  try{await run(page);}catch(error){status='FAIL';failure=error.message;recordFailure(`${engine} correction: ${name}`,error);await captureFailure(page);}
+  try{
+    const raw=await page.evaluate(()=>window.__r3Metrics.stop());
+    assert.ok(raw.clicks.length>0&&raw.clicks.every(event=>event.trusted),'Correction journeys use trusted browser interactions');
+    report.correction_journeys.push({engine,name,status,...(failure?{failure,partial:true}:{}),start:'#home',end:await page.evaluate(()=>location.hash),clicks:raw.clicks.length,opened_forms:raw.forms.length,manual_field_edits:raw.inputs.length,keyboard_actions:raw.keys.length,click_events:raw.clicks,form_events:raw.forms,input_events:raw.inputs,key_events:raw.keys});
+  }finally{await context.close();}
+}
+async function proposal(page,id){return page.evaluate(id=>window.r3Demo.state().proposals.find(item=>item.id===id),id);}
+async function originalVisible(page,source){
+  const original=page.getByTestId('source-original');
+  assert.equal(await original.isVisible(),true,'The immutable original is visible alongside the current action');
+  assert.ok((await original.innerText()).includes(source),'The original source remains verbatim');
+  assert.equal(await page.getByText('ОРИГИНАЛ',{exact:true}).isVisible(),true,'Original evidence is explicitly labelled');
+}
+async function currentVisible(page){
+  const current=page.getByTestId('current-action');
+  assert.equal(await current.isVisible(),true,'Current edited meaning is visible');
+  assert.equal(await page.getByText('ТЕКУЩЕЕ ПОДТВЕРЖДАЕМОЕ ДЕЙСТВИЕ',{exact:true}).isVisible(),true,'The action awaiting confirmation is explicitly labelled');
+  return current.innerText();
+}
+async function editSingleFact(page,id,value,whileOpen){
+  await click(page,id);
+  assert.equal(await page.locator('dialog[open]').count(),1,'One focused fact sheet is open');
+  assert.equal(await page.locator('dialog[open] input:not([type=hidden]),dialog[open] textarea,dialog[open] select').count(),1,'The sheet edits one fact, never a large form');
+  assert.equal(await page.locator('dialog[open],[role=dialog][aria-modal=true]').count(),1,'Fact editing never stacks dialogs');
+  await fill(page,'fact-input',value);
+  if(whileOpen)await whileOpen();
+  await click(page,'sheet-save');
+  assert.equal(await page.locator('dialog[open]').count(),0,'Saving returns to the coherent review');
+  assert.equal(await page.getByTestId(id).evaluate(element=>element===document.activeElement),true,'Saving restores focus to the edited fact');
+}
+
+// Inspect actual text glyph boxes, not only CSS white-space or the outer element.
+// A wrapped number can fit the viewport perfectly and still fail this regression.
+async function moneyGeometry(page){
+  return page.evaluate(()=>{
+    const issues=[],measurements=[];
+    const box=rect=>({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,width:rect.width,height:rect.height});
+    const glyphs=element=>{
+      const result=[],walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT);
+      while(walker.nextNode()){
+        const node=walker.currentNode;
+        for(let offset=0;offset<node.textContent.length;offset++){
+          const character=node.textContent[offset];
+          if(!/[0-9A-Z]/.test(character))continue;
+          const range=document.createRange();range.setStart(node,offset);range.setEnd(node,offset+1);
+          const rect=range.getBoundingClientRect();
+          result.push({character,...box(rect)});
+        }
+      }
+      return result;
+    };
+    const visible=(element,rect,label)=>{
+      for(let ancestor=element;ancestor;ancestor=ancestor.parentElement){
+        const style=getComputedStyle(ancestor),bounds=ancestor.getBoundingClientRect();
+        if(style.visibility!=='visible'||style.display==='none'||Number(style.opacity)===0)issues.push(`${label} is visually hidden`);
+        if(['hidden','clip','scroll','auto'].includes(style.overflowX)&&(rect.left<bounds.left-.75||rect.right>bounds.right+.75))issues.push(`${label} is horizontally clipped`);
+        if(['hidden','clip','scroll','auto'].includes(style.overflowY)&&(rect.top<bounds.top-.75||rect.bottom>bounds.bottom+.75))issues.push(`${label} is vertically clipped`);
+      }
+      if(rect.width<=0||rect.height<=0)issues.push(`${label} has no visible glyph box`);
+      if(rect.left<-.75||rect.right>innerWidth+.75)issues.push(`${label} is outside the viewport`);
+    };
+    for(const [index,card] of [...document.querySelectorAll('.metric-card')].entries()){
+      const value=card.querySelector('.metric-value'),currency=card.querySelector('.currency'),cardBox=card.getBoundingClientRect();
+      if(!value||!currency){issues.push(`KPI ${index} lacks a number or a visible currency element`);continue;}
+      const digits=glyphs(value).filter(item=>/\d/.test(item.character)),letters=glyphs(currency),style=getComputedStyle(value),currencyStyle=getComputedStyle(currency);
+      if(!digits.length)issues.push(`KPI ${index} has no digits`);
+      if(digits.some(digit=>Math.abs(digit.top-digits[0].top)>1))issues.push(`KPI ${index} digits wrap internally: ${value.textContent}`);
+      if(parseFloat(style.fontSize)<20)issues.push(`KPI ${index} digits are smaller than readable 20px`);
+      if(currency.textContent.trim()!=='TRY'||letters.map(item=>item.character).join('')!=='TRY')issues.push(`KPI ${index} currency is missing or changed`);
+      if(parseFloat(currencyStyle.fontSize)<12)issues.push(`KPI ${index} currency is smaller than readable 12px`);
+      for(const [kind,items,element] of [['digit',digits,value],['currency',letters,currency]])for(const item of items){
+        visible(element,item,`KPI ${index} ${kind} ${item.character}`);
+        if(item.left<cardBox.left-.75||item.right>cardBox.right+.75||item.top<cardBox.top-.75||item.bottom>cardBox.bottom+.75)issues.push(`KPI ${index} ${kind} escapes its card`);
+      }
+      if(digits.some(digit=>letters.some(letter=>digit.left<letter.right-.5&&digit.right>letter.left+.5&&digit.top<letter.bottom-.5&&digit.bottom>letter.top+.5)))issues.push(`KPI ${index} digits overlap currency`);
+      measurements.push({value:value.textContent.trim(),currency:currency.textContent.trim(),font_family:style.fontFamily,digit_font_px:parseFloat(style.fontSize),currency_font_px:parseFloat(currencyStyle.fontSize),digit_boxes:digits,currency_boxes:letters,card:box(cardBox)});
+    }
+    if(measurements.length!==2)issues.push(`Expected both receivable/payable KPIs, got ${measurements.length}`);
+    if(Math.max(document.documentElement.scrollWidth,document.body.scrollWidth)>innerWidth+1)issues.push('Money layout causes horizontal page overflow');
+    return {issues,measurements};
+  });
+}
+async function moneyRegressions(browser,engine){
+  const {context,page}=await newPage(browser);
+  try{
+    for(const font of ['intended','fallback'])for(const scale of ['normal','large']){
+      await page.evaluate(()=>window.r3Demo.reset());
+      if(scale==='large'){await route(page,'settings');await click(page,'toggle-large');}
+      for(const width of [320,390,700,768,820,900,1280]){
+        await page.setViewportSize({width,height:844});
+        for(const routeName of ['home','finance/receivable']){
+          await route(page,routeName);
+          await page.evaluate(font=>{
+            if(font==='fallback')document.documentElement.style.setProperty('font-family','system-ui, sans-serif','important');
+            else document.documentElement.style.removeProperty('font-family');
+          },font);
+          await ready(page);
+          let status='PASS',failure;
+          const result=await moneyGeometry(page);
+          try{
+            assert.deepEqual(result.issues,[],`${width}px ${font} ${scale} #${routeName}: ${result.issues.join('; ')}`);
+            const expected=await page.evaluate(()=>{
+              const state=window.r3Demo.state();
+              const total=items=>items.reduce((sum,item)=>sum+Math.round(item.amount*100),0)/100;
+              return [total(state.receivables),total(state.payables)].map(value=>new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(value));
+            });
+            assert.deepEqual(result.measurements.map(item=>item.value),expected,'Money values stay exact, with no layout-driven rounding or truncation');
+            if(font==='fallback')assert.ok(result.measurements.every(item=>/^system-ui,/.test(item.font_family)),'The alternate system font stack actually applies to both KPIs');
+            assert.equal(await page.evaluate(()=>window.r3Demo.state().largeAmount),scale==='large','The intended normal/large data mode is active');
+          }catch(error){status='FAIL';failure=error.message;recordFailure(`${engine} money ${font} ${scale} ${width} #${routeName}`,error);}
+          report.money_regressions.push({engine,font,scale,width,route:'#'+routeName,status,...(failure?{failure}:{}),...result});
+          // Fresh, deterministic evidence for every matrix point, including the
+          // formerly failing 700/768/820 widths and both 320px large-money views.
+          await screenshot(page,engine,`correction-money-${font}-${scale}-${routeName}`,width,`${routeName}: ${scale} money, ${font} system stack`);
+        }
+      }
+    }
+  }catch(error){recordFailure(`${engine} money regression setup`,error);await captureFailure(page);}finally{await context.close();}
+}
+
+async function correctionJourneys(browser,engine){
+  await correctionJourney(browser,engine,'Task: corrected place changes current meaning, original stays immutable',async page=>{
+    await click(page,'capture-text');await fill(page,'capture-input',SCENARIO);await click(page,'capture-save');await page.getByTestId('task-save').waitFor();
+    const before=await proposal(page,'capture-1'),sourceRecords=await page.evaluate(()=>window.r3Demo.state().sources);
+    await originalVisible(page,SCENARIO);
+    assert.match(await currentVisible(page),/Özvadi/);
+    await editSingleFact(page,'edit-place','İmamlı');
+    const current=await currentVisible(page),after=await proposal(page,'capture-1');
+    assert.match(current,/Переделать полив/);assert.match(current,/İmamlı/);assert.match(current,/Следующая неделя/);
+    assert.doesNotMatch(current,/Özvadi|Озвади/i,'Old source location is not presented as the current actionable instruction');
+    assert.equal(after.place,'İmamlı');assert.equal(after.when,before.when);assert.equal(after.instruction,before.instruction);assert.equal(after.source,before.source);
+    assert.deepEqual(await page.evaluate(()=>window.r3Demo.state().sources),sourceRecords,'Fact corrections never rewrite the stored original');
+    await originalVisible(page,SCENARIO);await screenshot(page,engine,'correction-task-place',390,'Corrected current action İmamlı, immutable original Özvadi');
+    await page.reload();await ready(page);assert.match(await currentVisible(page),/İmamlı/);await originalVisible(page,SCENARIO);
+    await click(page,'task-save');await page.getByTestId('task-capture-1').waitFor();
+    assert.match(await page.getByTestId('task-capture-1').innerText(),/İmamlı/);assert.doesNotMatch(await page.getByTestId('task-capture-1').innerText(),/Özvadi|Озвади/i);
+    const saved=await page.evaluate(()=>window.r3Demo.state().tasks.find(item=>item.id==='capture-1'));
+    assert.equal(saved.place,'İmamlı');assert.equal(saved.when,before.when);assert.equal(saved.source,SCENARIO);assert.equal(saved.worker,null);assert.equal(saved.date,null);
+    await click(page,'task-capture-1');assert.equal(await page.getByTestId('current-action').innerText(),saved.title);assert.doesNotMatch(await page.getByTestId('current-action').innerText(),/Özvadi|Озвади/i);assert.match(await page.getByTestId('edit-place').innerText(),/İmamlı/);assert.match(await page.getByTestId('edit-when').innerText(),/Следующая неделя/);await originalVisible(page,SCENARIO);
+  });
+  await correctionJourney(browser,engine,'Stock: quantity, unit, product and place use separate focused fact sheets',async page=>{
+    await click(page,'nav-review');await click(page,'review-stock-review');
+    const original=(await proposal(page,'stock-review')).source,stockBefore=await page.evaluate(()=>window.r3Demo.state().stock);
+    const stockFacts=item=>({quantity:item.quantity,unit:item.unit,product:item.product??item.title,place:item.place});
+    for(const [key,value,expected] of [['quantity','125,5',125.5],['unit','л','л'],['product','Кальциевая селитра','Кальциевая селитра'],['place','Özvadi','Özvadi']]){
+      const before=stockFacts(await proposal(page,'stock-review'));
+      await editSingleFact(page,`edit-${key}`,value,key==='quantity'?()=>screenshot(page,engine,'correction-stock-fact-sheet',390,'Stock: one quantity field in one small sheet'):undefined);
+      const after=await proposal(page,'stock-review');
+      assert.deepEqual(stockFacts(after),{...before,[key]:expected},`Changing ${key} preserves every other selected stock fact`);
+      assert.equal(after.source,original);await originalVisible(page,original);await currentVisible(page);
+    }
+    const current=await currentVisible(page);assert.match(current,/125,5/);assert.match(current,/Кальциевая селитра/);assert.match(current,/Özvadi/);assert.doesNotMatch(current,/KNO[₃3]/);
+    assert.deepEqual(await page.evaluate(()=>window.r3Demo.state().stock),stockBefore,'Edits and review do not prematurely change inventory');
+    await screenshot(page,engine,'correction-stock-edited-review',390,'Stock corrected quantity, unit, product and location with original evidence');
+    await click(page,'confirm-proposal');
+    const stockAfter=await page.evaluate(()=>window.r3Demo.state().stock);
+    for(const row of stockBefore)assert.deepEqual(stockAfter.find(item=>item.id===row.id),row,'An edited product/unit/place tuple must never update the original KNO₃ inventory row');
+    const selected=stockAfter.filter(row=>row.name==='Кальциевая селитра'&&row.unit==='л'&&row.place==='Özvadi');
+    assert.equal(selected.length,1,'The receipt effect uses exactly the owner-selected product/unit/place tuple');
+    assert.equal(selected[0].quantity,null,'A receipt does not invent an opening balance for a new selected tuple');
+    assert.equal(selected[0].movements.filter(item=>item.id==='stock-review').length,1);assert.equal(selected[0].movements.find(item=>item.id==='stock-review').quantity,125.5);
+    assert.equal((await proposal(page,'stock-review')).source,original);
+  });
+  await correctionJourney(browser,engine,'Depot: weight, price and amount stay explicit and mismatch blocks confirmation',async page=>{
+    await click(page,'nav-review');await click(page,'review-depot-review');
+    const before=await proposal(page,'depot-review'),receivables=await page.evaluate(()=>window.r3Demo.state().receivables);
+    await editSingleFact(page,'edit-kg','1250',()=>screenshot(page,engine,'correction-depot-fact-sheet',390,'Depot: one weight field in one small sheet'));
+    let updated=await proposal(page,'depot-review');assert.equal(updated.kg,1250);assert.equal(updated.amount,before.amount);assert.equal(updated.price,before.price);
+    assert.equal(await page.getByTestId('confirm-proposal').count(),0,'Mismatched weight × price does not silently confirm');
+    await editSingleFact(page,'edit-price','32');updated=await proposal(page,'depot-review');assert.equal(updated.price,32);assert.equal(updated.kg,1250);assert.equal(updated.amount,before.amount,'Changing price never silently rewrites the source amount');
+    assert.equal(await page.getByTestId('confirm-proposal').count(),0,'An inconsistent amount still blocks confirmation');
+    await editSingleFact(page,'edit-amount','40000');updated=await proposal(page,'depot-review');assert.equal(updated.amount,40000);assert.equal(updated.kg,1250);assert.equal(updated.price,32);assert.equal(updated.source,before.source);
+    await originalVisible(page,before.source);const current=await currentVisible(page);assert.match(current,/1[\s\u00a0]250/);assert.match(current,/40[\s\u00a0]000/);assert.match(current,/32/);
+    assert.deepEqual(await page.evaluate(()=>window.r3Demo.state().receivables),receivables,'Fact edits do not prematurely change receivables');
+    assert.equal(await page.getByTestId('confirm-proposal').isVisible(),true,'Explicitly reconciled facts can be reviewed and confirmed');
+    await screenshot(page,engine,'correction-depot-edited-review',390,'Depot owner-corrected weight, price and amount with unchanged original');
+    await click(page,'confirm-proposal');
+    const state=await page.evaluate(()=>window.r3Demo.state()),activity=state.activity.filter(item=>item.id==='depot-review');
+    assert.equal(activity.length,1);assert.equal(activity[0].kg,1250);assert.equal(activity[0].revenue,40000);assert.equal(state.receivables[0].amount,receivables[0].amount+40000);assert.equal(state.proposals.find(item=>item.id==='depot-review').source,before.source);
+  });
+  await correctionJourney(browser,engine,'Photo: owner caption remains visible and distinct from document evidence',async page=>{
+    const caption='Проверьте вес и дату на чеке.';
+    await click(page,'capture-photo');await click(page,'demo-photo');await fill(page,'capture-comment',caption);await click(page,'capture-save');await page.getByTestId('confirm-proposal').waitFor();
+    const receipt=await proposal(page,'depot-review');await originalVisible(page,receipt.source);
+    const comment=page.getByTestId('owner-comment');assert.equal(await comment.isVisible(),true);assert.ok((await comment.innerText()).includes(caption));assert.match(await page.locator('#main').innerText(),/Комментарий владельца/);
+    assert.equal(await comment.evaluate(element=>!!element.closest('[data-testid="source-original"]')),false,'Caption is separate from immutable document text');
+    assert.equal(receipt.source.includes(caption),false,'Owner caption is not silently folded into extracted source text');
+    assert.equal(await page.locator('#main img').filter({visible:true}).count()>0,true,'Document image is visible alongside its owner context');
+    const sources=await page.evaluate(()=>window.r3Demo.state().sources.filter(item=>item.proposalId==='depot-review'));assert.equal(sources.length,1);assert.equal(sources[0].comment,caption);assert.equal(sources[0].id,'capture-1');
+    await screenshot(page,engine,'correction-photo-caption',390,'Photo source and separately labelled owner caption');
+    await page.reload();await ready(page);assert.ok((await page.getByTestId('owner-comment').innerText()).includes(caption));await originalVisible(page,receipt.source);
+  });
+  await correctionJourney(browser,engine,'Photo: explicit contradictory-caption storyboard requires an owner clarification',async page=>{
+    await click(page,'capture-photo');await click(page,'demo-photo-conflict');await click(page,'capture-save');await page.getByTestId('caption-conflict').waitFor();
+    const before=await proposal(page,'depot-review'),sourceRecords=await page.evaluate(()=>window.r3Demo.state().sources);
+    assert.equal(before.kg,1200,'Document weight is not overwritten by the owner comment');
+    await originalVisible(page,before.source);assert.match(await page.getByTestId('owner-comment').innerText(),/1 100 кг/);assert.equal(await page.getByTestId('caption-conflict').isVisible(),true);
+    assert.equal(await page.getByTestId('confirm-proposal').count(),0,'Contradictory caption/source needs explicit clarification before confirmation');
+    await screenshot(page,engine,'correction-photo-caption-conflict',390,'Explicit DEMO contradiction: document 1 200 kg and owner comment 1 100 kg');
+    await click(page,'resolve-caption-source');await page.getByTestId('confirm-proposal').waitFor();
+    const after=await proposal(page,'depot-review');assert.equal(after.kg,1200);assert.equal(after.amount,before.amount);assert.equal(after.source,before.source);assert.equal(after.status,'pending','Clarification does not itself confirm the proposal');
+    assert.deepEqual(await page.evaluate(()=>window.r3Demo.state().sources),sourceRecords,'Resolving a contradiction never rewrites either evidence source');
+    assert.match(await page.getByTestId('owner-comment').innerText(),/1 100 кг/);await originalVisible(page,before.source);
+    await screenshot(page,engine,'correction-photo-caption-resolved',390,'Owner explicitly kept document facts; original caption remains visible');
+  });
+  await correctionJourney(browser,engine,'Photo: explicitly using the owner caption preserves evidence and requires amount reconciliation',async page=>{
+    await click(page,'capture-photo');await click(page,'demo-photo-conflict');await click(page,'capture-save');await page.getByTestId('caption-conflict').waitFor();
+    const before=await proposal(page,'depot-review'),sourceRecords=await page.evaluate(()=>window.r3Demo.state().sources);
+    await click(page,'resolve-caption-comment');
+    const selected=await proposal(page,'depot-review');assert.equal(selected.kg,1100);assert.equal(selected.price,before.price);assert.equal(selected.amount,before.amount);assert.equal(selected.captionResolution,'comment');assert.equal(selected.status,'pending');
+    assert.equal(await page.getByTestId('depot-mismatch').isVisible(),true);assert.equal(await page.getByTestId('confirm-proposal').count(),0,'Selecting a different weight still requires explicit reconciliation of the document amount');
+    await originalVisible(page,before.source);assert.match(await page.getByTestId('owner-comment').innerText(),/1 100 кг/);
+    await editSingleFact(page,'edit-amount','34100');await page.getByTestId('confirm-proposal').waitFor();
+    const current=await currentVisible(page);assert.match(current,/1[\s\u00a0]100/);assert.match(current,/34[\s\u00a0]100/);
+    assert.deepEqual(await page.evaluate(()=>window.r3Demo.state().sources),sourceRecords,'The alternative correction path also preserves both immutable evidence sources');
+    assert.equal((await proposal(page,'depot-review')).source,before.source);
+    await screenshot(page,engine,'correction-photo-caption-used',390,'Owner explicitly used 1 100 kg comment and reconciled amount; document stays unchanged');
+  });
+  await correctionJourney(browser,engine,'Unknown: one intent clarification preserves Serkan, tomorrow and the source without re-entry',async page=>{
+    await click(page,'capture-text');await click(page,'demo-recovery');
+    const original=await page.getByTestId('capture-input').inputValue();assert.match(original,/Серкану завтра нужно/);
+    await click(page,'capture-save');await page.getByTestId('clarify-intent-reminder').waitFor();
+    const before=await proposal(page,'capture-1'),sourceRecords=await page.evaluate(()=>window.r3Demo.state().sources);
+    assert.equal(before.type,'unknown');assert.equal(before.party,'TEST Серкан');assert.equal(before.when,'Завтра');assert.equal(before.date,null);assert.equal(before.worker,null);
+    await originalVisible(page,original);assert.match(await page.locator('#main').innerText(),/Что произошло\?/);assert.match(await page.locator('#main').innerText(),/TEST Серкан/);assert.match(await page.locator('#main').innerText(),/Завтра/);
+    assert.equal(await page.getByTestId('capture-input').count(),0,'Saved source is not requested again');assert.equal(await page.getByTestId('confirm-proposal').count(),0);assert.equal(await page.getByTestId('task-save').count(),0);
+    await screenshot(page,engine,'correction-unknown-known-facts',390,'Unknown event: original saved, Serkan and tomorrow retained, one clarification');
+    await click(page,'clarify-intent-reminder');await page.getByTestId('task-save').waitFor();
+    const after=await proposal(page,'capture-1');assert.equal(after.type,'task');assert.equal(after.party,before.party);assert.equal(after.when,before.when);assert.equal(after.source,before.source);assert.equal(after.date,null);assert.equal(after.worker,null);
+    const current=await currentVisible(page);assert.match(current,/Связаться с Серканом/);assert.match(current,/Завтра/);await originalVisible(page,original);
+    assert.equal(await page.getByTestId('capture-input').count(),0);assert.equal(await page.locator('dialog[open]').count(),0,'Clarification returns directly to prefilled review, without a blank category form');
+    assert.deepEqual(await page.evaluate(()=>window.r3Demo.state().sources),sourceRecords,'A clarification preserves the original source record rather than capturing it again');
+    await screenshot(page,engine,'correction-unknown-recovered',390,'Recovered prefilled task: Serkan and tomorrow, no source re-entry');
+    await click(page,'task-save');await page.getByTestId('task-capture-1').waitFor();
+    const saved=await page.evaluate(()=>window.r3Demo.state().tasks.find(item=>item.id==='capture-1'));assert.equal(saved.party,'TEST Серкан');assert.equal(saved.when,'Завтра');assert.equal(saved.source,original);assert.equal(saved.worker,null);assert.equal(saved.date,null);
+    assert.equal(await page.evaluate(()=>window.__r3Metrics.stop().inputs.length),0,'The recovery journey requires zero manual field entry or source re-entry');
+    assert.equal(await page.evaluate(()=>window.r3Demo.state().sources.length),1,'Recovery creates no duplicate source');
+  });
+  await correctionJourney(browser,engine,'Home: compact worker exception opens the actual issue',async page=>{
+    const before=await page.evaluate(()=>window.r3Demo.state().workerTasks),signal=page.getByTestId('home-worker-exception');
+    assert.equal(await signal.isVisible(),true);assert.equal(await signal.evaluate(element=>{const rect=element.getBoundingClientRect();return rect.top>=0&&rect.bottom<=visualViewport.height;}),true,'Worker exception is discoverable in the initial attention area');
+    assert.match(await signal.innerText(),/1/);await screenshot(page,engine,'correction-home-worker-signal',390,'Unchanged Home composition with compact worker-exception attention signal');
+    await click(page,'home-worker-exception');assert.equal(await page.evaluate(()=>location.hash),'#task/filter-report');assert.match(await page.locator('#main').innerText(),/Нужен запасной фильтр/);
+    assert.deepEqual(await page.evaluate(()=>window.r3Demo.state().workerTasks),before,'Viewing an exception does not change a worker assignment');
+  });
+  await correctionJourney(browser,engine,'Saved task: edits target the task, stale owner prose requires review, DONE and restore remain available after correction',async page=>{
+    await click(page,'capture-text');await click(page,'demo-irrigation');await click(page,'capture-save');await page.getByTestId('task-save').waitFor();await click(page,'task-save');await page.getByTestId('task-capture-1').waitFor();await click(page,'task-capture-1');
+    const confirmed=await proposal(page,'capture-1'),sources=await page.evaluate(()=>window.r3Demo.state().sources);
+    assert.equal(confirmed.status,'confirmed');
+    await editSingleFact(page,'edit-place','İmamlı');
+    assert.equal(await page.evaluate(()=>window.r3Demo.state().tasks.find(item=>item.id==='capture-1').place),'İmamlı');
+    assert.deepEqual(await proposal(page,'capture-1'),confirmed,'A captured task edit targets the saved task, not its read-only confirmed proposal');
+    await editSingleFact(page,'edit-instruction','Переделать полив на İmamlı');await editSingleFact(page,'edit-place','Yeşilöz');
+    assert.equal(await page.getByTestId('task-needs-review').isVisible(),true);assert.equal(await page.getByTestId('task-save').count(),0,'Stale owner prose cannot be marked DONE before review');
+    assert.doesNotMatch(await page.getByTestId('current-action').innerText(),/İmamlı|Переделать полив на/,'Stale prose is not presented as the current actionable instruction');
+    assert.match(await page.getByTestId('edit-place').innerText(),/Yeşilöz/);await originalVisible(page,SCENARIO);
+    await screenshot(page,engine,'correction-saved-task-prose-guard',390,'Saved task: changed place requires reviewing owner-written instruction');
+    await editSingleFact(page,'edit-instruction','Переделать полив');assert.equal(await page.getByTestId('task-needs-review').count(),0);assert.equal(await page.getByTestId('current-action').innerText(),'Переделать полив');assert.equal(await page.getByTestId('task-save').isVisible(),true);
+    await click(page,'task-save');assert.equal(await page.evaluate(()=>window.r3Demo.state().tasks.find(item=>item.id==='capture-1').status),'done');assert.match(await page.getByTestId('task-save').innerText(),/Вернуть в задачи/);
+    await click(page,'task-save');const restored=await page.evaluate(()=>window.r3Demo.state().tasks.find(item=>item.id==='capture-1'));assert.equal(restored.status,'todo');assert.equal(restored.place,'Yeşilöz');assert.equal(restored.title,'Переделать полив');assert.equal(restored.source,SCENARIO);
+    assert.deepEqual(await proposal(page,'capture-1'),confirmed);assert.deepEqual(await page.evaluate(()=>window.r3Demo.state().sources),sources);
+    await screenshot(page,engine,'correction-saved-task-restored',390,'Corrected saved task after DONE and restore, original evidence retained');
+  });
+  await correctionJourney(browser,engine,'Photo: replacing or clearing the prepared conflict caption cannot fabricate a contradiction',async page=>{
+    for(const [name,caption] of [['replaced','Проверьте только дату документа.'],['cleared','']]){
+      await page.evaluate(()=>window.r3Demo.reset());await route(page,'home');await click(page,'capture-photo');await click(page,'demo-photo-conflict');await fill(page,'capture-comment',caption);
+      assert.equal(await page.evaluate(()=>window.r3Demo.state().draft.scenario),'receipt','Editing the exact prepared contradiction caption leaves the conflict storyboard');
+      await click(page,'capture-save');await page.getByTestId('confirm-proposal').waitFor();
+      const receipt=await proposal(page,'depot-review');assert.equal(receipt.kg,1200);assert.equal(!!receipt.captionConflict,false);assert.equal(await page.getByTestId('caption-conflict').count(),0);assert.doesNotMatch(await page.locator('#main').innerText(),/1[\s\u00a0]100/,'Generic or blank caption never generates the removed 1 100 kg assertion');
+      const sources=await page.evaluate(()=>window.r3Demo.state().sources);assert.equal(sources.length,1);assert.equal(sources[0].comment,caption);
+      if(caption)assert.ok((await page.getByTestId('owner-comment').innerText()).includes(caption));else assert.equal(await page.getByTestId('owner-comment').count(),0);
+      await originalVisible(page,receipt.source);await screenshot(page,engine,`correction-photo-conflict-caption-${name}`,390,`Prepared conflict caption ${name}: no fabricated weight disagreement`);
+    }
+  });
+}
+
 async function main(browser,engine){
   const {context,page}=await newPage(browser);
   const previousFailures=report.failures.length;
@@ -141,6 +427,8 @@ async function main(browser,engine){
     }
     if(report.failures.length===previousFailures)report.checks.push(`${engine}: all 12 screens at 320/390/768/1280, no horizontal overflow, 44px controls, single modal layer, zoom allowed`);
   }catch(error){await captureFailure(page);throw error;}finally{await context.close();}
+  await correctionJourneys(browser,engine);
+  await moneyRegressions(browser,engine);
   if(engine!=='chromium')return;
   await journey(browser,'1. Home → review → missing amount → one clarification → demo confirmation',async page=>{
     await click(page,'nav-review');await click(page,'review-clarify');await click(page,'edit-amount');await fill(page,'fact-input','2500');await click(page,'sheet-save');await click(page,'confirm-proposal');
@@ -255,6 +543,14 @@ try{
     try{await main(browser,engine);}finally{await browser.close();}
   }
   assert.equal(report.journeys.length,8);
+  assert.equal(report.correction_journeys.length,20,'All ten focused correction journeys run in each engine');
+  assert.ok(report.correction_journeys.every(item=>item.status==='PASS'),'Both-engine correction journeys pass');
+  assert.equal(report.money_regressions.length,112,'Both engines cover 7 widths × 2 font stacks × 2 amount scales × Home/Finance');
+  assert.ok(report.money_regressions.every(item=>item.status==='PASS'),'Every money/font geometry case passes');
+  for(const engine of ['chromium','webkit']){
+    assert.equal(report.correction_journeys.filter(item=>item.engine===engine).length,10);
+    assert.equal(report.money_regressions.filter(item=>item.engine===engine).length,56);
+  }
   assert.deepEqual(report.failures,[],'All collected browser/layout/journey assertions must pass');
   assert.ok(report.journeys.every(j=>j.status==='PASS'));
   assert.deepEqual(report.errors,[],'Browser console/network isolation errors');
@@ -270,6 +566,9 @@ try{
   report.finished_at=new Date().toISOString();
   await fs.writeFile(path.join(artifacts,'browser-report.json'),JSON.stringify(report,null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Trusted DOM click events from Home, visible form entry events, actual manual field changes. Dropdown selection uses actual keyboard Home/Arrow/Enter events listed separately. Native file chooser/keyboard tap costs are unmeasured. Photo journey3 explicitly uses the prepared synthetic-source button; real file attachment is covered separately without claiming picker-tap counts.',journeys:report.journeys},null,2)+'\n');
+  await fs.writeFile(path.join(artifacts,'correction-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Ten additional trusted browser journeys in each engine. Source/current coherence, each stock/depot fact sheet, separate photo caption, both explicit contradiction resolutions, zero-entry Serkan/tomorrow recovery, compact Home worker signal, saved-task correction/prose guard/DONE/restore, and replaced/cleared conflict captions. Original eight Chromium journeys are retained separately.',journeys:report.correction_journeys},null,2)+'\n');
+  await fs.writeFile(path.join(artifacts,'money-regressions.json'),JSON.stringify({feature_sha:expectedSha,method:'Actual per-character Range glyph geometry. Every digit stays on one line inside its card/viewport; TRY remains visible and unclipped. Exact displayed values are compared with current demo state. Digits >=20px and currency >=12px. Intended and system-ui fallback stacks, normal and large values, Home and Finance, 320/390/700/768/820/900/1280, Chromium and WebKit.',cases:report.money_regressions},null,2)+'\n');
   console.log(`R3 browser ${report.status}: ${report.screenshots.length} screenshots, ${report.journeys.length}/8 measured journeys, SHA ${expectedSha}`);
+  console.log(`R3 correction evidence: ${report.correction_journeys.length}/20 added both-engine journeys; ${report.money_regressions.length}/112 money/font cases`);
   if(report.failure)console.error(report.failure.message);
 }

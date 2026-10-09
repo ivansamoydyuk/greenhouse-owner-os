@@ -1,5 +1,7 @@
 import {
   SCENARIO_TEXT,
+  RECOVERY_TEXT,
+  CAPTION_CONFLICT,
   SEASON,
   harvestDays,
   initialState,
@@ -17,6 +19,10 @@ import {
   updateFact,
   transcriptText,
   parseAmount,
+  parseQuantity,
+  currentAction,
+  resolveCaption,
+  clarifyIntent,
 } from "./demo-adapter.js";
 import {
   e,
@@ -100,7 +106,7 @@ function harvestCard() {
 function home() {
   const p = pending(state),
     mine = state.tasks.filter((x) => x.status === "todo");
-  return `<header class="page-header home-header"><div><p class="greeting">Ваше хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")} Пятница, 9 октября 2026</div></div><span class="brand-mark">${icon("leaf")}</span></header><div class="home-layout"><div>${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Финансы ${p.filter((x) => x.type === "payable").length} · склад ${p.filter((x) => x.type === "stock").length} · ещё ${p.filter((x) => !["payable", "stock"].includes(x.type)).length}</p></div><span class="count">${p.length}</span>`, "review", "attention", "home-review")}<div class="financial-grid ${state.largeAmount ? "stress" : ""}">${MetricCard({ label: "Мне должны", value: moneyTotal(state.receivables), detail: state.receivables.length + " контрагента", to: "finance/receivable", primary: true, test: "home-receivable", ic: "down" })}${MetricCard({ label: "Я должен", value: moneyTotal(state.payables), detail: `${state.payables.length} обязательства`, to: "finance/payable", test: "home-payable", ic: "up" })}</div>${harvestCard()}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${mine.length}</span></h2>${link("Все", "tasks")}</div><section class="card list-card">${
+  return `<header class="page-header home-header"><div><p class="greeting">Ваше хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")} Пятница, 9 октября 2026</div></div><span class="brand-mark">${icon("leaf")}</span></header><div class="home-layout"><div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Финансы ${p.filter((x) => x.type === "payable").length} · склад ${p.filter((x) => x.type === "stock").length} · ещё ${p.filter((x) => !["payable", "stock"].includes(x.type)).length}</p></div><span class="count">${p.length}</span>`, "review", "attention", "home-review")}${state.workerTasks.some(t => t.status === "problem") ? link(`${icon("warning")}<span>Работники: ${state.workerTasks.filter(t => t.status === "problem").length} ${plural(state.workerTasks.filter(t => t.status === "problem").length, "проблема", "проблемы", "проблем")} · нужен фильтр</span>${icon("arrow")}`, "task/filter-report", "attention-worker", "home-worker-exception") : ""}</div><div class="financial-grid ${state.largeAmount ? "stress" : ""}">${MetricCard({ label: "Мне должны", value: moneyTotal(state.receivables), detail: state.receivables.length + " контрагента", to: "finance/receivable", primary: true, test: "home-receivable", ic: "down" })}${MetricCard({ label: "Я должен", value: moneyTotal(state.payables), detail: `${state.payables.length} обязательства`, to: "finance/payable", test: "home-payable", ic: "up" })}</div>${harvestCard()}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${mine.length}</span></h2>${link("Все", "tasks")}</div><section class="card list-card">${
     mine
       .slice(0, 2)
       .map((t) => TaskRow(t))
@@ -131,35 +137,33 @@ function review() {
     )}</div>${list.length ? `<div class="review-list">${list.map((p) => (p.status === "confirmed" ? `<section class="card"><span class="tag">Подтверждено в демо</span><h2 class="detail-title">${e(p.title)}</h2><p class="note">Только локальный demo-state.</p>${link("Исходник", `review/${p.id}`, "btn secondary")}</section>` : ReviewCard(p))).join("")}</div>` : EmptyState("Здесь пока пусто", f === "confirmed" ? "Подтверждённые демо-карточки появятся здесь." : "В этом разделе нет карточек на проверку.", btn("Показать все", "filter:review:all"))}`;
 }
 function sourceDetails(p) {
-  const file = state.sources.find(s => s.id === p.id)?.file;
-  return `<details class="source-details"><summary>Исходник и история</summary><p>${e(p.source)}</p>${file?.kind === "pdf" ? `<a class="btn secondary" href="${e(file.url)}" download="${e(file.name)}" data-testid="download-source-pdf">Скачать исходный PDF</a>` : ""}${p.image ? `<img class="source-document" src="${e(p.image)}" alt="Синтетический документ, исходник">` : ""}<p class="muted">Версия ${p.revision || 1}. Источник сохранён без изменений. Все записи здесь синтетические.</p></details>`;
+  const captures = state.sources.filter(s => s.id === p.id || s.proposalId === p.id);
+  const file = captures.at(-1)?.file;
+  return `<section class="source-evidence"><span class="eyebrow">ОРИГИНАЛ</span><div class="source-original-layout"><p class="original-text" data-testid="source-original">${e(p.source)}</p>${p.image ? `<img class="source-document source-evidence-thumb" src="${e(p.image)}" alt="Источник: синтетический документ">` : ""}</div>${captures.filter(s => s.comment).map((s, i) => `<div class="owner-comment" data-testid="owner-comment"><span class="eyebrow">Комментарий владельца${i ? " · ещё один захват" : ""}</span><p>${e(s.comment)}</p></div>`).join("")}<details class="source-details"><summary>Исходник и история</summary>${file?.kind === "pdf" ? `<a class="btn secondary" href="${e(file.url)}" download="${e(file.name)}" data-testid="download-source-pdf">Скачать исходный PDF</a>` : ""}${p.image ? `<img class="source-full-document" src="${e(p.image)}" alt="Синтетический документ, исходник">` : ""}<p class="muted">Версия ${p.revision || 1}. Источник и комментарии сохранены отдельно, без изменений. Все записи здесь синтетические.</p></details></section>`;
 }
 function reviewDetail(id) {
   const p = state.proposals.find((x) => x.id === id);
-  if (!p)
-    return (
-      Header("Карточка не найдена", "", true) +
-      EmptyState(
-        "Этот источник недоступен",
-        "Вернитесь в очередь.",
-        link("К проверке", "review", "btn primary"),
-      )
-    );
+  if (!p) return Header("Карточка не найдена", "", true) + EmptyState("Этот источник недоступен", "Вернитесь в очередь.", link("К проверке", "review", "btn primary"));
   activeProposalRevision = p.revision;
   const editable = ["pending", "deferred"].includes(p.status);
+  const editableFact = (label, value, key) => editable ? FactChip(label, value, `edit:${key}:${id}`, `edit-${key}`) : `<dl class="fact-list">${fact(label, value)}</dl>`;
   let body = "";
   if (p.type === "payable") {
     body = `<span class="eyebrow">Новый долг · не оплата</span><h2 class="detail-title">${e(p.title)}</h2><p>${e(p.meaning)}</p>${p.amount == null ? `<div class="notice amber">Какую сумму должны мастерской?</div>${editable ? btn("Уточнить сумму", "edit:amount:" + id, "primary full", "edit-amount") : ""}` : `<div class="detail-value">${money(p.amount)}</div>${editable ? btn("Изменить сумму", "edit:amount:" + id, "secondary", "edit-amount") : ""}`}<dl class="fact-list">${fact("Дата", p.date)}${fact("Теплица", p.place)}${fact("Оплата", "Не оплачено")}${fact("Срок оплаты", "Не указан · необязательно")}</dl><p class="note">Подтверждение добавит долг. Денежные счета не изменятся.</p>`;
   } else if (p.type === "task") {
-    body = `<span class="eyebrow">Личная задача · сценарий интерфейса</span><h2 class="detail-title">${e(p.instruction)}</h2>${editable ? btn("Изменить поручение", "edit:instruction:" + id, "text-button", "edit-instruction") + FactChip("Теплица", p.place, "edit:place:" + id, "edit-place") + FactChip("Когда", p.when, "edit:when:" + id, "edit-when") : `<dl class="fact-list">${fact("Теплица", p.place)}${fact("Когда", p.when)}</dl>`}<p class="note">Полив · исполнитель не назначен. Для личной задачи точная дата необязательна.</p>`;
+    body = `<span class="eyebrow">Личная задача · сценарий интерфейса</span><h2 class="detail-title">${e(p.actionNeedsReview ? "Уточните текст действия" : p.instruction)}</h2>${editable ? btn("Изменить поручение", "edit:instruction:" + id, "text-button", "edit-instruction") : ""}${p.party ? `<dl class="fact-list">${fact("С кем связано", p.party)}</dl>` : ""}${p.place ? editableFact("Теплица", p.place, "place") : ""}${editableFact("Когда", p.when, "when")}<p class="note">${p.category ? e(p.category) + " · " : ""}исполнитель не назначен. Для личной задачи точная дата необязательна.</p>${p.actionNeedsReview ? `<div class="notice amber">Место или срок изменились. Проверьте свой текст действия в «Изменить поручение», прежде чем сохранить.</div>` : ""}`;
   } else if (p.type === "harvest") {
-    body = `<span class="eyebrow">Чек депо · продажа и долг</span><h2 class="detail-title">${e(p.title)}</h2><div class="detail-value">${money(p.amount)}</div><dl class="fact-list">${fact("Бананы", number(p.kg) + " кг")}${fact("Цена", "31 TRY/кг")}${fact("Теплица", p.place)}${fact("Дата", p.date)}${fact("Качество", "Не разобрано")}${fact("Оплата", "Alacak · не оплачено")}</dl><div class="notice">Одна демо-операция: продажа ${number(p.kg)} кг и увеличение «Мне должны» на ${money(p.amount)}. Оплата не создаётся.</div>`;
+    const consistent = Math.round(p.kg * p.price * 100) === Math.round(p.amount * 100);
+    body = `<span class="eyebrow">Чек депо · продажа и долг</span><h2 class="detail-title">${e(p.title)}</h2><div class="detail-value">${money(p.amount)}</div>${editableFact("Вес", number(p.kg, 3) + " кг", "kg")}${editableFact("Цена", money(p.price) + "/кг", "price")}${editableFact("Сумма", money(p.amount), "amount")}${editableFact("Теплица", p.place, "place")}<dl class="fact-list">${fact("Дата", p.date)}${fact("Качество", "Не разобрано")}${fact("Оплата", "Alacak · не оплачено")}</dl>${!consistent ? `<div class="notice amber" data-testid="depot-mismatch">Вес × цена = ${money(Math.round(p.kg * p.price * 100) / 100)}, а сумма — ${money(p.amount)}. Уточните один из этих фактов. Автоматического пересчёта нет.</div>` : ""}<div class="notice">Одна демо-операция: продажа ${number(p.kg, 3)} кг и увеличение «Мне должны» на ${money(p.amount)}. Оплата не создаётся.</div>`;
   } else if (p.type === "stock") {
-    body = `<span class="eyebrow">Физический приход</span><h2 class="detail-title">${e(p.title)}</h2><div class="detail-value">${number(p.quantity)} ${e(p.unit)}</div><dl class="fact-list">${fact("Склад", p.place)}${fact("Дата", p.date)}${fact("Стоимость", "Неизвестна")}${fact("Оплата", "Не подтверждена")}</dl><div class="notice">Добавится только количество в демо-складе. Долг, оплата и стоимость не создаются.</div>`;
+    body = `<span class="eyebrow">Физический приход</span><h2 class="detail-title">${e(p.product)}</h2><div class="detail-value">${number(p.quantity, 3)} ${e(p.unit)}</div>${editableFact("Товар", p.product, "product")}${editableFact("Количество", number(p.quantity, 3), "quantity")}${editableFact("Единица", p.unit, "unit")}${editableFact("Склад", p.place, "place")}<dl class="fact-list">${fact("Дата", p.date)}${fact("Стоимость", "Неизвестна")}${fact("Оплата", "Не подтверждена")}</dl><div class="notice">Приход относится только к выбранным товару, единице и складу. Если начальный остаток неизвестен, он останется неизвестным. Долг, оплата и стоимость не создаются.</div>`;
+  } else if (p.recovery) {
+    body = `<span class="eyebrow">Готовый сценарий · не распознавание</span><h2 class="detail-title">Что произошло?</h2><p class="note">Исходник сохранён. Нужно уточнить только смысл; известные факты уже здесь.</p><dl class="fact-list" data-testid="known-facts">${fact("С кем связано", p.party)}${fact("Когда", p.when)}</dl>${editable ? btn("Нужно связаться с Серканом", `clarify-intent:${id}`, "primary full", "clarify-intent-reminder") : ""}<p class="note">Это ваша личная задача. Она ничего не отправляет Серкану и не назначает его работником.</p>`;
   } else {
     body = `<span class="eyebrow">Без распознавания</span><h2 class="detail-title">${e(p.title)}</h2>${ErrorState("Нужна ручная проверка", "Для этого источника нет подготовленного сценария. Прототип не распознаёт произвольный текст или документ.")}<p class="note">Источник остаётся доступен. Неизвестные сумма, дата и содержание не заменены догадками.</p>`;
   }
-  return `<div class="detail-layout">${Header("Проверка действия", "", true)}<section class="card">${body}${sourceDetails(p)}${p.status === "confirmed" ? `<div class="notice">Подтверждено в демо. Повторный эффект не создаётся.</div>` : p.status === "rejected" ? `<div class="notice">Отклонено. Исходник сохранён, эффекта нет.</div>` : `${canConfirm(p) ? btn(p.type === "task" ? "Сохранить личную задачу" : "Подтвердить в демо", `confirm:${id}`, "primary full", p.type === "task" ? "task-save" : "confirm-proposal") : ""}<div class="button-row">${btn("Позже", `defer:${id}`, "text-button")}${btn("Отклонить", `reject:${id}`, "text-button")}</div>`}</section></div>`;
+  const conflict = p.captionConflict ? `<div class="notice amber" data-testid="caption-conflict"><strong>Источник и комментарий расходятся</strong><p>В документе 1 200 кг, в комментарии владельца — 1 100 кг. Это заранее заданный сценарий, не результат OCR или ИИ.</p>${editable ? btn("Оставить 1 200 кг из документа", `resolve-caption:${id}`, "secondary full", "resolve-caption-source") + btn("Использовать 1 100 кг из комментария", `resolve-caption-comment:${id}`, "secondary full", "resolve-caption-comment") : ""}<p>Если верен комментарий, сначала уточните вес и связанные факты. Автоматического выбора нет.</p></div>` : p.captionResolution ? `<p class="note">Владелец выбрал вес ${p.captionResolution === "document" ? "из документа" : "из комментария"}. Оба оригинала сохранены.</p>` : "";
+  return `<div class="detail-layout">${Header("Проверка действия", "", true)}<section class="card"><div data-testid="current-action"><p class="current-label">ТЕКУЩЕЕ ПОДТВЕРЖДАЕМОЕ ДЕЙСТВИЕ</p>${body}</div>${sourceDetails(p)}${conflict}${p.status === "confirmed" ? `<div class="notice">Подтверждено в демо. Повторный эффект не создаётся. Более поздние комментарии — отдельные свидетельства, они не меняют подтверждённое действие.</div>` : p.status === "rejected" ? `<div class="notice">Отклонено. Исходник сохранён, эффекта нет.</div>` : `${canConfirm(p) ? btn(p.type === "task" ? "Сохранить личную задачу" : "Подтвердить в демо", `confirm:${id}`, "primary full", p.type === "task" ? "task-save" : "confirm-proposal") : ""}<div class="button-row">${btn("Позже", `defer:${id}`, "text-button")}${btn("Отклонить", `reject:${id}`, "text-button")}</div>`}</section></div>`;
 }
 function voiceBody() {
   const support = voiceStatus === "unsupported" || voiceStatus === "error",
@@ -190,7 +194,7 @@ function capture(mode) {
     mode !== "voice" || d.text
       ? btn("Сохранить в демо", "capture-save", "primary full", "capture-save")
       : "";
-  return `<div class="capture-page" data-r3-form="capture-${mode}">${Header({ text: "Новая запись", voice: "Голос", photo: "Фото" }[mode], "", true)}${body}${saveButton}<div class="scenario-panel"><p>ГОТОВЫЙ СЦЕНАРИЙ ИНТЕРФЕЙСА · НЕ ИИ</p>${mode === "photo" ? btn(`${icon("text")} Выбрать синтетический чек депо`, "demo-photo", "secondary scenario-button full", "demo-photo") : btn(`${icon("tasks")} Попробовать задачу про полив`, "demo-irrigation", "secondary scenario-button full", "demo-irrigation")}</div><p class="screen-note">Демо-состояние хранится только в этом браузере</p></div>`;
+  return `<div class="capture-page" data-r3-form="capture-${mode}">${Header({ text: "Новая запись", voice: "Голос", photo: "Фото" }[mode], "", true)}${body}${saveButton}<div class="scenario-panel"><p>ГОТОВЫЙ СЦЕНАРИЙ ИНТЕРФЕЙСА · НЕ ИИ</p>${mode === "photo" ? btn(`${icon("text")} Выбрать синтетический чек депо`, "demo-photo", "secondary scenario-button full", "demo-photo") + btn("Чек и противоречивый комментарий", "demo-photo-conflict", "text-button full", "demo-photo-conflict") : btn(`${icon("tasks")} Попробовать задачу про полив`, "demo-irrigation", "secondary scenario-button full", "demo-irrigation") + btn("Неясное событие: Серкан, завтра", "demo-recovery", "text-button full", "demo-recovery")}</div><p class="screen-note">Демо-состояние хранится только в этом браузере</p></div>`;
 }
 function tasks() {
   const f = state.filters.tasks;
@@ -229,7 +233,7 @@ function taskDetail(id) {
       Header("Задача", "", true) +
       EmptyState("Задача не найдена", "Вернитесь к списку.")
     );
-  return `<div class="detail-layout">${Header(t.worker ? "Поручение" : "Моя задача", "", true)}<section class="card"><span class="tag ${t.status === "problem" ? "red" : ""}">${{ todo: "Нужно сделать", done: "Выполнено владельцем", assigned: "Назначено", problem: "Есть проблема" }[t.status]}</span><h2 class="detail-title">${e(t.title)}</h2>${!t.worker ? btn("Изменить поручение", "edit:title:" + id, "text-button", "edit-instruction") : ""}${t.worker ? `<dl class="fact-list">${fact("Где", t.place)}${fact("Когда", t.when)}${fact("Кому", workerName(t.worker))}</dl>` : `${FactChip("Теплица", t.place, "edit:place:" + id, "edit-place")}${FactChip("Когда", t.when, "edit:when:" + id, "edit-when")}`} ${t.report ? `<div class="notice amber">Отчёт: ${e(t.report)}</div>` : ""}${!t.worker ? `<p class="note">${t.date ? "Точная дата: " + new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(new Date(t.date + "T12:00:00")) : "Точная дата не выбрана"}. Личная задача не требует назначения работника.</p>${btn(t.status === "done" ? "Вернуть в задачи" : "Отметить выполненной", `task-done:${id}`, "primary full", "task-save")}` : ""}<details class="source-details"><summary>Дополнительно</summary><p>Источник: ${e(t.source)}</p><p>История: создана в синтетическом наборе. Напоминания и повторы не подключены.</p></details></section></div>`;
+  return `<div class="detail-layout">${Header(t.worker ? "Поручение" : "Моя задача", "", true)}<section class="card"><span class="tag ${t.status === "problem" ? "red" : ""}">${{ todo: "Нужно сделать", done: "Выполнено владельцем", assigned: "Назначено", problem: "Есть проблема" }[t.status]}</span><p class="current-label">ТЕКУЩЕЕ ДЕЙСТВИЕ</p><h2 class="detail-title" data-testid="current-action">${e(t.actionNeedsReview ? "Уточните текст действия" : t.title)}</h2>${t.actionNeedsReview ? `<div class="notice amber" data-testid="task-needs-review">Место или срок изменились. Проверьте свой текст в «Изменить поручение». Пока уточнение не завершено, действие нельзя отметить выполненным.</div>` : ""}${!t.worker ? btn("Изменить поручение", "edit:title:" + id, "text-button", "edit-instruction") : ""}${t.worker ? `<dl class="fact-list">${fact("Где", t.place)}${fact("Когда", t.when)}${fact("Кому", workerName(t.worker))}</dl>` : `${FactChip("Теплица", t.place, "edit:place:" + id, "edit-place")}${FactChip("Когда", t.when, "edit:when:" + id, "edit-when")}`} ${t.report ? `<div class="notice amber">Отчёт: ${e(t.report)}</div>` : ""}${!t.worker ? `<p class="note">${t.date ? "Точная дата: " + new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(new Date(t.date + "T12:00:00")) : "Точная дата не выбрана"}. Личная задача не требует назначения работника.</p>${!t.actionNeedsReview ? btn(t.status === "done" ? "Вернуть в задачи" : "Отметить выполненной", `task-done:${id}`, "primary full", "task-save") : ""}` : ""}${sourceDetails(t)}</section></div>`;
 }
 function workerRow(w) {
   const count =
@@ -317,7 +321,7 @@ function inventory() {
 function stock(id, showMovements = false) {
   const s = state.stock.find((x) => x.id === id);
   if (!s) return EmptyState("Товар не найден", "Вернитесь к складу.");
-  return `<div class="detail-layout">${Header(showMovements ? "Движения" : s.name, s.place, true)}<section class="card"><span class="eyebrow">${e(s.category)}</span><div class="detail-value">${s.quantity == null ? "Остаток неизвестен" : number(s.quantity) + " " + e(s.unit)}</div><p class="note">Стоимость неизвестна. Порог низкого остатка не задан.</p>${!showMovements ? link("Открыть движения", `stock/${id}/movements`, "btn secondary full", "stock-movements") : s.movements.length ? s.movements.map((m) => `<div class="timeline-row"><div class="summary-pair"><strong>${e(m.label)}</strong><strong>${m.quantity > 0 ? "+" : ""}${number(m.quantity)} ${e(s.unit)}</strong></div><p>${e(m.date)} · ${e(s.place)}</p></div>`).join("") : EmptyState("Нет движений", "Неизвестный остаток не заменён нулём.")}</section></div>`;
+  return `<div class="detail-layout">${Header(showMovements ? "Движения" : s.name, s.place, true)}<section class="card"><span class="eyebrow">${e(s.category)}</span><div class="detail-value">${s.quantity == null ? "Остаток неизвестен" : number(s.quantity, 3) + " " + e(s.unit)}</div><p class="note">Стоимость неизвестна. Порог низкого остатка не задан.</p>${!showMovements ? link("Открыть движения", `stock/${id}/movements`, "btn secondary full", "stock-movements") : s.movements.length ? s.movements.map((m) => `<div class="timeline-row"><div class="summary-pair"><strong>${e(m.label)}</strong><strong>${m.quantity > 0 ? "+" : ""}${number(m.quantity, 3)} ${e(s.unit)}</strong></div><p>${e(m.date)} · ${e(s.place)}</p></div>`).join("") : EmptyState("Нет движений", "Неизвестный остаток не заменён нулём.")}</section></div>`;
 }
 function more() {
   return `<div class="more-layout">${Header("Ещё", "Всё хозяйство в одном месте")}<section class="card list-card">${[
@@ -483,17 +487,17 @@ window.addEventListener(
   { passive: true },
 );
 window.addEventListener("pagehide", save);
-function openSheet({ title, kind, id, key, value, options }) {
+function openSheet({ title, kind, id, key, value, options, target }) {
   if (document.querySelector("#fact-sheet")) closeSheet();
   returnFocus = document.activeElement?.getAttribute("data-testid");
-  sheetContext = { kind, id, key };
-  const draftKey = [kind, id, key].join(":"),
+  sheetContext = { kind, id, key, target };
+  const draftKey = [kind, target || "", id, key].join(":"),
     draft = sheetDrafts.has(draftKey) ? sheetDrafts.get(draftKey) : value;
   let input = options
     ? `<label class="capture-label" for="fact-input">${e(title)}</label><select class="input" id="fact-input" data-testid="fact-input">${options.map((v) => `<option value="${e(v)}" ${v === draft ? "selected" : ""}>${e(v)}</option>`).join("")}</select>`
     : kind === "translation"
       ? `<label class="capture-label" for="fact-input">Проверяемый текст</label><textarea class="input" id="fact-input" data-testid="translation-input" rows="4" lang="fa" dir="rtl">${e(draft)}</textarea>`
-      : `<label class="capture-label" for="fact-input">${e(title)}</label><input class="input" id="fact-input" data-testid="fact-input" value="${e(draft)}" ${key === "amount" ? 'inputmode="decimal" placeholder="Например, 7 000"' : ""}>`;
+      : `<label class="capture-label" for="fact-input">${e(title)}</label><input class="input" id="fact-input" data-testid="fact-input" value="${e(draft)}" ${["amount", "quantity", "kg", "price"].includes(key) ? 'inputmode="decimal" placeholder="Например, 7 000"' : ""}>`;
   sheetRoot.innerHTML = Sheet(
     title,
     input + `<p id="sheet-error" class="notice red" hidden></p>`,
@@ -518,7 +522,7 @@ function closeSheet() {
   const el = document.querySelector("#fact-input");
   if (sheetContext && el)
     sheetDrafts.set(
-      [sheetContext.kind, sheetContext.id, sheetContext.key].join(":"),
+      [sheetContext.kind, sheetContext.target || "", sheetContext.id, sheetContext.key].join(":"),
       el.value,
     );
   document.querySelector("#fact-sheet")?.close();
@@ -657,6 +661,7 @@ document.addEventListener("input", (ev) => {
   }
   if (el.id === "capture-comment") {
     state.draft.comment = el.value;
+    if (state.draft.scenario === "receipt-conflict" && el.value !== CAPTION_CONFLICT) state.draft.scenario = "receipt";
     save();
   }
   if (el.id === "inventory-search") {
@@ -678,7 +683,7 @@ document.addEventListener("input", (ev) => {
   }
   if (el.id === "fact-input" && sheetContext)
     sheetDrafts.set(
-      [sheetContext.kind, sheetContext.id, sheetContext.key].join(":"),
+      [sheetContext.kind, sheetContext.target || "", sheetContext.id, sheetContext.key].join(":"),
       el.value,
     );
 });
@@ -759,23 +764,16 @@ document.addEventListener("click", async (ev) => {
   }
   if (action.startsWith("edit:")) {
     const [, key, id] = action.split(":");
-    const item =
-      state.proposals.find((p) => p.id === id) ||
-      state.tasks.find((p) => p.id === id);
+    const target = route.startsWith("task/") ? "task" : "proposal";
+    const item = target === "task" ? state.tasks.find((p) => p.id === id) : state.proposals.find((p) => p.id === id);
     openSheet({
-      title:
-        key === "amount"
-          ? "Сумма долга, TRY"
-          : key === "place"
-            ? "Теплица"
-            : ["title", "instruction"].includes(key)
-              ? "Поручение"
-              : "Когда сделать?",
+      title: ({ amount: item.type === "harvest" ? "Сумма чека, TRY" : "Сумма долга, TRY", place: "Теплица", title: "Действие · без места и срока", instruction: "Действие · без места и срока", when: "Когда сделать?", quantity: "Количество", unit: "Единица измерения", product: "Товар", kg: "Вес, кг", price: "Цена, TRY/кг" })[key],
       kind: "fact",
+      target,
       id,
       key,
       value: item[key] ?? "",
-      options: key === "place" ? ["Özvadi", "İmamlı", "Yeşilöz"] : null,
+      options: key === "place" ? ["Özvadi", "İmamlı", "Yeşilöz"] : key === "product" ? ["KNO₃", "Кальциевая селитра"] : key === "unit" ? ["кг", "л"] : null,
     });
     return;
   }
@@ -786,23 +784,24 @@ document.addEventListener("click", async (ev) => {
   if (action === "sheet-save") {
     let value = document.querySelector("#fact-input").value;
     const c = sheetContext;
-    if (c.key === "amount") {
+    if (["amount", "price", "quantity", "kg"].includes(c.key)) {
       try {
-        value = parseAmount(value);
+        value = ["quantity", "kg"].includes(c.key) ? parseQuantity(value) : parseAmount(value);
       } catch {
         const er = document.querySelector("#sheet-error");
         er.textContent =
-          "Укажите положительную сумму, до двух знаков после запятой.";
+          ["quantity", "kg"].includes(c.key) ? "Укажите положительное количество, до трёх знаков после запятой." : "Укажите положительную сумму, до двух знаков после запятой.";
         er.hidden = false;
         return;
       }
     }
+    if (typeof value === "string" && !value.trim()) { const er = document.querySelector("#sheet-error"); er.textContent = "Укажите этот факт."; er.hidden = false; return; }
     if (c.kind === "translation") {
       if (!value.trim()) return;
       state.workerTask.translation = value;
       state.workerTask.translationReviewed = false;
-    } else updateFact(state, c.id, c.key, value.trim?.() ?? value);
-    sheetDrafts.delete([c.kind, c.id, c.key].join(":"));
+    } else updateFact(state, c.id, c.key, value.trim?.() ?? value, c.target);
+    sheetDrafts.delete([c.kind, c.target || "", c.id, c.key].join(":"));
     const rf = returnFocus;
     sheetContext = null;
     closeSheet();
@@ -857,14 +856,24 @@ document.addEventListener("click", async (ev) => {
     render();
     return;
   }
-  if (action === "demo-photo") {
+  if (action === "demo-recovery") {
+    state.draft.text = RECOVERY_TEXT;
+    state.draft.scenario = "recovery";
+    if (route === "capture/voice") { stopVoice(); voiceStatus = "text"; }
+    save(); render(); return;
+  }
+  if (action.startsWith("clarify-intent:")) { clarifyIntent(state, action.split(":")[1], "reminder"); save(); render(); return; }
+  if (action.startsWith("resolve-caption-comment:")) { resolveCaption(state, action.split(":")[1], "comment"); save(); render(); return; }
+  if (action.startsWith("resolve-caption:")) { resolveCaption(state, action.split(":")[1], "document"); save(); render(); return; }
+  if (["demo-photo", "demo-photo-conflict"].includes(action)) {
     state.draft.file = {
       name: "TEST-чек DEMO-09.svg",
       kind: "image",
       url: "assets/receipt.svg",
       fixture: true,
     };
-    state.draft.scenario = "receipt";
+    state.draft.scenario = action === "demo-photo-conflict" ? "receipt-conflict" : "receipt";
+    if (action === "demo-photo-conflict") state.draft.comment = CAPTION_CONFLICT;
     save();
     render();
     return;
@@ -902,6 +911,7 @@ document.addEventListener("click", async (ev) => {
   }
   if (action.startsWith("task-done:")) {
     const t = state.tasks.find((x) => x.id === action.split(":")[1]);
+    if (!t || t.actionNeedsReview) return;
     t.status = t.status === "done" ? "todo" : "done";
     save();
     render();

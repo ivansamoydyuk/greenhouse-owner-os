@@ -245,7 +245,9 @@ main {
   line-height: 1.15;
   letter-spacing: -1px;
   margin-top: 13px;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
   font-variant-numeric: tabular-nums;
 }
 .currency {
@@ -1539,3 +1541,27 @@ button[disabled] {
   .stock-row > div { grid-column: 2; grid-row: 1; }
   .stock-row .stock-quantity { grid-column: 2; grid-row: 2; max-width: none; text-align: left; }
 }
+
+/* Exact money is an indivisible numeric token. Layout adapts before typography does. */
+.financial-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.metric-card { container-type: inline-size; padding-inline: clamp(11px, 2vw, 22px); }
+.metric-value { white-space: nowrap; overflow-wrap: normal; word-break: normal; font-size: clamp(24px, 20cqi, 34px); letter-spacing: -.8px; }
+.financial-grid:has(.long-money), .financial-grid.stress { grid-template-columns: minmax(0, 1fr); }
+.financial-grid .long-money .metric-value { font-size: clamp(24px, 9cqi, 34px); }
+.home-layout > div { min-width: 0; }
+.current-label { font-size: 11px; line-height: 1.5; letter-spacing: .8px; font-weight: 700; color: var(--green); margin: 0 0 14px; }
+.source-evidence { margin-block: 22px; padding: 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; }
+.original-text { font-size: 14px; line-height: 1.55; margin: 8px 0; }
+.source-evidence .source-details { margin: 0; }
+.owner-comment { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.owner-comment p { font-size: 14px; line-height: 1.5; margin-block: 8px 0; }
+.attention-area { border-radius: var(--radius); background: var(--amber-bg); margin-bottom: 16px; }
+.attention-area .attention { margin-bottom: 0; }
+.attention-worker { display: flex; align-items: center; gap: 8px; padding: 0 14px 8px; min-height: 44px; color: #795f37; font-size: 12px; }
+.attention-worker span { flex: 1; }
+.attention-worker .icon { width: 16px; height: 16px; flex: 0 0 16px; }
+
+.source-original-layout { display: flex; gap: 12px; align-items: flex-start; }
+.source-original-layout .original-text { min-width: 0; flex: 1; }
+.source-original-layout .source-evidence-thumb { width: 76px; max-width: 28%; height: auto; margin: 4px 0 0; border-radius: 3px; flex: 0 0 auto; }
+.source-full-document { display: block; width: min(100%, 400px); height: auto; margin: 12px auto; border-radius: 4px; }

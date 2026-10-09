@@ -112,7 +112,7 @@ export function MetricCard({
   return link(
     `<span class="metric-label">${icon(ic)}${e(label)}</span><strong class="metric-value">${number(value, 2)}</strong><span class="currency">TRY</span><span class="metric-detail">${e(detail)} ${icon("arrow")}</span>`,
     to,
-    `metric-card ${primary ? "mint" : ""}`,
+    `metric-card ${primary ? "mint" : ""} ${number(value, 2).length > 10 ? "long-money" : ""}`,
     test,
   );
 }
@@ -145,7 +145,7 @@ export const LoadingState = (title = "Готовим демо-карточку")
   );
 export function TaskRow(t, test = "") {
   return link(
-    `<span class="task-icon ${t.status === "done" ? "done" : ""}">${icon(t.status === "done" ? "check" : "tasks")}</span><div><strong>${e(t.title)}</strong><p>${e(t.place || "Теплица не указана")} · ${e(t.when || "Без точной даты")}</p></div>${icon("arrow")}`,
+    `<span class="task-icon ${t.status === "done" ? "done" : ""}">${icon(t.status === "done" ? "check" : "tasks")}</span><div><strong>${e(t.actionNeedsReview ? "Уточнить текст действия" : t.title)}</strong><p>${e(t.place || "Теплица не указана")} · ${e(t.when || "Без точной даты")}</p></div>${icon("arrow")}`,
     `task/${t.id}`,
     "task-row",
     test || `task-${t.id}`,
@@ -153,7 +153,7 @@ export function TaskRow(t, test = "") {
 }
 export function StockRow(s) {
   return link(
-    `<span class="stock-icon">${icon("box")}</span><div><strong>${e(s.name)}</strong><p>${e(s.place)}</p></div><strong class="stock-quantity">${s.quantity == null ? "Неизвестно" : number(s.quantity) + " " + e(s.unit)}</strong>`,
+    `<span class="stock-icon">${icon("box")}</span><div><strong>${e(s.name)}</strong><p>${e(s.place)}</p></div><strong class="stock-quantity">${s.quantity == null ? "Неизвестно" : number(s.quantity, 3) + " " + e(s.unit)}</strong>`,
     `stock/${s.id}`,
     "stock-row",
     `stock-${s.id}`,
@@ -173,13 +173,13 @@ export function ReviewCard(p) {
         ? "Сумма не указана"
         : money(p.amount)
       : p.type === "harvest"
-        ? `${number(p.kg)} кг · ${money(p.amount)}`
+        ? `${number(p.kg, 3)} кг · ${money(p.amount)}`
         : p.type === "stock"
-          ? `${number(p.quantity)} ${p.unit}`
+          ? `${number(p.quantity, 3)} ${p.unit}`
           : p.type === "task"
-            ? p.title
+            ? p.actionNeedsReview ? "Уточнить текст действия" : p.instruction
             : p.meaning;
-  return `<article class="review-card"><div class="review-top"><span class="eyebrow">${type}</span><span class="tag ${p.type === "unknown" || p.amount === null ? "amber" : ""}">${p.status === "deferred" ? "Отложено" : p.type === "unknown" || p.amount === null ? "Уточнение" : "К проверке"}</span></div>${link(`<div class="review-summary"><div><h2>${e(p.title)}</h2><strong class="review-value">${e(value)}</strong><p>${e(p.place || "Теплица не указана")} · ${e(p.when || p.date || "Дата не указана")}</p></div>${p.image ? `<img class="source-thumb" src="${e(p.image)}" alt="Миниатюра синтетического источника">` : ""}</div>`, `review/${p.id}`, "review-body", `review-${p.id}`)}<div class="review-actions">${link(p.amount === null ? "Уточнить сумму" : p.type === "unknown" ? "Открыть источник" : "Проверить", `review/${p.id}`, "btn primary", `review-open-${p.id}`)}${btn("Позже", `defer:${p.id}`, "text-button", `defer-${p.id}`)}</div></article>`;
+  return `<article class="review-card"><div class="review-top"><span class="eyebrow">${type}</span><span class="tag ${p.type === "unknown" || p.amount === null ? "amber" : ""}">${p.status === "deferred" ? "Отложено" : p.type === "unknown" || p.amount === null ? "Уточнение" : "К проверке"}</span></div>${link(`<div class="review-summary"><div><h2>${e(p.actionNeedsReview ? "Уточнить текст действия" : p.title)}</h2><strong class="review-value">${e(value)}</strong><p>${e(p.place || "Теплица не указана")} · ${e(p.when || p.date || "Дата не указана")}</p></div>${p.image ? `<img class="source-thumb" src="${e(p.image)}" alt="Миниатюра синтетического источника">` : ""}</div>`, `review/${p.id}`, "review-body", `review-${p.id}`)}<div class="review-actions">${link(p.amount === null ? "Уточнить сумму" : p.type === "unknown" ? "Открыть источник" : "Проверить", `review/${p.id}`, "btn primary", `review-open-${p.id}`)}${btn("Позже", `defer:${p.id}`, "text-button", `defer-${p.id}`)}</div></article>`;
 }
 export const Sheet = (title, body, footer) =>
   `<dialog id="fact-sheet" class="sheet" aria-labelledby="sheet-title"><form method="dialog" class="sheet-form"><div class="sheet-header"><h2 id="sheet-title">${e(title)}</h2>${btn(icon("close"), "sheet-cancel", "icon-button", "sheet-close", 'aria-label="Закрыть" type="button"')}</div>${body}<div class="sheet-actions">${footer}</div></form></dialog>`;

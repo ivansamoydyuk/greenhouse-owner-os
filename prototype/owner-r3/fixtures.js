@@ -1,6 +1,8 @@
 // Explicit, synthetic UI scenarios. These are not operational records or AI output.
 export const SCENARIO_TEXT =
   "Нужно переделать полив на Озвади на следующей неделе";
+export const RECOVERY_TEXT = "Серкану завтра нужно…";
+export const CAPTION_CONFLICT = "На чеке должно быть 1 100 кг. Проверь вес.";
 export const SEASON = "1–9 октября 2026";
 export const harvestRows = [
   {
@@ -71,6 +73,7 @@ export function initialState() {
         meaning: "Поставка бананов",
         amount: 37200,
         kg: 1200,
+        price: 31,
         currency: "TRY",
         place: "Özvadi",
         date: "9 октября",
@@ -84,6 +87,7 @@ export function initialState() {
         id: "stock-review",
         type: "stock",
         title: "KNO₃",
+        product: "KNO₃",
         meaning: "Физический приход",
         quantity: 100,
         unit: "кг",
