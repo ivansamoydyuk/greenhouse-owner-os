@@ -20,7 +20,6 @@ import {
   transcriptText,
   parseAmount,
   parseQuantity,
-  currentAction,
   resolveCaption,
   clarifyIntent,
 } from "./demo-adapter.js";

@@ -930,3 +930,30 @@ test("R3 design lock changed or blank caption cannot reuse a stale explicit cont
   const app = fs.readFileSync("prototype/owner-r3/app.js", "utf8");
   assert.match(app, /state\.draft\.scenario\s*===\s*"receipt-conflict"\s*&&\s*el\.value\s*!==\s*CAPTION_CONFLICT\)\s*state\.draft\.scenario\s*=\s*"receipt"/);
 });
+
+test("R3 design lock task review cards render one escaped action title without a duplicate value line", () => {
+  const s = initialState();
+  s.draft.text = SCENARIO_TEXT;
+  const p = prepare(s);
+  assert.equal(p.title, p.instruction);
+  let html = ReviewCard(p);
+  assert.equal(html.split(e(p.title)).length - 1, 1);
+  assert.doesNotMatch(html, /class="review-value"/);
+
+  const editedInstruction = 'Проверить <насос> & "фильтр"';
+  updateFact(s, p.id, "instruction", editedInstruction);
+  assert.equal(p.title, editedInstruction);
+  assert.equal(p.instruction, editedInstruction);
+  html = ReviewCard(p);
+  assert.equal(html.split(e(editedInstruction)).length - 1, 1);
+  assert.ok(html.includes(`<h2>${e(editedInstruction)}</h2>`));
+  assert.doesNotMatch(html, /<насос>|Переделать полив|class="review-value"/);
+
+  updateFact(s, p.id, "place", "İmamlı");
+  assert.equal(p.actionNeedsReview, true);
+  html = ReviewCard(p);
+  assert.equal(html.split("Уточнить текст действия").length - 1, 1);
+  assert.ok(html.includes("<h2>Уточнить текст действия</h2>"));
+  assert.doesNotMatch(html, /Проверить &lt;насос&gt;|Переделать полив|class="review-value"/);
+  assert.equal(p.source, SCENARIO_TEXT);
+});

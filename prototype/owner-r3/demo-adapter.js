@@ -216,7 +216,7 @@ export function transcriptText(results) {
 
 // Bounded display projections of selected facts, never a language interpreter.
 export function currentAction(p) {
-  if (p.type === "task" || (!p.type && p.title)) return [p.instruction || p.title, p.party, p.place, p.when].filter(Boolean).join(" · ");
+  if (p.type === "task" || (!p.type && p.title)) return [p.actionNeedsReview ? "Уточнить текст действия" : p.instruction || p.title, p.party, p.place, p.when].filter(Boolean).join(" · ");
   if (p.type === "stock") return `Приход: ${p.quantity} ${p.unit} ${p.product} · ${p.place}`;
   if (p.type === "harvest") return `Продажа: ${p.kg} кг × ${p.price} TRY/кг · ${p.amount} TRY · ${p.place}`;
   return p.meaning || p.title;

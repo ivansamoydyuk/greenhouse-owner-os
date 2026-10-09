@@ -137,14 +137,32 @@ async function journey(browser,name,run){
 
 async function correctionJourney(browser,engine,name,run){
   const {context,page}=await newPage(browser);
+  page.__r3CorrectionSegments=[];
   await page.evaluate(()=>window.__r3Metrics.start());
   let status='PASS',failure;
   try{await run(page);}catch(error){status='FAIL';failure=error.message;recordFailure(`${engine} correction: ${name}`,error);await captureFailure(page);}
+  const segments=[...page.__r3CorrectionSegments];
+  let metricError;
   try{
-    const raw=await page.evaluate(()=>window.__r3Metrics.stop());
-    assert.ok(raw.clicks.length>0&&raw.clicks.every(event=>event.trusted),'Correction journeys use trusted browser interactions');
-    report.correction_journeys.push({engine,name,status,...(failure?{failure,partial:true}:{}),start:'#home',end:await page.evaluate(()=>location.hash),clicks:raw.clicks.length,opened_forms:raw.forms.length,manual_field_edits:raw.inputs.length,keyboard_actions:raw.keys.length,click_events:raw.clicks,form_events:raw.forms,input_events:raw.inputs,key_events:raw.keys});
+    try{
+      segments.push(await page.evaluate(()=>window.__r3Metrics.stop()));
+      const clicks=segments.flatMap(segment=>segment.clicks);
+      assert.ok(clicks.length>0&&clicks.every(event=>event.trusted),'Correction journeys use trusted browser interactions');
+    }catch(error){
+      status='FAIL';failure=failure?`${failure}; metrics: ${error.message}`:error.message;metricError=error;
+      recordFailure(`${engine} correction metrics: ${name}`,error);
+    }
+    const raw=Object.fromEntries(['clicks','forms','inputs','keys'].map(key=>[key,segments.flatMap(segment=>segment[key]||[])]));
+    report.correction_journeys.push({engine,name,status,...(failure?{failure,partial:true}:{}),start:'#home',end:await page.evaluate(()=>location.hash).catch(()=>null),clicks:raw.clicks.length,opened_forms:raw.forms.length,manual_field_edits:raw.inputs.length,keyboard_actions:raw.keys.length,click_events:raw.clicks,form_events:raw.forms,input_events:raw.inputs,key_events:raw.keys,metric_segments:segments});
+    if(metricError)throw metricError;
   }finally{await context.close();}
+}
+async function correctionReload(page){
+  // Reload creates a new document and its own metrics recorder. Preserve each
+  // real segment in Node before navigation, then resume collection explicitly.
+  page.__r3CorrectionSegments.push(await page.evaluate(()=>window.__r3Metrics.stop()));
+  await page.reload();await ready(page);
+  await page.evaluate(()=>window.__r3Metrics.start());
 }
 async function proposal(page,id){return page.evaluate(id=>window.r3Demo.state().proposals.find(item=>item.id===id),id);}
 async function originalVisible(page,source){
@@ -273,7 +291,7 @@ async function correctionJourneys(browser,engine){
     assert.equal(after.place,'İmamlı');assert.equal(after.when,before.when);assert.equal(after.instruction,before.instruction);assert.equal(after.source,before.source);
     assert.deepEqual(await page.evaluate(()=>window.r3Demo.state().sources),sourceRecords,'Fact corrections never rewrite the stored original');
     await originalVisible(page,SCENARIO);await screenshot(page,engine,'correction-task-place',390,'Corrected current action İmamlı, immutable original Özvadi');
-    await page.reload();await ready(page);assert.match(await currentVisible(page),/İmamlı/);await originalVisible(page,SCENARIO);
+    await correctionReload(page);assert.match(await currentVisible(page),/İmamlı/);await originalVisible(page,SCENARIO);
     await click(page,'task-save');await page.getByTestId('task-capture-1').waitFor();
     assert.match(await page.getByTestId('task-capture-1').innerText(),/İmamlı/);assert.doesNotMatch(await page.getByTestId('task-capture-1').innerText(),/Özvadi|Озвади/i);
     const saved=await page.evaluate(()=>window.r3Demo.state().tasks.find(item=>item.id==='capture-1'));
@@ -330,7 +348,7 @@ async function correctionJourneys(browser,engine){
     assert.equal(await page.locator('#main img').filter({visible:true}).count()>0,true,'Document image is visible alongside its owner context');
     const sources=await page.evaluate(()=>window.r3Demo.state().sources.filter(item=>item.proposalId==='depot-review'));assert.equal(sources.length,1);assert.equal(sources[0].comment,caption);assert.equal(sources[0].id,'capture-1');
     await screenshot(page,engine,'correction-photo-caption',390,'Photo source and separately labelled owner caption');
-    await page.reload();await ready(page);assert.ok((await page.getByTestId('owner-comment').innerText()).includes(caption));await originalVisible(page,receipt.source);
+    await correctionReload(page);assert.ok((await page.getByTestId('owner-comment').innerText()).includes(caption));await originalVisible(page,receipt.source);
   });
   await correctionJourney(browser,engine,'Photo: explicit contradictory-caption storyboard requires an owner clarification',async page=>{
     await click(page,'capture-photo');await click(page,'demo-photo-conflict');await click(page,'capture-save');await page.getByTestId('caption-conflict').waitFor();
