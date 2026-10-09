@@ -742,6 +742,7 @@ main {
   margin: 10px 0 6px;
 }
 .detail-value {
+  font-weight: 700;
   font-size: 34px;
   letter-spacing: -1px;
   line-height: 1.25;
@@ -1484,6 +1485,7 @@ button[disabled] {
     flex-wrap: wrap;
   }
   .detail-value {
+  font-weight: 700;
     font-size: 30px;
   }
   .quality-legend {

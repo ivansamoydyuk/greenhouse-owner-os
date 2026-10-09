@@ -39,6 +39,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  plural,
 } from "./components.js";
 let state = loadState(localStorage),
   route = location.hash.slice(1) || "home",
@@ -235,7 +236,7 @@ function workerRow(w) {
       ? 1
       : 0);
   return link(
-    `<span class="avatar">${e(w.initials)}</span><div><strong>${e(w.name)}</strong><p>${e(w.place)} · ${e(w.language)}</p><p>${count ? count + " назначенных задач" : "Нет назначенных задач"}</p></div>${w.issue ? `<span class="tag amber">Проблема</span>` : icon("arrow")}`,
+    `<span class="avatar">${e(w.initials)}</span><div><strong>${e(w.name)}</strong><p>${e(w.place)} · ${e(w.language)}</p><p>${count ? count + " " + plural(count, "назначенная задача", "назначенные задачи", "назначенных задач") : "Нет назначенных задач"}</p></div>${w.issue ? `<span class="tag amber">Проблема</span>` : icon("arrow")}`,
     `worker/${w.id}`,
     "worker-row",
     `worker-${w.id}`,

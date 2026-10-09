@@ -17,6 +17,10 @@ export const money = (v) =>
         minimumFractionDigits: Number.isInteger(v) ? 0 : 2,
         maximumFractionDigits: 2,
       }).format(v) + " TRY";
+export const plural = (count, one, few, many) => {
+  const n = Math.abs(count) % 100, last = n % 10;
+  return n >= 11 && n <= 14 ? many : last === 1 ? one : last >= 2 && last <= 4 ? few : many;
+};
 const paths = {
   home: "M3 10 12 3l9 7M5 9v12h5v-7h4v7h5V9",
   review: "M9 4h6m-8 0H5v17h14V4h-2M8 12l3 3 5-6",

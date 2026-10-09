@@ -10,7 +10,7 @@ const expectedSha=process.env.OWNER_PREVIEW_FEATURE_SHA;
 assert.match(expectedSha||'',/^[a-f0-9]{40}$/,'Set the exact build SHA before browser verification');
 assert.ok(process.env.PREVIEW_SECRET,'An ephemeral preview key is required');
 await fs.mkdir(artifacts,{recursive:true});
-const report={feature_sha:expectedSha,started_at:new Date().toISOString(),screenshots:[],journeys:[],checks:[],limitations:['Chromium/WebKit automation is not physical iPhone verification.','Native microphone recording and a real iPhone software keyboard are not asserted by these tests.','Speech unavailable/error fallback is exercised without substituting a transcript for live microphone input.'],errors:[]};
+const report={feature_sha:expectedSha,started_at:new Date().toISOString(),screenshots:[],journeys:[],checks:[],limitations:['Chromium/WebKit automation is not physical iPhone verification.','Native microphone recording and a real iPhone software keyboard are not asserted by these tests.','Speech unavailable/error fallback is exercised without substituting a transcript for live microphone input.','Click totals are trusted browser DOM interactions, not physical iPhone tap estimates. Native picker/keyboard UI is not measured; the photo journey explicitly chooses a prepared synthetic source.'],errors:[],failures:[]};
 const SCENARIO='Нужно переделать полив на Озвади на следующей неделе';
 const screens=[['home','Главная'],['review','Проверка'],['capture/voice','Голос'],['capture/photo','Фото'],['capture/text','Текст'],['tasks','Задачи'],['task/irrigation','Карточка задачи'],['finance/receivable','Финансы'],['harvest','Урожай'],['inventory','Склад'],['workers','Работники'],['more','Ещё']];
 let currentPage;
@@ -27,7 +27,7 @@ async function newPage(browser) {
   await context.addInitScript(()=>{
     const visible=e=>!!(e.getClientRects().length&&!e.closest('[hidden]'));
     let activeForms=new Set();
-    const metrics={active:false,clicks:[],forms:[],inputs:[]};
+    const metrics={active:false,clicks:[],forms:[],inputs:[],keys:[]};
     const refreshForms=()=>{
       const forms=new Set([...document.querySelectorAll('form,[data-r3-form],dialog[open]')].filter(e=>visible(e)&&!e.querySelector('form,[data-r3-form]')).map(e=>`${location.hash}:${e.dataset.r3Form||e.id||e.getAttribute('aria-label')||e.tagName}`));
       for(const field of document.querySelectorAll('input:not([type=file]):not([type=hidden]),textarea,select'))if(visible(field)&&!field.closest('form,[data-r3-form],dialog'))forms.add(`${location.hash}:focused-fields`);
@@ -46,7 +46,7 @@ async function newPage(browser) {
       metrics.inputs.push({field:field.dataset.testid||field.name||field.id||field.tagName,type:field.type,value:field.type==='file'?[...field.files].map(f=>f.name).join(','):field.value,route:location.hash});
     },true);
     document.addEventListener('DOMContentLoaded',()=>{new MutationObserver(refreshForms).observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['open','hidden','class']});refreshForms();});
-    window.__r3Metrics={start(){metrics.active=true;metrics.clicks=[];metrics.forms=[];metrics.inputs=[];refreshForms();},stop(){metrics.active=false;return structuredClone(metrics);}};
+    window.__r3Metrics={start(){metrics.active=true;metrics.clicks=[];metrics.forms=[];metrics.inputs=[];metrics.keys=[];refreshForms();},key(key){if(metrics.active)metrics.keys.push({key,route:location.hash});},stop(){metrics.active=false;return structuredClone(metrics);}};
   });
   const page=await context.newPage();currentPage=page;
   page.on('pageerror',error=>report.errors.push({type:'pageerror',message:error.message}));
@@ -61,8 +61,8 @@ async function newPage(browser) {
 }
 async function ready(page){await page.locator('#main h1').waitFor();await page.evaluate(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});}
 async function route(page,name){await page.goto(base+'/#'+(name==='capture/voice'?'home':name));await ready(page);if(name==='capture/voice'){await click(page,'capture-voice');await page.getByTestId('voice-fallback').waitFor({timeout:15000});}await page.evaluate(()=>window.scrollTo(0,0));}
-async function click(page,id){await page.getByTestId(id).click();}
-async function fill(page,id,value){const field=page.getByTestId(id);await field.click();if(await field.evaluate(el=>el.tagName==='SELECT'))await field.selectOption({label:value});else await field.fill(value);await field.blur();}
+async function click(page,id){const target=page.getByTestId(id),href=await target.getAttribute('href');await target.click();if(href?.startsWith('#'))await page.waitForFunction(hash=>location.hash===hash,href);await ready(page);}
+async function fill(page,id,value){const field=page.getByTestId(id);await field.click();if(await field.evaluate(el=>el.tagName==='SELECT')){const target=await field.evaluate((el,label)=>[...el.options].findIndex(option=>option.textContent===label),value);assert.ok(target>=0,'Requested select choice exists');for(const key of ['Home',...Array(target).fill('ArrowDown'),'Enter']){await page.keyboard.press(key);await page.evaluate(key=>window.__r3Metrics.key(key),key);}assert.equal(await field.inputValue(),value);}else await field.fill(value);await field.blur();}
 async function screenshot(page,engine,routeName,width,label){
   const file=`${engine}-${String(width)}-${routeName.replaceAll('/','-')}.png`;
   await page.screenshot({path:path.join(artifacts,file),fullPage:true});
@@ -92,28 +92,31 @@ async function layout(page,routeName,width){
   }
 }
 async function captureFailure(page){if(!page.isClosed()){await page.screenshot({path:path.join(artifacts,'failure.png'),fullPage:true}).catch(()=>{});await fs.writeFile(path.join(artifacts,'failure.html'),await page.content()).catch(()=>{});}}
+function recordFailure(stage,error){report.failures.push({stage,message:error.message,stack:error.stack});console.error(`${stage}: ${error.message}`);}
 async function journey(browser,name,run){
   const {context,page}=await newPage(browser);
   await page.evaluate(()=>window.__r3Metrics.start());
+  let status='PASS',failure;
+  try {await run(page);}catch(error){status='FAIL';failure=error.message;recordFailure(name,error);await captureFailure(page);}
   try {
-    await run(page);
     const raw=await page.evaluate(()=>window.__r3Metrics.stop());
     assert.ok(raw.clicks.every(c=>c.trusted),'Journey clicks must be trusted browser events');
     const facts=raw.inputs.filter(x=>!['checkbox','radio','file'].includes(x.type));
     const repeated=facts.filter((fact,index)=>facts.slice(0,index).some(previous=>previous.value&&previous.value===fact.value));
-    report.journeys.push({name,start:'#home',end:await page.evaluate(()=>location.hash),clicks:raw.clicks.length,opened_forms:raw.forms.length,manual_field_edits:facts.length,reentered_facts:repeated.length,click_events:raw.clicks,form_events:raw.forms,input_events:raw.inputs});
-  }catch(error){await captureFailure(page);throw error;}finally{await context.close();}
+    report.journeys.push({name,status,...(failure?{failure,partial:true}:{}),start:'#home',end:await page.evaluate(()=>location.hash),clicks:raw.clicks.length,opened_forms:raw.forms.length,manual_field_edits:facts.length,keyboard_actions:raw.keys.length,key_events:raw.keys,reentered_facts:repeated.length,click_events:raw.clicks,form_events:raw.forms,input_events:raw.inputs});
+  }finally{await context.close();}
 }
 
 async function main(browser,engine){
   const {context,page}=await newPage(browser);
+  const previousFailures=report.failures.length;
   try{
-    for(const [routeName,label] of screens){await page.evaluate(()=>window.r3Demo.reset());await route(page,routeName);if(routeName==='capture/photo'){await click(page,'demo-photo');await page.waitForFunction(()=>[...document.querySelectorAll('#main img')].some(img=>img.complete&&img.naturalWidth>0));}await layout(page,routeName,390);await screenshot(page,engine,routeName,390,label);}
+    for(const [routeName,label] of screens){await page.evaluate(()=>window.r3Demo.reset());await route(page,routeName);if(routeName==='capture/photo'){await click(page,'demo-photo');await page.waitForFunction(()=>[...document.querySelectorAll('#main img')].some(img=>img.complete&&img.naturalWidth>0));}try{await layout(page,routeName,390);}catch(error){recordFailure(`${engine} layout 390 #${routeName}`,error);}await screenshot(page,engine,routeName,390,label);}
     for(const width of [320,768,1280]){
       await page.setViewportSize({width,height:844});
-      for(const [routeName,label] of screens){await page.evaluate(()=>window.r3Demo.reset());await route(page,routeName);if(routeName==='capture/photo'){await click(page,'demo-photo');await page.waitForFunction(()=>[...document.querySelectorAll('#main img')].some(img=>img.complete&&img.naturalWidth>0));}await layout(page,routeName,width);await screenshot(page,engine,routeName,width,label);}
+      for(const [routeName,label] of screens){await page.evaluate(()=>window.r3Demo.reset());await route(page,routeName);if(routeName==='capture/photo'){await click(page,'demo-photo');await page.waitForFunction(()=>[...document.querySelectorAll('#main img')].some(img=>img.complete&&img.naturalWidth>0));}try{await layout(page,routeName,width);}catch(error){recordFailure(`${engine} layout ${width} #${routeName}`,error);}await screenshot(page,engine,routeName,width,label);}
     }
-    report.checks.push(`${engine}: all 12 screens at 320/390/768/1280, no horizontal overflow, 44px controls, single modal layer, zoom allowed`);
+    if(report.failures.length===previousFailures)report.checks.push(`${engine}: all 12 screens at 320/390/768/1280, no horizontal overflow, 44px controls, single modal layer, zoom allowed`);
   }catch(error){await captureFailure(page);throw error;}finally{await context.close();}
   if(engine!=='chromium')return;
   await journey(browser,'1. Home → review → missing amount → one clarification → demo confirmation',async page=>{
@@ -125,7 +128,7 @@ async function main(browser,engine){
     await click(page,'capture-voice');await page.getByTestId('voice-fallback').waitFor({timeout:15000});await click(page,'voice-fallback');await click(page,'demo-irrigation');await click(page,'capture-save');
     await page.getByTestId('task-save').waitFor();assert.match(await page.locator('#main').innerText(),/Özvadi/);
   });
-  await journey(browser,'3. Home → photo → selected synthetic source → preparation → review',async page=>{
+  await journey(browser,'3. Home → photo → choose explicit prepared synthetic source → preparation → review (native picker taps unmeasured)',async page=>{
     await click(page,'capture-photo');await click(page,'demo-photo');
     await page.waitForFunction(()=>[...document.querySelectorAll('#main img')].some(img=>img.complete&&img.naturalWidth>0));
     await click(page,'capture-save');await page.getByTestId('confirm-proposal').waitFor();assert.match(await page.locator('#main').innerText(),/1[\s\u00a0]200/);
@@ -144,7 +147,7 @@ async function main(browser,engine){
     await click(page,'home-harvest');await click(page,'harvest-ozvadi');assert.match(await page.locator('#main').innerText(),/Özvadi/);
   });
   await journey(browser,'7. Home → inventory → item → movements',async page=>{
-    await click(page,'nav-more');await click(page,'more-inventory');await click(page,'stock-kno3');await click(page,'stock-movements');assert.match(await page.locator('#main').innerText(),/Физический приход/);
+    await click(page,'nav-more');await click(page,'more-inventory');await click(page,'stock-kno3');await click(page,'stock-movements');await page.getByRole('heading',{name:'Движения',exact:true}).waitFor();assert.match(await page.locator('#main').innerText(),/Физический приход/);
   });
   await journey(browser,'8. Home → tasks → TEST worker → reviewed assignment',async page=>{
     await click(page,'nav-tasks');await click(page,'tasks-workers');await click(page,'worker-muhammed');await click(page,'assign-open');
@@ -155,7 +158,7 @@ async function main(browser,engine){
     assert.match(await page.getByTestId('assignment-confirm').innerText(),/Проверил текст/);await screenshot(page,'chromium','state-assignment-before-confirmation',390,'Reviewed assignment before confirmation');await click(page,'assignment-confirm');
     assert.match(await page.locator('#main').innerText(),/назначено|Назначено/);
   });
-  await interruptions(browser);
+  try{await interruptions(browser);}catch(error){recordFailure('Interruption and regression checks',error);}
 }
 
 async function interruptions(browser){
@@ -216,6 +219,8 @@ try{
     try{await main(browser,engine);}finally{await browser.close();}
   }
   assert.equal(report.journeys.length,8);
+  assert.deepEqual(report.failures,[],'All collected browser/layout/journey assertions must pass');
+  assert.ok(report.journeys.every(j=>j.status==='PASS'));
   assert.deepEqual(report.errors,[],'Browser console/network isolation errors');
   report.status='PASS';
 }catch(error){
@@ -228,7 +233,7 @@ try{
 }finally{
   report.finished_at=new Date().toISOString();
   await fs.writeFile(path.join(artifacts,'browser-report.json'),JSON.stringify(report,null,2)+'\n');
-  await fs.writeFile(path.join(artifacts,'journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Trusted DOM click events from Home, visible form entry events, actual manual field changes. File chooser operating-system interactions are not measured; selected fixture scenario is explicit.',journeys:report.journeys},null,2)+'\n');
+  await fs.writeFile(path.join(artifacts,'journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Trusted DOM click events from Home, visible form entry events, actual manual field changes. Dropdown selection uses actual keyboard Home/Arrow/Enter events listed separately. Native file chooser/keyboard tap costs are unmeasured. Photo journey3 explicitly uses the prepared synthetic-source button; real file attachment is covered separately without claiming picker-tap counts.',journeys:report.journeys},null,2)+'\n');
   console.log(`R3 browser ${report.status}: ${report.screenshots.length} screenshots, ${report.journeys.length}/8 measured journeys, SHA ${expectedSha}`);
   if(report.failure)console.error(report.failure.message);
 }
