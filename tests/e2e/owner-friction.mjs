@@ -358,7 +358,7 @@ async function measurePreparedAssignment(config) {
     await measured.click(button, 'Assign reviewed TEST Dari rendering internally');
     const response = await saved; assert.equal(response.status(), 201, await response.text());
     const assignment = await response.json();
-    await sheet().getByRole('heading', {name: 'Назначения / язык', exact: true}).waitFor();
+    await sheet().getByRole('heading', {name: 'Кому', exact: true}).waitFor();
     const assigned = await api(prefix + `/tasks/${task.id}`);
     assert.equal(assigned.original_instruction, authoredWorker.original); assert.equal(assigned.status, 'assigned');
     assert.equal(assigned.assignments.length, 1);

@@ -242,7 +242,7 @@ class OwnerCaptureService:
         elif kind in ('PERSONAL_TASK','WORKER_TASK'):
             required('title','Задача');scoped('core.work_areas',fields.get('greenhouse_id'))
             if kind=='WORKER_TASK':
-                required('worker_id','Работник');required('planned_date','Дата');required('greenhouse_id','Теплица')
+                required('worker_id','Работник');required('planned_date','На какой день следующей недели поставить?' if fields.get('relative_time_context')=='следующая неделя' else 'Дата');required('greenhouse_id','Теплица')
                 worker=scoped('workers.people',fields.get('worker_id'))
                 if worker and fields.get('language')!=worker['language']:missing.append('Проверьте язык выбранного работника')
                 if worker and worker['language']!='ru' and not fields.get('rendered_text'):missing.append('Проверенный перевод: задача пока не отправляется')
@@ -454,7 +454,18 @@ class OwnerCaptureService:
                 r['average_bunch_weight']=str(Decimal(r['count_covered_kg'])/Decimal(r['count'])) if r['count'] else None
                 r['count_coverage_complete']=r['count_covered_kg']==r['kg']
                 r['count_basis']='CONFIRMED_DEPOT_LINES'
-            tasks=rows(u,"SELECT * FROM core.owner_tasks WHERE entity_id=:e AND owner_id=:a AND state='TO_DO' ORDER BY planned_date NULLS LAST,created_at LIMIT 3",e=e,a=a)
+            # Display-only context is read from the immutable, actually approved
+            # proposal revision. It never rewrites task title/note/date or R1.
+            tasks=rows(u,"""SELECT t.*,r.payload->>'category' category,
+                r.payload->>'relative_time_context' relative_time_context,
+                r.payload->>'original_instruction' original_instruction
+                FROM core.owner_tasks t
+                LEFT JOIN core.confirmation_effects c ON c.owner_task_id=t.id
+                    AND c.proposal_id=t.proposal_id AND c.entity_id=t.entity_id AND c.actor_id=t.owner_id
+                LEFT JOIN core.proposal_revisions r ON r.proposal_id=c.proposal_id
+                    AND r.version=c.version AND r.entity_id=c.entity_id
+                WHERE t.entity_id=:e AND t.owner_id=:a AND t.state='TO_DO'
+                ORDER BY t.planned_date NULLS LAST,t.created_at LIMIT 3""",e=e,a=a)
             count=rows(u,"SELECT count(*) n,count(*) FILTER(WHERE first_unresolved_at<clock_timestamp()-interval '36 hours') overdue FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED')",e=e)[0]
             task_count=rows(u,"SELECT count(*) n FROM core.owner_tasks WHERE entity_id=:e AND owner_id=:a AND state='TO_DO'",e=e,a=a)[0]['n']
             return dict(id=str(e),owner_id=str(a),as_of=now().isoformat(),finance=v,season_start=str(date(year,10,1)),season_end=str(date(year+1,10,1)),season=season,tasks=tasks,task_count=task_count,confirmations=count,

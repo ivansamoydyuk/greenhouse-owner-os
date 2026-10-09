@@ -7,13 +7,13 @@ import re
 from datetime import date
 from decimal import Decimal
 from .preparation_language import (corrected,date_value,entity_matches,fold,money_amount,
-                                  source_currency,value,names,comparison_source,nonfinancial_modal,meta_or_report,NUMBER,CURRENCY)
-from .tasks_capture import extract_task,task_audience
+                                  source_currency,value,names,comparison_source,nonfinancial_modal,meta_or_report,NUMBER,CURRENCY,NEXT_WEEK,DATE_PATTERN,relative_time_context)
+from .tasks_capture import extract_task,task_audience,irrigation_rework,IRRIGATION_REWORK,IRRIGATION_OBJECT
 from .preparation_scope import (PAID,OWED,PURCHASE,financial_evidence_view,other_financial_actor,
                                 split_outside_quotes,reported_speech,future_financial_intent,enumerated_fragments)
 from .inventory_capture import extract_inventory
 
-INTERPRETATION_VERSION='owner-language-preparation-r2-v2'
+INTERPRETATION_VERSION='owner-language-preparation-r2-v3'
 
 INVOICE=r'\b(?:fatura|invoice|счет\s+поставщика)\b'
 UNSUPPORTED=r'\b(?:аванс\w*|предоплат\w*|стратегическ\w*|финансирован\w*|кредит(?:а|у|ом|е|ы|ов|ный|ная|ное)?|заем\w*|займ\w*|обменял|обменяли|перевод\s+между|перевел\s+между|между\s+своими\s+счетами|внес\s+свои|переместил\w*)\b|\b(?:получил|получили)\s+(?:деньги|оплату)|\b(?:должен|должны)\s+мне\b'
@@ -167,11 +167,30 @@ def _parts(raw,*,binary=False,refs=None):
     # Anaphoric/attribute sentences qualify the same event. They are kept in
     # its original evidence, while a new explicit action remains independent.
     coherent=[];cursor=0;start=0
+    def task_continuation(previous,following):
+        """Line wrapping can separate a verb/object or a task's modifiers.
+
+        Only grammatical continuations are joined; a new action or unrelated
+        remainder still receives its own review slot. The joined source is a
+        slice of the original, never reconstructed normalized text.
+        """
+        before=fold(previous).strip();after=fold(following).strip()
+        action=r'(?:'+IRRIGATION_REWORK+r')'
+        target=r'(?:'+IRRIGATION_OBJECT+r')'
+        if re.fullmatch(NEXT_WEEK,before) and irrigation_rework(after):return True
+        if re.search(r'\b(?:нужно|надо|необходимо)\s*$',before) and re.match(action+r'\b',after):return True
+        if re.search(r'\b'+action+r'\s*$',before) and re.match(target+r'\b',after):return True
+        if re.search(r'\b'+target+r'\b',before) and re.fullmatch(r'(?:(?:нужно|надо|необходимо)\s+)?'+action+r'[.!]?',after):return True
+        if re.search(r'\b(?:следующей|следущей)\s*$',before) and re.fullmatch(r'неделе[.!]?',after):return True
+        if not irrigation_rework(before):return False
+        if re.fullmatch(r'(?:'+NEXT_WEEK+'|'+DATE_PATTERN+r')[.!]?',after):return True
+        area_context=re.sub(r'^(?:на|в)\s+','',after).rstrip('.!')
+        return any(area_context==fold(alias) for area in (refs or {}).get('areas',()) for alias in names(area,'area'))
     attribute_start=r'^(?:сумма\b|этот\s+счет\b|пока\s+вся\s+сумма\b|остаток\s+долга\b|продавца\b|стоимость\b|ни\s+счета\b|товар\s+ранее\b|деньги\s+(?:отправлен\w*|взял)\b|по\s+кассе\b|оплата\s+прошла\b|в\s+часов\b|у\s+нас\s+нет\s+задолженности\b|это\s+только\s+счет\b)'
     for part in parts:
-        position=raw.find(part,cursor);end=position+len(part);cursor=end
+        position=raw.find(part,cursor);end=position+len(part);separator=raw[cursor:position];cursor=end
         t=fold(part).strip()
-        if coherent and (re.search(attribute_start,t) or re.match(r'(?i)^\s*исполнитель\s+[^.!?]+$',coherent[-1]) or re.search(r'\bна\s+нее\b',t) and re.search(r'\b(?:подкормк\w*|обработк\w*)\b',fold(coherent[-1]))):coherent[-1]=raw[start:end]
+        if coherent and (re.search(attribute_start,t) or re.match(r'(?i)^\s*исполнитель\s+[^.!?]+$',coherent[-1]) or re.search(r'\bна\s+нее\b',t) and re.search(r'\b(?:подкормк\w*|обработк\w*)\b',fold(coherent[-1])) or '\n' in separator and not separator.strip() and task_continuation(coherent[-1],part)):coherent[-1]=raw[start:end]
         else:coherent.append(part);start=position
     parts=coherent
     result=[]
@@ -202,7 +221,8 @@ def _parts(raw,*,binary=False,refs=None):
             if re.search(PAID+'|'+OWED,fold(clause)) and not re.search(r'\bне\b',fold(clause)):
                 result.extend(re.split(r',\s*а\s+(?=[А-ЯA-ZİÖÜÇŞ])',clause))
             else:result.append(clause)
-    return [p.strip() for p in result if p.strip()]
+    result=[p.strip() for p in result if p.strip()]
+    return [raw] if len(result)==1 else result
 
 
 def _prepare_one(raw,semantic,*,today,refs,pages):
@@ -267,10 +287,12 @@ def _prepare_one(raw,semantic,*,today,refs,pages):
         return [('DEPOT_RECEIPT',depot,{'lines':{'category':'SOURCE FACT','pages':pages},'qualities':{'category':'INFERENCE','basis':'depot_scoped_unverified_candidate'},'stated_total':{'category':'INFERENCE' if depot.get('stated_total') is not None else 'UNKNOWN','basis':'document_total_candidate_requires_review'}})]
     if task:
         f=task[1];workers=f.get('suggested_worker_ids',[])
-        payload=dict(title=raw[:200],original_instruction=raw,greenhouse_id=f.get('greenhouse_id'),planned_date=f.get('planned_date'),worker_id=workers[0] if len(workers)==1 else None)
+        payload=dict(title=raw[:200],original_instruction=raw,greenhouse_id=f.get('greenhouse_id'),planned_date=f.get('planned_date'),worker_id=workers[0] if len(workers)==1 else None,category=f['category'])
+        relative=relative_time_context(corrected(semantic,task_dates=True,**refs))
+        if relative:payload['relative_time_context']=relative
         worker=next((w for w in refs.get('workers',()) if str(value(w,'id'))==payload['worker_id']),None)
         if worker:payload['language']=value(worker,'language')
-        return [(task_audience(semantic,refs.get('workers',())),payload,provenance(payload,raw,inferred=('greenhouse_id','worker_id','language')))]
+        return [(task_audience(semantic,refs.get('workers',()),areas=refs.get('areas',())),payload,provenance(payload,raw,inferred=('category','greenhouse_id','worker_id','language')))]
     inventory=extract_inventory(raw,products=refs.get('products',()),locations=refs.get('locations',()),areas=refs.get('areas',()),today=today)
     if inventory:
         f=inventory[1];kind={'receipt':'STOCK_RECEIPT','application':'STOCK_APPLICATION'}.get(f.get('kind'))

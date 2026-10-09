@@ -246,6 +246,85 @@ try {
   assert.ok((await page.evaluate(() => window.iphoneSpeech.starts)).every(start => start.sameClickStack), 'Every recognition start stays within its own click dispatch');
   await close();
 
+  // Physical owner defect replay is separate from the historical language GOLD.
+  // Actual capture/review controls, simulated transcript only; no physical claim.
+  const physicalOwnerPhrase = 'Нужно переделать полив на Озвади на следующей неделе';
+  const preparedRelativeTasks = [];
+  const knownOzvadi = (await api(prefix + '/tasks')).areas.find(area => area.kind === 'greenhouse' && area.name === 'Özvadi');
+  assert.ok(knownOzvadi, 'TEST preview has the current Özvadi reference');
+  for (const mode of ['text', 'voice_transcript']) {
+    await navigateOwner(page, 'home');
+    await page.locator(`[data-r2-mode=${mode}]`).click();
+    if (mode === 'voice_transcript') {
+      await page.evaluate(raw => {
+        window.iphoneSpeech.runs.at(-1).onstart();
+        window.emitIphoneSpeech([[raw, true]]);
+      }, physicalOwnerPhrase);
+      await sheet().locator('#r2-voice-stop').click();
+      await page.evaluate(() => window.iphoneSpeech.runs.at(-1).onend());
+    } else await textInput().fill(physicalOwnerPhrase);
+    assert.equal(await textInput().inputValue(), physicalOwnerPhrase);
+    const savedResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === owner + '/captures');
+    await sheet().getByRole('button', {name: 'Сохранить источник', exact: true}).click();
+    const saved = await (await savedResponse).json();
+    await sheet().waitFor({state: 'hidden'});
+    let proposal = await poll(async () => (await api(owner + '/confirmations')).items.find(item => item.inbox_id === saved.id), 'Relative irrigation proposal missing');
+    assert.equal(proposal.action_type, 'PERSONAL_TASK');
+    const facts = proposal.revision.payload;
+    assert.equal(facts.category, 'irrigation');
+    assert.equal(facts.greenhouse_id, knownOzvadi.id);
+    assert.equal(facts.relative_time_context, 'следующая неделя');
+    assert.equal(facts.planned_date, null); assert.equal(facts.worker_id, null);
+    assert.equal(facts.original_instruction, physicalOwnerPhrase);
+    assert.deepEqual(proposal.revision.missing, mode === 'text' ? [] : ['Возможный повтор источника: проверьте оригинал']);
+    const originalPath = owner + `/captures/${saved.id}/original`;
+    const hash = await originalHash(originalPath);
+    assert.equal(hash, createHash('sha256').update(physicalOwnerPhrase, 'utf8').digest('hex'));
+    sourceHashes.set(originalPath, hash);
+    preparedRelativeTasks.push({mode, sourceId: saved.id, proposalId: proposal.id, payload: facts});
+    await navigateOwner(page, 'review');
+    await sheet().locator(`[data-proposal="${proposal.id}"] [data-r2-open]`).click();
+    await sheet().locator('#r2-confirm').waitFor();
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({width, height: 844});
+      const primaryFacts = await sheet().locator('.owner-review-facts').innerText();
+      assert.match(primaryFacts, /Özvadi/);
+      assert.match(primaryFacts, /Полив/);
+      assert.match(primaryFacts, /следующая неделя/i);
+      assert.doesNotMatch(await sheet().locator('.owner-proposal').innerText(), /Нужно уточнить событие|Выберите точный ручной режим/);
+      assert.equal(await sheet().locator('#r2-confirm').isEnabled(), mode === 'text', 'Only repeated-source acknowledgement blocks the duplicate voice card, never missing date or worker');
+      await modalLayout(`${width}/relative-irrigation-${mode}`, sheet().locator('#r2-confirm'));
+      await shot(`relative-irrigation-${mode}`);
+    }
+    await page.setViewportSize({width: 390, height: 844});
+    await sheet().locator('#r2-edit').click();
+    assert.equal(await sheet().locator('[name=planned_date]').inputValue(), '');
+    assert.match(await sheet().locator('[data-task-fact-value=planned_date]').innerText(), /следующая неделя/i);
+    assert.equal(await sheet().locator('[name=greenhouse_id]').inputValue(), knownOzvadi.id);
+    // Saving without re-entering said facts must retain all prepared metadata.
+    await sheet().getByRole('button', {name: 'Сохранить исправления', exact: true}).click();
+    await sheet().locator('#r2-confirm').waitFor();
+    proposal = await api(owner + `/confirmations/${proposal.id}/preview`);
+    assert.equal(proposal.revision.payload.relative_time_context, facts.relative_time_context);
+    assert.equal(proposal.revision.payload.category, facts.category);
+    assert.equal(proposal.revision.payload.original_instruction, physicalOwnerPhrase);
+    assert.equal(proposal.revision.payload.planned_date, null);
+    if (mode === 'text') {
+      await sheet().locator('#r2-confirm').click();
+      await poll(async () => (await api(owner + `/confirmations/${proposal.id}/preview`)).state === 'POSTED', 'Relative personal task was not confirmed');
+      await close(); await navigateOwner(page, 'home');
+      const homeTask = (await api(owner + '/home')).tasks.find(task => task.proposal_id === proposal.id);
+      assert.ok(homeTask); assert.equal(homeTask.planned_date, null);
+      assert.equal(homeTask.relative_time_context, 'следующая неделя');
+      const shownTask = page.locator('.owner-task').filter({has: page.locator(`[data-owner-done="${homeTask.id}"]`)});
+      assert.match(await shownTask.innerText(), /следующая неделя/i);
+      assert.doesNotMatch(await shownTask.innerText(), /Без даты/);
+      await shot('relative-irrigation-confirmed-home');
+    } else await close();
+  }
+  assert.deepEqual(preparedRelativeTasks[0].payload, preparedRelativeTasks[1].payload, 'TEXT and VOICE share identical preparation');
+  fixtures.physicalOwnerRelativeTask = {cases: preparedRelativeTasks, originalGoldChanged: false, physicalIphoneAcceptance: false};
+
   // Store one original through the real API but never confirm its proposal.
   const longText = ('Сегодня полить İmamlı. Сегодня полить İmamlı. TEST · Проверить давление в дальней теплице, осмотреть все соединения и записать показания после полива. ' +
     'Сверить каждую строку с исходным поручением владельца и сохранить подробный результат без сокращений. '.repeat(4)).trim();
@@ -300,6 +379,12 @@ try {
   assert.equal(taskDetail.original_instruction, taskInstruction);
   assert.equal(taskDetail.status, 'draft'); assert.equal(taskDetail.greenhouse_id, areas[0].id);
   assert.equal(taskDetail.planned_date, null); assert.equal(taskDetail.priority, 'normal');
+  assert.equal(await sheet().locator('#task-assign').evaluate(node => window.isVisibleOwnerControl(node)), true);
+  assert.equal(await sheet().locator('#task-link').evaluate(node => window.isVisibleOwnerControl(node)), false, 'Rare actual-event linkage stays under Additional');
+  assert.equal(await sheet().locator('#task-repeat').evaluate(node => window.isVisibleOwnerControl(node)), false, 'Recurrence stays under Additional');
+  await (await revealOwnerControl(sheet().locator('#task-link'))).waitFor({state: 'visible'});
+  assert.equal(await sheet().locator('#task-link').evaluate(node => window.isVisibleOwnerControl(node)), true, 'Rare linkage remains accessible through real disclosure');
+  await shot('ordinary-task-additional');
   await close();
 
   for (const width of [320, 390, 768, 1280]) {
@@ -489,7 +574,7 @@ try {
     await close(); await page.unroute(fixturePattern);
     assert.deepEqual((await api(prefix + '/tasks/' + fixture.task_id)).prepared_assignment, detail.prepared_assignment, 'Presentation mismatch fixture never changes real prepared assignment');
     await openTask(fixture.task_id); await sheet().locator('#task-assign').click();
-    await assignmentButton().click(); await sheet().getByRole('heading', {name: 'Назначения / язык', exact: true}).waitFor();
+    await assignmentButton().click(); await sheet().getByRole('heading', {name: 'Кому', exact: true}).waitFor();
     const delivered = await api(prefix + '/tasks/' + fixture.task_id);
     assert.equal(delivered.assignments.length, 1);
     assert.equal(delivered.assignments[0].worker_id, fixture.worker_id);

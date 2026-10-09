@@ -222,3 +222,53 @@ for(const interruption of ['closed capture','new capture','logout and owner swit
   if(interruption==='logout and owner switch'){assert.equal(h.records.size,1);assert.deepEqual(h.notices,[]);}
  }finally{h.cleanup();}
 });
+
+test('relative irrigation task retains prepared category and week in queue and review without inventing a date',()=>{
+ for(const kind of ['PERSONAL_TASK','WORKER_TASK']){
+  const p=workerTask();p.action_type=kind;p.revision.payload={title:'Переделать полив',original_instruction:'Нужно переделать полив на Озвади на следующей неделе',greenhouse_id:'g1',category:'irrigation',relative_time_context:'следующая неделя',planned_date:null,worker_id:null,language:null,note:'Сохранить старые трубы'};
+  const before=JSON.stringify(p);
+  for(const html of [proposalCard(p,taskData()),proposalSummary(p,taskData(),false)]){assert.match(html,/Полив/);assert.match(html,/Срок из источника: следующая неделя · точный день не выбран/);assert.match(html,/Первая теплица/);assert.doesNotMatch(html,/2026-10-\d\d|\d+ окт\. 2026/);}
+  assert.equal(JSON.stringify(p),before);
+ }
+});
+
+test('task editor preserves relative context and note through date selection and revise',async()=>{
+ const originalFormData=globalThis.FormData;
+ globalThis.FormData=class{constructor(form){return Object.entries(form.elements).map(([name,node])=>[name,node.value]);}};
+ try{for(const kind of ['PERSONAL_TASK','WORKER_TASK']){
+  const h=harness({data:taskData(),online:true});try{
+   const p=workerTask();p.action_type=kind;Object.assign(p.revision.payload,{category:'irrigation',relative_time_context:'следующая неделя',planned_date:null,note:'Сохранить старые трубы'});
+   const form=await editTask(h,p),html=h.html(),extra=html.indexOf('class="task-extra"');
+   assert.ok(html.indexOf('следующая неделя')<extra);assert.ok(html.indexOf('Полив')<extra);
+   if(kind==='WORKER_TASK'){assert.match(html,/На какой день следующей недели поставить\?/);assert.match(html,/<details class="task-fact" data-task-fact="planned_date" open>/);}else assert.doesNotMatch(html,/На какой день следующей недели поставить\?/);
+   form.elements.planned_date.value='2026-10-15';form.elements.planned_date.onchange();
+   const pending=form.onsubmit({preventDefault(){},target:form});await tick();const request=h.requests.at(-1);
+   assert.match(request.path,/\/revise$/);assert.equal(request.body.payload.relative_time_context,'следующая неделя');assert.equal(request.body.payload.category,'irrigation');assert.equal(request.body.payload.note,'Сохранить старые трубы');assert.equal(request.body.payload.planned_date,'2026-10-15');assert.equal(request.body.payload.original_instruction,p.revision.payload.original_instruction);
+   h.nodes.get('#sheet').close();request.resolve({});await pending;
+  }finally{h.cleanup();}
+ }}finally{globalThis.FormData=originalFormData;}
+});
+
+test('confirmed personal task retains relative week and category on Home',()=>{
+ const data=taskData();data.owner.tasks=[{id:'owner-task',version:1,title:'Переделать полив',planned_date:null,greenhouse_id:'g1',category:'irrigation',relative_time_context:'следующая неделя'}];
+ const h=harness({data});try{const html=h.ui.render(),taskSection=html.split('<section class="card owner-tasks">')[1].split('<section')[0];assert.match(taskSection,/следующая неделя/);assert.match(taskSection,/Полив/);assert.match(taskSection,/Первая теплица/);assert.doesNotMatch(taskSection,/Без даты|Просрочено/);}finally{h.cleanup();}
+});
+
+test('unknown worker never receives an inferred translation or an assignment label',()=>{
+ const p=workerTask();Object.assign(p.revision.payload,{worker_id:null,language:null,rendered_text:null});const html=proposalSummary(p,taskData(),false);
+ assert.match(html,/Не выбран · не назначен/);assert.match(html,/Выберите работника, чтобы проверить язык/);assert.doesNotMatch(html,/<dt>Проверенный перевод<\/dt>|<dt>Текст для работника<\/dt>/);
+});
+
+test('relative source time survives an exact-date review and is escaped independently of source prose',()=>{
+ const p=workerTask();Object.assign(p.revision.payload,{original_instruction:'Переделать полив',category:'irrigation',relative_time_context:'следующая неделя <source>',planned_date:'2026-10-15'});
+ const html=proposalSummary(p,taskData(),false),card=proposalCard(p,taskData());assert.match(html,/<dt>Срок из источника<\/dt>/);assert.match(html,/следующая неделя &lt;source&gt;/);assert.match(card,/В источнике: следующая неделя &lt;source&gt;/);assert.match(html,/15 окт\. 2026/);assert.doesNotMatch(html,/<source>/);
+});
+
+test('relative personal task can be revised without a day and without dropping its optional note',async()=>{
+ const originalFormData=globalThis.FormData;globalThis.FormData=class{constructor(form){return Object.entries(form.elements).map(([name,node])=>[name,node.value]);}};
+ const h=harness({data:taskData(),online:true});try{
+  const p=workerTask();p.action_type='PERSONAL_TASK';Object.assign(p.revision.payload,{category:'irrigation',relative_time_context:'следующая неделя',planned_date:null,note:'Оставить трубы <TEST>'});const form=await editTask(h,p);
+  assert.match(h.html(),/<textarea name="note"[^>]*>Оставить трубы &lt;TEST&gt;<\/textarea>/);assert.doesNotMatch(h.html(),/<input name="planned_date"[^>]*required/);
+  const pending=form.onsubmit({preventDefault(){},target:form});await tick();const request=h.requests.at(-1);assert.equal(request.body.payload.planned_date,null);assert.equal(request.body.payload.note,'Оставить трубы <TEST>');assert.equal(request.body.payload.relative_time_context,'следующая неделя');assert.equal(request.body.payload.category,'irrigation');h.nodes.get('#sheet').close();request.resolve({});await pending;
+ }finally{h.cleanup();globalThis.FormData=originalFormData;}
+});

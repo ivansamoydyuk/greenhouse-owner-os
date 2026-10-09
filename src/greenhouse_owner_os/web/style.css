@@ -452,3 +452,17 @@ dialog[open] { opacity: 1; }
   #sheet .owner-review-actions button { min-width: 0; width: 100%; padding: 12px 8px; white-space: nowrap; }
   #sheet #task-form > button.primary, #sheet #task-assign-form > button.primary { position: static; box-shadow: none; }
 }
+
+/* Task review keeps operational facts above optional R1/audit controls. */
+.task-detail-primary { min-width: 0; }
+.task-detail-primary > .eyebrow { margin: 16px 0 6px; }
+.task-detail-primary h2 { margin-top: 0; }
+.task-instruction { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.task-detail-facts { margin: 16px 0; }
+.task-detail-facts dd small { display: block; margin-top: 5px; color: var(--muted); }
+.task-detail-actions { margin: 16px 0; }
+.task-detail-actions .primary { flex: 1 1 auto; min-height: 48px; }
+.task-category, .task-relative-context { margin: 0; overflow-wrap: anywhere; }
+.task-relative-context { color: var(--green); line-height: 1.5; }
+.task-date-question { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--warning-soft); color: var(--warning); }
+#task-details-extra > .actions { padding-top: 8px; }

@@ -141,3 +141,29 @@ test('manual whitespace or case edits of Russian original cannot be labelled Dar
   const h=harness();try{await assignment(h);const field=h.nodes.get('#assign-text');field.value=original;field.oninput({target:field});assert.equal(h.nodes.get('#task-assign-form').primary.disabled,true);assert.match(h.nodes.get('#assign-rendering-preview').innerHTML,/Это оригинал/);await h.submit('#task-assign-form');assert.equal(h.requests.filter(r=>r.body).length,0);}finally{h.cleanup();}
  }
 });
+
+test('ordinary task detail prioritizes instruction, place, time and assignment over technical controls',async()=>{
+ const record={...task(),category:'irrigation',greenhouse_id:'g1',planned_date:null,due_at:null,relative_time_context:'следующая неделя',original_instruction:'Нужно переделать полив на Озвади на следующей неделе',description:'Нужно переделать полив на Озвади на следующей неделе'};
+ const h=harness({record});try{await h.ui.read(record.id);const html=h.html(),extra=html.indexOf('id="task-details-extra"'),primary=html.slice(0,extra);
+  assert.ok(extra>0,'Task detail has an accessible additional section');assert.match(html,/<details class="module-disclosure task-advanced" id="task-details-extra"><summary>Дополнительно<\/summary>/);
+  for(const text of ['Что сделать','Где','Когда','Кому','Полив','Теплица 1','следующая неделя','Работник не назначен','id="task-assign"'])assert.ok(primary.includes(text),text);
+  for(const text of ['id="task-repeat"','id="task-link"','<h3>История</h3>','Отчётов нет'])assert.ok(html.indexOf(text)>extra,text);
+  assert.doesNotMatch(primary,/Связать фактическое событие|цикл|Задача сама не проводит событие/);
+  assert.equal(h.nodes.get('#task-link').onclick instanceof Function,true);assert.equal(h.nodes.get('#task-repeat').onclick instanceof Function,true);
+ }finally{h.cleanup();}
+});
+
+test('reported task keeps actionable report and completion guidance outside additional details',async()=>{
+ const record={...task(),status:'reported',can_complete:false,reports:[{id:'report',original_text:'Не удалось закончить',original_language:'ru',state:'submitted',normalized:{},attachments:[]} ]};
+ const h=harness({record});try{await h.ui.read(record.id);const primary=h.html().split('id="task-details-extra"')[0];assert.match(primary,/data-review-report="report"/);assert.match(primary,/Для завершения нужен текущий отчёт/);}finally{h.cleanup();}
+});
+
+test('assignment review retains place and source timing next to original before worker and translation',async()=>{
+ const record={...task(),greenhouse_id:'g1',relative_time_context:'следующая неделя'};record.prepared_assignment={worker_id:'dari',language:'fa',rendered_text:'متن بررسی شده'};
+ const h=harness({record});try{await assignment(h);const html=h.html();assert.match(html,/Теплица 1/);assert.match(html,/8 окт\. 2026/);assert.match(html,/В источнике: следующая неделя/);assert.ok(html.indexOf('Теплица 1')<html.indexOf('id="assign-worker"'));assert.ok(html.indexOf('id="assign-worker"')<html.indexOf('id="assign-preview"'));}finally{h.cleanup();}
+});
+
+test('confirmed preparation category stays labelled as a proposal without rewriting the R1 category',async()=>{
+ const record={...task(),category:'general',prepared_category:'irrigation',relative_time_context:'следующая неделя'};const before=JSON.stringify(record);
+ const h=harness({record});try{await h.ui.read(record.id);const primary=h.html().split('id="task-details-extra"')[0];assert.match(primary,/<dt>Категория · предложено<\/dt><dd><strong>Полив<\/strong>/);assert.equal(JSON.stringify(record),before);assert.equal(record.category,'general');}finally{h.cleanup();}
+});

@@ -48,9 +48,17 @@ def names(row, kind='name'):
 
 
 def _entity_match_groups(raw, refs, kind='name', *, inflect=False):
-    t=re.sub(r'\s+',' ',name_key(raw));exact=[];partial=[];qualified_spans=[]
+    t=re.sub(r'\s+',' ',name_key(raw));exact=[];partial=[];qualified_spans=[];unverified_area_spans=[]
     def positive(m):
-        return not re.search(r'\bне\s+(?:(?:из|в|на|с|со)\s+)?$',t[max(0,m.start()-12):m.start()])
+        if re.search(r'\bне\s+(?:(?:из|в|на|с|со)\s+)?$',t[max(0,m.start()-12):m.start()]):return False
+        # A numbered site is a distinct reference, not an alias for its base
+        # name. A complete registered alias (including the number) still wins.
+        qualifier=re.match(r'(?:\s+(?:№\s*)?|\s*[-–]\s*)\d+(?![\w./:-])',t[m.end():]) if kind=='area' else None
+        if qualifier and re.match(r'\s*(?:'+UNIT+'|'+CURRENCY+r'|минут\w*|час\w*|дн\w*|день|'+ '|'.join(MONTHS)+r')(?!\w)',t[m.end()+qualifier.end():]):qualifier=None
+        if qualifier:
+            unverified_area_spans.append((m.start(),m.end()+qualifier.end()))
+            return False
+        return True
     for row in refs:
         if value(row,'active',True) is False:continue
         full=[];short=[]
@@ -65,7 +73,7 @@ def _entity_match_groups(raw, refs, kind='name', *, inflect=False):
                 for m in re.finditer(bounded(form),t):
                     if positive(m):
                         full.append(m.span())
-                        if len(words)>1:qualified_spans.append(m.span())
+                        if len(words)>1 or kind=='area':qualified_spans.append(m.span())
             if inflect and len(words)>1 and len(words[0])>=3:
                 for m in re.finditer(r'(?<!\w)'+re.escape(words[0])+r'(?:у|а|ом|е)?(?!\w)',t):
                     if positive(m):short.append(m.span())
@@ -73,6 +81,7 @@ def _entity_match_groups(raw, refs, kind='name', *, inflect=False):
         elif short:partial.append((row,short))
     # A qualified name suppresses only competing prefix matches at that same
     # mention. It must not erase a different person elsewhere in the sentence.
+    if any(not any(a<=start and end<=b for a,b in qualified_spans) for start,end in unverified_area_spans):return [],[]
     unresolved=[row for row,spans in partial if any(not any(a<=start and end<=b for a,b in qualified_spans) for start,end in spans)]
     return exact,unresolved
 
@@ -187,6 +196,20 @@ MONTHS={m:i+1 for i,m in enumerate(('января','февраля','марта'
 DATE_PATTERN=r'(?<!\d)(?:20\d{2}-\d{2}-\d{2}|\d{1,2}[./]\d{1,2}[./]20\d{2}|\d{1,2}\s+(?:'+ '|'.join(MONTHS)+r')(?:\s+20\d{2})?)(?!\d)'
 DUE_PATTERN=r'(?:\b(?:заплачу|оплачу|отдам|переведу|заплатят|оплатят|заплатить|оплатить|срок\s+оплаты|к\s+оплате\s+до|оплатить\s+до|заплатить\s+до|до)\s+)([^,;\n]+)'
 
+# Bounded grammatical/spelling variants of a period, not a calendar date.
+# This comparison-only vocabulary never rewrites source bytes or identities.
+NEXT_WEEK=r'(?:(?:на|в)\s+)?(?:следующей|следующую|следующая|следущей|следущую|следущая)\s+(?:неделе|неделю|неделя)'
+
+
+def relative_time_context(raw):
+    """Keep an explicit, non-negated relative period without choosing a day."""
+    t=re.sub(r'\s+',' ',fold(raw))
+    for m in re.finditer(r'\b'+NEXT_WEEK+r'\b',t):
+        if re.search(r'\bне\s+(?:(?:на|в)\s+)?$',t[:m.start()]):continue
+        if re.match(r'\s*[,;]\s*нет\b',t[m.end():]):continue
+        return 'следующая неделя'
+    return None
+
 
 def date_value(raw,today,*,role='event'):
     """Return (unambiguous date, explicit/ambiguous temporal evidence)."""
@@ -213,7 +236,9 @@ def date_value(raw,today,*,role='event'):
     for m in re.finditer(r'\bчерез\s+('+NUMBER+r')\s+(день|дня|дней|неделю|недели|недель)\b',t):
         mentioned=True;n=number(m.group(1),0)
         if n and int(n)<10000:found.append(today+timedelta(days=int(n)*(7 if m.group(2).startswith('недел') else 1)))
-    if re.search(r'\b(?:месяц\w*\s+назад|на\s+следующей\s+неделе|в\s+пятницу|к\s+концу\s+месяца)\b',t):mentioned=True
+    relative=relative_time_context(t) if role=='planned' else None
+    if relative or re.search(r'\b(?:месяц\w*\s+назад|на\s+следующей\s+неделе|в\s+пятницу|к\s+концу\s+месяца)\b',t):mentioned=True
+    if relative and re.search(r'\b(?:или|либо)\b',t):return None,True
     # 'после завтра' must not introduce the overlapping standalone tomorrow.
     if 'после завтра' in t and re.search(r'(?<!после )\bзавтра\b',t) is None:
         found=[d for d in found if d!=today+timedelta(days=1)]
@@ -228,7 +253,7 @@ def comparison_source(raw):
     return re.sub(r'(?i)^(?:(?:ну|вот|это самое|смотри|значит|так|пожалуйста|в общем|короче|ага)\s+)+','',text)
 
 
-def corrected(raw, *, counterparties=(), areas=(), workers=(), locations=(), accounts=(), **unused):
+def corrected(raw, *, counterparties=(), areas=(), workers=(), locations=(), accounts=(), task_dates=False, **unused):
     """Resolve explicit same-source replacement of a typed scalar only.
 
     Never remove a negated action ('не платил', 'не поливать'). Ambiguous
@@ -243,6 +268,9 @@ def corrected(raw, *, counterparties=(), areas=(), workers=(), locations=(), acc
     pattern=rf'(?i)(?<![\w.+-])({NUMBER})({units})\s*[,;]\s*нет\s*[,;]?\s*({NUMBER})({units})(?!\w)'
     t=re.sub(pattern,numeric,t)
     atoms=[CURRENCY,r'сегодня',r'завтра',r'послезавтра',r'вчера',r'позавчера',r'после\s+завтра',r'наличными',r'(?:с|из)\s+банка']
+    # Expanded relative/explicit date corrections belong to planned tasks.
+    # They must not turn a financial deadline correction into an event date.
+    if task_dates:atoms.extend([NEXT_WEEK,DATE_PATTERN])
     for refs,kind in [(counterparties,'name'),(areas,'area'),(workers,'worker'),(locations,'name'),(accounts,'name')]:
         for ref in refs:
             for n in names(ref,kind):atoms.append(re.escape(n)+r'(?:у|а|ом)?')
