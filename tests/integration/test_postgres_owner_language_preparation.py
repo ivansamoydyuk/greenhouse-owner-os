@@ -227,3 +227,28 @@ def test_unknown_financial_actor_and_owner_contrasts_persist_without_effects(inv
         assert db.scalar(text('SELECT count(*) FROM core.confirmation_effects WHERE entity_id=:e'),dict(e=inv['e']))==0
         assert db.scalar(text('SELECT count(*) FROM finance.payments WHERE entity_id=:e'),dict(e=inv['e']))==0
         assert db.scalar(text('SELECT count(*) FROM finance.direct_expenses WHERE entity_id=:e'),dict(e=inv['e']))==0
+
+
+def test_transfer_source_is_unresolved_with_partial_or_no_account_references_in_both_modes(inv):
+    # The initial TEST PREVIEW account names do not match either source label.
+    from greenhouse_owner_os.domain.owner_capture import ConfirmAction
+    from greenhouse_owner_os.domain.errors import ValidationError
+    import pytest
+    sf,actor,*_=inv['preview'];svc=OwnerCaptureService(lambda:SqlAlchemyUnitOfWork(sf))
+    raw='Перевел 20000 TRY из Cash TR в Bank TR'
+    for count in range(3):
+        if count:
+            send(inv['c'],f"/entities/{inv['e']}/money-accounts",dict(name=['Cash TR','Bank TR'][count-1],currency='TRY',account_type=['cash','bank'][count-1],source='test:transfer-scope'))
+        for mode in ('text','voice_transcript'):
+            saved=source(inv,raw,mode=mode)
+            proposals=[p for p in queue(inv) if p['inbox_id']==saved['id']]
+            assert len(proposals)==1
+            p=proposals[0]
+            assert p['action_type']=='UNRESOLVED' and p['revision']['payload']=={'note':raw}
+            assert p['state']=='NEEDS_INPUT' and p['revision']['missing']
+            assert svc.original(UUID(inv['e']),actor,UUID(saved['id']))[0].decode()==raw
+            with pytest.raises(ValidationError):
+                svc.confirm(UUID(inv['e']),actor,UUID(p['id']),'test:blocked:'+p['id'],ConfirmAction(expected_version=p['version'],preview_digest=p['revision']['preview_digest'],confirmed=True))
+    with sf() as db:
+        for table in ('finance.postings','core.confirmation_effects','inventory.movements','workers.assignments'):
+            assert db.scalar(text('SELECT count(*) FROM '+table+' WHERE entity_id=:e'),dict(e=inv['e']))==0

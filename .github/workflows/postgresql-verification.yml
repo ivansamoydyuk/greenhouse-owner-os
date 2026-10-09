@@ -145,11 +145,11 @@ jobs:
           import os
           import xml.etree.ElementTree as ET
           cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'integration.xml')).findall('.//testcase')
-          assert len(cases) >= 606, 'PostgreSQL tests did not execute'
+          assert len(cases) >= 608, 'PostgreSQL tests did not execute'
           assert not any(case.find('skipped') is not None for case in cases), 'PostgreSQL tests skipped'
           workers = [case for case in cases if 'test_postgres_workers' in case.get('classname', '')]
           assert len(workers) >= 125, 'Workers adversarial gate did not execute'
-          for module, minimum in [('test_postgres_owner_language_benchmark', 21), ('test_postgres_owner_language_preparation', 10), ('test_postgres_owner_actor_scope', 3), ('test_postgres_owner_worker_identity', 1)]:
+          for module, minimum in [('test_postgres_owner_language_benchmark', 21), ('test_postgres_owner_language_preparation', 11), ('test_postgres_owner_actor_scope', 3), ('test_postgres_owner_worker_identity', 1), ('test_postgres_owner_friction_evidence', 1)]:
               assert sum(module in case.get('classname', '') for case in cases) >= minimum, 'Owner language boundary gate did not execute: ' + module
           PY
       - name: Complete regression suite
@@ -159,7 +159,7 @@ jobs:
           import os
           import xml.etree.ElementTree as ET
           cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'finance.xml')).findall('.//testcase')
-          assert len(cases) >= 1214, 'Complete regression suite did not execute'
+          assert len(cases) >= 1247, 'Complete regression suite did not execute'
           assert not any(case.find('skipped') is not None for case in cases), 'Finance tests skipped'
           PY
       - name: Owner language training and generated-variant safety gate

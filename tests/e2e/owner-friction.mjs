@@ -75,6 +75,8 @@ let originalsVerified = null, reversalHistoryVerified = null, economicRestored =
 const assignmentCleanup = [];
 const field = name => sheet().locator(`[name="${name}"]`);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+const readPosting = id => JSON.parse(execFileSync('python', ['scripts/owner_friction_posting_evidence.py', id], {encoding: 'utf8'}));
+const postingLines = (snapshot, reverse = false) => snapshot.entries.map(row => ({account: row.ledger_account_id, amount: row.amount, side: reverse ? (row.side === 'debit' ? 'credit' : 'debit') : row.side})).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 const equalValue = (a, b) => a == null || b == null ? a === b : String(a) === String(b)
   || (/^\d+(?:\.\d+)?$/.test(String(a)) && /^\d+(?:\.\d+)?$/.test(String(b)) && decimal(a) === decimal(b));
 function decimal(value) {return String(value).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');}
@@ -187,8 +189,14 @@ async function runCase(test) {
       // Rejection and closing are teardown, not fabricated taps-to-confirm.
       measured.setPhase('cleanup');
       await measured.click(sheet().locator('#r2-reject'), 'Reject unsupported TEST source');
-      await sheet().getByRole('heading', {name: 'Неподтверждённые', exact: true}).waitFor();
-      await measured.click(sheet().getByRole('button', {name: 'Закрыть', exact: true}), 'Close TEST queue');
+      await poll(async () => (await api(owner + `/confirmations/${record.proposal_id}/preview`)).state === 'REJECTED', 'Rejected source must persist');
+      await page.waitForFunction(() => !document.querySelector('#sheet').open || document.querySelector('#sheet-title')?.textContent === 'Неподтверждённые');
+      if (await sheet().isVisible()) {
+        await sheet().getByRole('heading', {name: 'Неподтверждённые', exact: true}).waitFor();
+        await measured.click(sheet().getByRole('button', {name: 'Закрыть', exact: true}), 'Close TEST queue');
+      } else await waitOwnerRoute(page, 'review', {dialog: false});
+      assert.deepEqual((await snapshot()).economic, caseBefore.economic, 'Rejecting unsupported source creates no business effect');
+      record.rejection_verified = true;
       return;
     }
 
@@ -427,6 +435,7 @@ try {
   for (const item of [...confirmed].reverse()) {
     try {
       const effect = item.effect, reason = 'TEST measured owner friction teardown';
+      const beforePosting = ['PAYABLE', 'PAYMENT', 'DIRECT_EXPENSE'].includes(item.kind) ? readPosting(effect.posting_id) : null;
       const body = {expected_version: effect.version, event_date: effect.event_date, reason};
       let result;
       if (item.kind === 'PERSONAL_TASK') result = await api(owner + `/tasks/${effect.id}/state`, {expected_version: effect.version, state: 'DONE'});
@@ -449,8 +458,17 @@ try {
       if (!['PERSONAL_TASK', 'WORKER_TASK'].includes(item.kind)) {
         assert.equal(result.id, effect.id, 'Reversal retains original authoritative record identity');
         if (['PAYABLE', 'PAYMENT', 'DIRECT_EXPENSE'].includes(item.kind)) {
-          assert.equal(result.posting_id, effect.posting_id, 'Original immutable posting retained');
+          const originalId = item.kind === 'DIRECT_EXPENSE' ? result.posting_id : result.original_posting_id;
+          assert.equal(originalId, effect.posting_id, 'Original immutable posting retained through the documented response projection');
           assert.ok(result.reversal_posting_id, 'Explicit reversing posting recorded');
+          assert.notEqual(result.reversal_posting_id, originalId);
+          assert.deepEqual(readPosting(originalId), beforePosting, 'Original posting row and every entry remain byte-equivalent JSON');
+          const reversal = readPosting(result.reversal_posting_id);
+          assert.equal(beforePosting.posting.id, originalId); assert.equal(beforePosting.posting.source_id, effect.id);
+          assert.equal(reversal.posting.reversal_of_id, originalId); assert.equal(reversal.posting.source_id, effect.id);
+          assert.equal(reversal.posting.entity_id, beforePosting.posting.entity_id); assert.equal(reversal.posting.currency, beforePosting.posting.currency);
+          assert.deepEqual(postingLines(reversal), postingLines(beforePosting, true), 'Reversal compensates every immutable original entry');
+          item.posting_evidence = {original: beforePosting, reversal, original_unchanged_after_reversal: true};
         } else if (item.kind.startsWith('STOCK_')) {
           assert.deepEqual(result.payload, effect.payload, 'Inventory reversal preserves original payload');
           assert.ok(result.movements.length >= 2, 'Original and reversing stock movements retained');
@@ -460,7 +478,7 @@ try {
         }
         historyVerified = true;
       }
-      cleanup.push({case_id: item.case_id, effect_id: effect.id, ok: true, reversal_history_verified: historyVerified});
+      cleanup.push({case_id: item.case_id, effect_id: effect.id, ok: true, reversal_history_verified: historyVerified, ...(item.posting_evidence ? {posting_evidence: item.posting_evidence} : {})});
     } catch (error) {cleanup.push({case_id: item.case_id, ok: false, error: String(error)}); fatal ||= error;}
   }
   const reversedItems = confirmed.filter(item => !['PERSONAL_TASK', 'WORKER_TASK'].includes(item.kind));

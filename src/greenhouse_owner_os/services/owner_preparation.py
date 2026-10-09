@@ -50,6 +50,21 @@ def account_for(raw,accounts,currency):
     return str(value(candidates[0],'id')) if len(candidates)==1 else None
 
 
+def account_transfer_evidence(raw,refs):
+    """Do not let missing account references turn a transfer into a payment."""
+    t=fold(raw)
+    if not re.search(r'\b(?:перевел|перевела|перевели|перечислил|перечислила|перечислили)\b',t):return False
+    # An explicitly resolved recipient can make this an outgoing payment.
+    if entity_matches(raw,refs.get('counterparties',()),inflect=True):return False
+    accounts=refs.get('accounts',())
+    if len(entity_matches(raw,accounts))>1:return True
+    endpoints=re.search(r'\b(?:из|с|со)\s+([^,;.!?\n]{1,100}?)\s+(?:в|на)\s+([^,;.!?\n]{1,100})',t)
+    if not endpoints:return False
+    def account_endpoint(part):
+        return bool(entity_matches(part,accounts) or re.match(r'(?:(?:сво\w*|друг\w*|расчетн\w*|личн\w*)\s+){0,2}(?:cash|bank|касс\w*|банк\w*|счет\w*|карт\w*)\b',part))
+    return all(account_endpoint(part) for part in endpoints.groups())
+
+
 def invoice_document_evidence(raw):
     """A supplier/title prefix is valid only with bounded document structure.
 
@@ -209,7 +224,7 @@ def _prepare_one(raw,semantic,*,today,refs,pages):
     if re.search(UNCERTAIN,uncertainty_scope) and not explicit_reminder:return unresolved_parts(raw)
     if '?' in raw and not explicit_reminder and re.search(PAID+'|'+OWED+'|'+PURCHASE,t):return unresolved_parts(raw)
     if re.search(r'\b(?:отменить|отмена|сторнировать|вернуть)\b.*\b(?:оплат|платеж|деньг)',t):return unresolved_parts(raw)
-    if re.search(r'\bперевел\b',t) and len(entity_matches(semantic,refs.get('accounts',())))>1 and not entity_matches(semantic,refs.get('counterparties',()),inflect=True):return unresolved_parts(raw)
+    if not explicit_reminder and account_transfer_evidence(semantic,refs):return unresolved_parts(raw)
     paid=bool(re.search(PAID,t));purchase=bool(re.search(PURCHASE,t))
     if future_financial_intent(semantic) and not purchase and (not paid or re.search(NEGATED_MONEY,t) or re.search(r'\bне\s+оплачен\w*\b',t)) and not explicit_reminder:
         if task:explicit_reminder=True
