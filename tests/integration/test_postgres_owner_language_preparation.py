@@ -8,6 +8,31 @@ from greenhouse_owner_os.services.owner_capture import OwnerCaptureService
 from greenhouse_owner_os.repositories.sqlalchemy import SqlAlchemyUnitOfWork
 
 
+def test_real_two_page_supplier_invoice_remains_original_nonposting_independent_review(inv):
+    import base64
+    from tests.ocr_corpus import document
+    content,mime=document(28)
+    saved=source(inv,None,mode='photo',filename='supplier.pdf',mime_type=mime,file_base64=base64.b64encode(content).decode())
+    proposals=[p for p in queue(inv) if p['inbox_id']==saved['id']]
+    assert sorted(p['action_type'] for p in proposals)==['INVOICE_MATCH','PAYABLE']
+    sf,actor,*_=inv['preview'];svc=OwnerCaptureService(lambda:SqlAlchemyUnitOfWork(sf))
+    assert svc.original(UUID(inv['e']),actor,UUID(saved['id']))[0]==content
+    before_ids={p['id'] for p in proposals}
+    svc.process(UUID(saved['id']))
+    assert {p['id'] for p in queue(inv) if p['inbox_id']==saved['id']}==before_ids
+    payable=next(p for p in proposals if p['action_type']=='PAYABLE')
+    assert payable['revision']['payload']['amount']=='5000' and payable['revision']['payload']['currency']=='TRY'
+    assert payable['revision']['missing'] and payable['state']=='NEEDS_INPUT'
+    assert all(p['revision']['extraction_run_id'] and p['source']['has_file'] for p in proposals)
+    other=next(p for p in proposals if p['action_type']=='INVOICE_MATCH')
+    send(inv['c'],f"/entities/{inv['e']}/owner/confirmations/{payable['id']}/reject",dict(expected_version=payable['version']),expected=200)
+    assert next(p for p in queue(inv) if p['id']==other['id'])['state']==other['state']
+    with sf() as db:
+        assert db.scalar(text('SELECT count(*) FROM core.extraction_runs WHERE inbox_id=:s'),dict(s=saved['id']))==1
+        for table in ('core.confirmation_effects','finance.postings','inventory.movements','harvest.worker_reports'):
+            assert db.scalar(text('SELECT count(*) FROM '+table+' WHERE entity_id=:e'),dict(e=inv['e']))==0
+
+
 def test_language_correction_original_and_text_voice_parity(inv):
     raw='Сегодня привезли не 15 кг, а 20 кг KNO3 на TEST A в İmamlı'
     captures=[source(inv,raw,mode=mode) for mode in ('text','voice_transcript')]

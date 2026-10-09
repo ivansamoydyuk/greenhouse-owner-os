@@ -50,6 +50,28 @@ def account_for(raw,accounts,currency):
     return str(value(candidates[0],'id')) if len(candidates)==1 else None
 
 
+def invoice_document_evidence(raw):
+    """A supplier/title prefix is valid only with bounded document structure.
+
+    Keep the same evidence rule for pasted text and OCR. A loose mention of an
+    invoice, a request for one, or quoted/reported material is not a document.
+    """
+    lines=[line.strip() for line in raw.splitlines() if line.strip()]
+    if len(lines)<3 or re.search(r'[?«»“”"<>]',raw):return False
+    header_word=r'(?:[A-Z0-9İŞĞÜÖÇ&.,\x27-]+\s+){0,5}(?:FATURA|INVOICE)'
+    blocked=r'\b(?:NO|NOT|NON|DRAFT|SAMPLE|TEMPLATE|EXAMPLE|COPY|QUOTE|SEND|REQUEST|REQUESTED|ISSUE|PLEASE|CANCELLED|PROFORMA|PRO\s+FORMA)\b'
+    for index,line in enumerate(lines[:3]):
+        if not re.fullmatch(header_word,line) or re.search(blocked,line):continue
+        # Before the heading, allow only short supplier/title lines, never a
+        # narrative actor, reminder, question, attribution or quoted preamble.
+        if any(not re.fullmatch(r'[A-Z0-9İŞĞÜÖÇ&.,\x27 -]{1,80}',p) or re.search(blocked,p) for p in lines[:index]):continue
+        body='\n'.join(lines[index+1:])
+        dated=re.search(r'(?m)^\s*\d{1,2}[./-]\d{1,2}[./-]20\d{2}\s*$',body)
+        total=re.search(r'(?im)^\s*(?:tutar|toplam|total|amount)\s*[:=]?\s*'+NUMBER+r'\s*'+CURRENCY+r'\s*$',body)
+        if dated and total:return True
+    return False
+
+
 def _depot_evidence(raw):
     # Quality rows can be tables or explicitly labelled prose. A loose mention
     # of a quality without a weight/row is not a receipt.
@@ -124,7 +146,7 @@ def _parts(raw,*,binary=False,refs=None):
             for start,end in reversed(spans):receipt=receipt[:start]+receipt[end:]
             return [receipt.strip(),*money] if receipt.strip() else [raw]
     # Receipt table rows stay together; paragraphs are not separate documents.
-    if binary or _depot_evidence(raw):return [raw]
+    if binary or _depot_evidence(raw) or invoice_document_evidence(raw):return [raw]
     # Do not split decimals, dates or an explicit same-source correction.
     parts=split_outside_quotes(r'(?:(?<!тыс)(?<!млн)[.;](?!\d)\s+|\n+)',raw,flags=re.I)
     # Anaphoric/attribute sentences qualify the same event. They are kept in
@@ -244,7 +266,7 @@ def _prepare_one(raw,semantic,*,today,refs,pages):
         return [(kind,payload,provenance(payload,raw,inferred=('lines',),defaults=('event_date',) if not mentioned else ()))]
     depot=depot_text(raw,refs.get('counterparties',()))
     if depot:return [('DEPOT_RECEIPT',depot,{'lines':{'category':'SOURCE FACT','pages':pages},'qualities':{'category':'INFERENCE','basis':'depot_scoped_unverified_candidate'},'stated_total':{'category':'INFERENCE' if depot.get('stated_total') is not None else 'UNKNOWN','basis':'document_total_candidate_requires_review'}})]
-    if re.search(INVOICE,t) and (re.match(r'^(?:fatura|invoice)\b',t) or re.search(r'\b(?:счет\s+поставщика|(?:пришел|получили|получил|прислал|есть|вот)\s+(?:fatura|invoice))\b',t)):
+    if re.search(INVOICE,t) and (invoice_document_evidence(raw) or re.match(r'^(?:fatura|invoice)\b',t) or re.search(r'\b(?:счет\s+поставщика|(?:пришел|получили|получил|прислал|есть|вот)\s+(?:fatura|invoice))\b',t)):
         if re.search(r'\b(?:потом|завтра|пришлют|позже|не\s+(?:пришел|получил|дали|выдали))\b',t):return unresolved_parts(raw)
         event,mentioned=date_value(semantic,today)
         payload=dict(description=raw[:2000],amount=money_amount(semantic),event_date=event if mentioned else today.isoformat(),currency=source_currency(semantic))
