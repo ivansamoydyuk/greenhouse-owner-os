@@ -28,7 +28,7 @@ const paths = {
   more: "M4 6h16M4 12h16M4 18h16",
   plus: "M12 5v14M5 12h14",
   video: "M3 5h12v14H3zM15 10l6-4v12l-6-4",
-  scissors: "M4 4l16 16M20 4 4 20M7 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0M7 17a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
+  harvest: "M12 21V9M12 13C5 13 3 9 3 4c6 0 9 3 9 9M12 17c7 0 9-4 9-9-6 0-9 3-9 9M9 21h6",
   camera: "M3 7h4l2-3h6l2 3h4v14H3zM16 13a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
   voice:
     "M9 4a3 3 0 0 1 6 0v8a3 3 0 0 1-6 0V4M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8",
@@ -69,11 +69,11 @@ export function Header(title, subtitle = "", back = false, extra = "") {
 }
 export function Navigation(page, count) {
   const item = (id, label, ic) => link(`${icon(ic)}<span>${label}</span>${id === "review" && count ? `<span class="nav-dot">${count}</span>` : ""}`, id, page === id ? "active" : "", `nav-${id}`);
-  return `<nav class="navigation" aria-label="Основные разделы">${item("home", "Главная", "home")}${item("review", "Проверка", "review")}<button class="capture-toggle" data-action="radial-toggle" data-testid="radial-toggle" aria-label="AI Capture — добавить источник" aria-expanded="false" aria-controls="radial-menu"><span class="capture-orb">${icon("plus")}</span><span>AI Capture</span></button>${item("tasks", "Задачи", "tasks")}${item("more", "Ещё", "more")}</nav>`;
+  return `<nav class="navigation" aria-label="Основные разделы">${item("home", "Главная", "home")}${item("review", "Проверка", "review")}<button class="capture-toggle" data-action="radial-toggle" data-testid="radial-toggle" aria-label="AI Capture — добавить источник" aria-expanded="false" aria-controls="radial-menu"><span class="capture-orb">${icon("leaf")}</span><span>AI Capture</span></button>${item("tasks", "Задачи", "tasks")}${item("more", "Ещё", "more")}</nav>`;
 }
 export function CaptureBar() {
   return `<div id="radial-menu" class="radial-menu" role="group" aria-label="Добавить источник" hidden>${[
-    ["photo", "Фото", "camera"], ["voice", "Голос", "voice"], ["text", "Текст", "text"], ["video", "Видео", "video"],
+    ["photo", "Фото", "camera"], ["voice", "Голос", "voice"], ["text", "Текст", "text"],
   ].map(([id, label, ic]) => btn(`<span class="radial-orb">${icon(ic)}</span><span>${label}</span>`, `capture-${id}`, `radial-item radial-${id}`, `capture-${id}`)).join("")}<p class="radial-hint">Источник сохраняется в DEMO</p></div>`;
 }
 export function AppShell(body, page, count, focused = false) {

@@ -1,3 +1,7 @@
+import {ensureRefinement,beginSettlement,updateSettlement,settlementFill,confirmSettlement,settlementContext,obligationRemaining,attachEvidence,beginReceiptLink,confirmReceiptLink} from "./refinement-demo.js";
+import {counterpartySettlementAction,settlementValues,settlementForm,settlementReview,monthlyHarvest,reportDetail,receiptLinkForm,receiptLinkReview} from "./refinement-ui.js";
+import {ensureFertilizer} from "./fertilizer-demo.js";
+import {renderFertilizer,fertilizerTaskRows,handleFertilizerEvent,refreshFertilizerView} from "./fertilizer-ui.js";
 import {ensureDaily,projectDaily,harvestRows as dailyHarvestRows,overview,createAction,updateAction,confirmAction,syncLegacyConfirmation} from "./daily-demo.js";
 import {contextualActions,financeOverview,quickForm,dailyReview,depotList,depotDetail,reconcile,dailyMovementList,invoiceNotice} from "./daily-ui.js";
 import {
@@ -74,7 +78,7 @@ const save = () => {
   let warning=document.querySelector("#storage-warning");
   if(!ok){
     if(!warning){warning=document.createElement("aside");warning.id="storage-warning";warning.className="storage-warning";warning.setAttribute("role","alert");warning.dataset.testid="storage-warning";document.querySelector("#app").before(warning);}
-    warning.textContent="Не сохранено на устройстве. Изменения пока только в этой вкладке. Не закрывайте её; память браузера недоступна или переполнена.";
+    warning.innerHTML='Не сохранено на устройстве. Изменения пока только в этой вкладке. Не закрывайте её; память браузера недоступна или переполнена.<button class="btn secondary full" data-action="storage-retry" data-testid="storage-retry">Повторить сохранение на устройстве</button>';
   }else warning?.remove();
   return ok;
 };
@@ -91,8 +95,12 @@ const sectionLink = (label, to, test = "") =>
   link(`${e(label)} ${icon("arrow")}`, to, "section-link", test);
 function initializeDaily() {
   ensureDaily(state);
+  ensureFertilizer(state);
+  ensureRefinement(state);
+  state.harvestFilters ??= {period:"season",metric:"field",month:"",sort:"newest",greenhouseId:null};
   state.dailyDrafts ??= {};
   state.captureDrafts ??= {};
+  state.reportCaptureDrafts ??= {};
   if (!state.tasks.some(t => t.id === "lab-followup")) state.tasks.push({id:"lab-followup",title:"Посмотреть результаты анализа почвы",place:"Yeşilöz",when:"13 октября",date:"2026-10-13",worker:null,status:"todo",source:"Синтетическая личная задача · посмотреть результаты анализа",category:"Анализы"});
   projectDaily(state);
 }
@@ -108,7 +116,7 @@ function chartData() {
 }
 function chart(compact = false) {
   const d = chartData(),
-    max = Math.max(...d.map((x) => x.kg));
+    max = Math.max(...d.map((x) => x.kg), 1);
   return `<svg class="${compact ? "mini-chart" : "chart"}" viewBox="0 0 270 ${compact ? 80 : 140}" role="img" aria-label="Подтверждённый урожай по дням, ${d.map((x) => x.label + ": " + x.kg + " кг").join("; ")}">${d
     .map((x, i) => {
       const height = (x.kg / max) * (compact ? 72 : 104),
@@ -124,7 +132,7 @@ function harvestCard() {
 function home() {
   const p = pending(state),
     mine = state.tasks.filter((x) => x.status === "todo");
-  return `<header class="page-header home-header"><div><p class="greeting">Ваше хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")} Пятница, 9 октября 2026</div></div><span class="brand-mark">${icon("leaf")}</span></header><div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} РАСХОД`, "quick/expense", "daily-action", "home-expense")}${link(`${icon("scissors")} СРЕЗ`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Финансы ${p.filter((x) => x.type === "payable").length+dailyPending().filter(a=>dailyBand(a)==="payable").length} · склад ${p.filter((x) => x.type === "stock").length+dailyPending().filter(a=>dailyBand(a)==="stock").length} · ещё ${p.filter((x) => !["payable", "stock"].includes(x.type)).length+dailyPending().filter(a=>!["payable","stock"].includes(dailyBand(a))).length}</p></div><span class="count">${pendingCount()}</span>`, "review", "attention", "home-review")}${state.workerTasks.some(t => t.status === "problem") ? link(`${icon("warning")}<span>Работники: ${state.workerTasks.filter(t => t.status === "problem").length} ${plural(state.workerTasks.filter(t => t.status === "problem").length, "проблема", "проблемы", "проблем")} · нужен фильтр</span>${icon("arrow")}`, "task/filter-report", "attention-worker", "home-worker-exception") : ""}</div><div class="financial-grid ${state.largeAmount ? "stress" : ""}">${MetricCard({ label: "Мне должны", value: moneyTotal(state.receivables), detail: state.receivables.length + " контрагента", to: "finance/receivable", primary: true, test: "home-receivable", ic: "down" })}${MetricCard({ label: "Я должен", value: moneyTotal(state.payables), detail: `${state.payables.length} обязательства`, to: "finance/payable", test: "home-payable", ic: "up" })}</div>${harvestCard()}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${mine.length}</span></h2>${link("Все", "tasks")}</div><section class="card list-card">${
+  return `<header class="page-header home-header"><div><p class="greeting">Ваше хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")} Пятница, 9 октября 2026</div></div><span class="brand-mark">${icon("leaf")}</span></header><div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "quick/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Финансы ${p.filter((x) => x.type === "payable").length+dailyPending().filter(a=>dailyBand(a)==="payable").length} · склад ${p.filter((x) => x.type === "stock").length+dailyPending().filter(a=>dailyBand(a)==="stock").length} · ещё ${p.filter((x) => !["payable", "stock"].includes(x.type)).length+dailyPending().filter(a=>!["payable","stock"].includes(dailyBand(a))).length}</p></div><span class="count">${pendingCount()}</span>`, "review", "attention", "home-review")}${state.workerTasks.some(t => t.status === "problem") ? link(`${icon("warning")}<span>Работники: ${state.workerTasks.filter(t => t.status === "problem").length} ${plural(state.workerTasks.filter(t => t.status === "problem").length, "проблема", "проблемы", "проблем")} · нужен фильтр</span>${icon("arrow")}`, "task/filter-report", "attention-worker", "home-worker-exception") : ""}</div><div class="financial-grid ${state.largeAmount ? "stress" : ""}">${MetricCard({ label: "Мне должны", value: moneyTotal(state.receivables), detail: state.receivables.length + " контрагента", to: "finance/receivable", primary: true, test: "home-receivable", ic: "down" })}${MetricCard({ label: "Я должен", value: moneyTotal(state.payables), detail: `${state.payables.length} обязательства`, to: "finance/payable", test: "home-payable", ic: "up" })}</div>${harvestCard()}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${mine.length}</span></h2>${link("Все", "tasks")}</div><section class="card list-card">${
     mine
       .slice(0, 2)
       .map((t) => TaskRow(t))
@@ -207,13 +215,16 @@ function videoPreview(file) {
 function selectCaptureMode(mode) {
   if(state.draft.mode===mode)return;
   fileReadAttempt++;
-  state.captureDrafts[state.draft.mode]=structuredClone(state.draft);
+  if (state.draft.reportId) state.reportCaptureDrafts[state.draft.reportId]=structuredClone(state.draft);
+  else state.captureDrafts[state.draft.mode]=structuredClone(state.draft);
   state.draft=structuredClone(state.captureDrafts[mode]||{mode,text:"",comment:"",file:null,scenario:null});
   state.draft.mode=mode;
 }
 function capture(mode) {
+  if (!["photo", "voice", "text"].includes(mode)) return `${Header("Источник из истории", "", true)}${EmptyState("Видео доступно только в истории", "Новые записи: Фото, Голос или Текст. Ранее сохранённые источники не удалены.", link("Открыть источники", "sources", "btn primary full"))}`;
   selectCaptureMode(mode);
   const d = state.draft;
+  const reportContext=d.reportId ? state.daily.fieldReports.find(r=>r.id===d.reportId) : null;
   let body = "";
   if (saving)
     return `<div class="capture-page">${Header("Добавить источник", "", true)}${LoadingState()}</div>`;
@@ -227,9 +238,9 @@ function capture(mode) {
   if(mode === "video") body=`${d.file?.kind==="video"?`<div class="photo-preview">${videoPreview(d.file)}<div class="file-name">${e(d.file.name)}</div></div>${btn("Выбрать другой","clear-file","text-button","clear-file")}`:`<p class="note">Локальный DEMO: MP4 / WebM / MOV до 512 КБ. Для обычного видео с телефона используйте синтетический пример ниже. Совместимость кодека зависит от браузера.</p><label class="file-label">${icon("video")} Выбрать видео<input id="video-file" data-testid="video-file" type="file" accept="video/mp4,video/webm,video/quicktime"></label>`}<label class="field">Комментарий · необязательно<input class="input" id="capture-comment" data-testid="capture-comment" value="${e(d.comment)}"></label><div class="notice amber">Только локальный DEMO-источник. ИИ не анализирует видео, OCR и видеообработки нет. Файл не отправляется на сервер.</div>`;
   const saveButton =
     mode !== "voice" || d.text
-      ? btn("Сохранить в демо", "capture-save", "primary full", "capture-save")
+      ? btn(reportContext ? "Прикрепить к срезу · на проверку" : "Сохранить в демо", "capture-save", "primary full", "capture-save")
       : "";
-  return `<div class="capture-page" data-r3-form="capture-${mode}">${Header({ text: "Новая запись", voice: "Голос", photo: "Фото", video: "Видео" }[mode], "", true)}${body}${saveButton}<div class="scenario-panel"><p>ГОТОВЫЙ СЦЕНАРИЙ ИНТЕРФЕЙСА · НЕ ИИ</p>${mode === "video" ? btn(`${icon("video")} Синтетический пример видео`, "demo-video", "secondary full", "demo-video") : mode === "photo" ? btn(`${icon("text")} Выбрать синтетический чек депо`, "demo-photo", "secondary scenario-button full", "demo-photo") + btn("Чек и противоречивый комментарий", "demo-photo-conflict", "text-button full", "demo-photo-conflict") : btn(`${icon("tasks")} Попробовать задачу про полив`, "demo-irrigation", "secondary scenario-button full", "demo-irrigation") + btn("Неясное событие: Серкан, завтра", "demo-recovery", "text-button full", "demo-recovery")}</div><p class="screen-note">Демо-состояние хранится только в этом браузере</p></div>`;
+  return `<div class="capture-page" data-r3-form="capture-${mode}">${Header({ text: "Новая запись", voice: "Голос", photo: "Фото", video: "Видео" }[mode], "", true)}${reportContext ? `<div class="notice" data-testid="capture-report-context"><strong>Чек к выбранному срезу</strong><p>${e(state.daily.greenhouses.find(g=>g.id===reportContext.greenhouseId)?.name)} · ${e(reportContext.date)} · ${number(reportContext.bunches)} веток</p><small>ID отчёта: ${e(reportContext.id)}. Сохранение приложит источник на проверку, без OCR или продажи.</small></div>` : ""}${body}${saveButton}<div class="scenario-panel"><p>ГОТОВЫЙ СЦЕНАРИЙ ИНТЕРФЕЙСА · НЕ ИИ</p>${mode === "video" ? btn(`${icon("video")} Синтетический пример видео`, "demo-video", "secondary full", "demo-video") : mode === "photo" ? btn(`${icon("text")} Выбрать синтетический чек депо`, "demo-photo", "secondary scenario-button full", "demo-photo") + btn("Чек и противоречивый комментарий", "demo-photo-conflict", "text-button full", "demo-photo-conflict") : btn(`${icon("tasks")} Попробовать задачу про полив`, "demo-irrigation", "secondary scenario-button full", "demo-irrigation") + btn("Неясное событие: Серкан, завтра", "demo-recovery", "text-button full", "demo-recovery")}</div><p class="screen-note">Демо-состояние хранится только в этом браузере</p></div>`;
 }
 function tasks() {
   const f = state.filters.tasks;
@@ -250,7 +261,7 @@ function tasks() {
   } else {
     content = `<section class="card"><div class="card-header"><h2>Черновик поручения</h2><span class="tag amber">${state.workerTask.status === "assigned" ? "Назначено в демо" : "Не назначено"}</span></div>${link(`<strong>${e(state.workerTask.title)}</strong><p class="note no-bottom">İmamlı · 10 октября · ${state.workerTask.worker ? e(workerName(state.workerTask.worker)) : "Исполнитель не выбран"}</p>`, "assignment/worker-task", "task-row", "worker-task")}</section><div class="section-heading"><h2>Работники</h2>${link("Все", "workers")}</div><section class="card list-card">${state.workers.map(workerRow).join("")}</section>`;
   }
-  return `${Header("Задачи", "Планы и поручения")}${contextualActions([["Задача себе","quick/task","tasks-add-self"],["Задача работникам","quick/worker","tasks-add-workers"]])}<div class="filters">${FilterChip("Мои", "mine", f === "mine", "tasks", "tasks-mine")}${FilterChip("Работникам", "workers", f === "workers", "tasks", "tasks-workers")}</div>${content || EmptyState("Задач пока нет", "Добавьте поручение текстом или голосом.")}`;
+  return `${Header("Задачи", "Планы и поручения")}${contextualActions([["Задача себе","quick/task","tasks-add-self"],["Задача работникам","quick/worker","tasks-add-workers"]])}<div class="filters">${FilterChip("Мои", "mine", f === "mine", "tasks", "tasks-mine")}${FilterChip("Работникам", "workers", f === "workers", "tasks", "tasks-workers")}</div>${content || EmptyState("Задач пока нет", "Добавьте поручение текстом или голосом.")}${f === "workers" ? fertilizerTaskRows(state) : ""}`;
 }
 function taskDetail(id) {
   const t =
@@ -296,7 +307,7 @@ function workerDetail(id) {
       source:
         "Заранее написанный TEST-пример. Назначено в демо, не отправлено.",
     });
-  return `<div class="detail-layout">${Header(w.name, w.place + " · " + w.language, true)}${w.issue ? `<div class="notice amber">${icon("warning")} ${e(w.issue)}<p class="small">Синтетический отчёт · 9 октября</p></div>` : ""}<div class="section-heading"><h2>Поручения</h2></div>${assigned.length ? `<section class="card list-card">${assigned.map((t) => TaskRow(t)).join("")}</section>` : EmptyState("Нет назначенных задач", "Это не означает, что работник свободен.")}<section class="card"><span class="eyebrow">ПОДГОТОВЛЕННЫЙ ДЕМО-ПРИМЕР</span><h2 class="detail-title">Проверить фильтр</h2><p class="note">İmamlı · 10 октября. Инструкция и перевод доступны до назначения.</p>${link("Проверить назначение", "assignment/worker-task", "btn primary full", "assign-open")}</section></div>`;
+  return `<div class="detail-layout">${Header(w.name, w.place + " · " + w.language, true)}<div class="worker-identity"><span class="avatar">${e(w.initials)}</span><div><strong>${e(w.name)}</strong><p>${e(w.place)} · ${e(w.language)}</p></div></div>${btn(`${icon("tasks")} Дать задание`, `worker-quick:${w.id}`, "primary full contextual-primary", "worker-give-task")}${w.issue ? `<div class="notice amber">${icon("warning")} ${e(w.issue)}<p class="small">Синтетический отчёт · 9 октября</p></div>` : ""}<div class="section-heading"><h2>Поручения</h2></div>${assigned.length ? `<section class="card list-card">${assigned.map((t) => TaskRow(t)).join("")}</section>` : EmptyState("Нет назначенных задач", "Это не означает, что работник свободен.")}<section class="card"><span class="eyebrow">ПОДГОТОВЛЕННЫЙ ДЕМО-ПРИМЕР</span><h2 class="detail-title">Проверить фильтр</h2><p class="note">İmamlı · 10 октября. Инструкция и перевод доступны до назначения.</p>${link("Проверить назначение", "assignment/worker-task", "btn primary full", "assign-open")}</section></div>`;
 }
 function assignment() {
   const t = state.workerTask;
@@ -309,10 +320,13 @@ function finance(tab) {
 }
 function counterparty(id) {
   id=decodeURIComponent(id);
-  const receivable=state.receivables.find(x=>x.id===id),x=receivable||state.payables.find(x=>x.id===id);
-  if(!x)return EmptyState("Контрагент не найден","Вернитесь к финансам.");
-  const debts=state.daily.obligations.filter(o=>(o.partyId||o.party)===id);
-  return `<div class="detail-layout">${Header("Контрагент","",true)}<section class="card"><span class="eyebrow">${receivable?"МНЕ ДОЛЖНЫ":"Я ДОЛЖЕН"}</span><h2 class="detail-title">${e(x.name)}</h2><div class="detail-value">${money(x.amount)}</div><p class="muted">На 9 октября 2026 · TRY</p><dl class="fact-list">${fact("Содержание",x.meaning)}${fact("Состояние","Непогашенная часть")}</dl>${debts.map(o=>`<div class="timeline-row"><strong>${e(o.purpose)}</strong><p>${o.date} · ${money(o.amountMinor/100)}</p>${o.receiptId?link("Открыть чек",`depot/${o.receiptId}`,"btn secondary full"):""}</div>`).join("")}<p class="note">Источники синтетические. Остаток учитывает только явно связанные платежи; продажи и платежи не дублируются.</p></section></div>`;
+  const existing=state.receivables.find(x=>x.id===id)||state.payables.find(x=>x.id===id);
+  const first=state.daily.obligations.find(o=>(o.partyId||o.party)===id&&o.currency==="TRY");
+  if(!first)return EmptyState("Контрагент не найден","Вернитесь к финансам.");
+  const direction=state.receivables.some(x=>x.id===id)?"receivable":first.direction;
+  const c=settlementContext(state,{partyId:id,direction,currency:first.currency});
+  const x=existing||{name:c.party,amount:c.availableMinor/100,meaning:direction==="receivable"?"Подтверждённые продажи":"Подтверждённые обязательства"};
+  return `<div class="detail-layout">${Header(x.name,direction==="receivable"?"Контрагент · Мне должны":"Контрагент · Я должен",true)}${counterpartySettlementAction(state,id,direction,c.currency)}<section class="card"><span class="eyebrow">ТЕКУЩАЯ ЗАДОЛЖЕННОСТЬ</span><div class="detail-value">${money(c.availableMinor/100)}</div><p class="muted">${e(c.currency)} · DEMO · все сохранённые погашения</p><dl class="fact-list">${fact("Содержание",x.meaning)}${fact("Состояние",c.availableMinor?"Непогашенная часть":"Полностью погашено в DEMO")}</dl></section><section class="card"><div class="card-header"><h2>Чеки и обязательства</h2><span class="tag">${c.obligations.length}</span></div>${c.obligations.map(o=>`<div class="timeline-row"><strong>${e(o.purpose)}</strong><p>${e(o.date)} · исходно ${money(o.amountMinor/100)}</p><p><strong>Остаток: ${money(o.remainingMinor/100)}</strong></p>${o.receiptId?link("Открыть чек",`depot/${o.receiptId}`,"btn secondary full"):""}</div>`).join("")}<p class="note">Остаток учитывает только явно связанные платежи. Погашение не создаёт повторный расход или продажу.</p></section></div>`;
 }
 function quality(m) {
   const colors = ["#34734e", "#a8c477", "#cfaa59", "#cbd1c8"],
@@ -333,7 +347,7 @@ function harvest(id) {
   const all = rows(),
     row = all.find((x) => x.id === id),
     m = harvestMetrics(row ? [row] : all);
-  return `${Header(row ? row.name : "Урожай", "Сезон 2026/27 · " + SEASON, true)}${row?"":contextualActions([["Записать срез","quick/harvest","harvest-cut"],["Добавить чек депо","quick/depot","harvest-depot"]],[["Срезы и сверка","reconcile","harvest-reconcile"],["Все чеки · сентябрь–октябрь","depots","harvest-all-depots"]])}<div class="split-grid"><div><section class="card"><span class="eyebrow">Подтверждённые поставки бананов</span><div class="detail-value">${m.kg?number(m.kg)+" кг":"Нет подтверждённых чеков"}</div>${m.kg?"":"<p class=note>Это отсутствие записей, а не подтверждённый нулевой урожай.</p>"}<div class="harvest-stat-grid"><div><span class="label">Средний вес ветки</span><strong>${number(m.bunchWeight, 1)} кг</strong><small class="coverage">${number(m.countedKg)} кг / ${m.bunches} веток</small></div><div><span class="label">Взвешенная цена</span><strong>${number(m.price, 2)} TRY/кг</strong><small class="coverage">${number(m.revenue)} TRY / ${number(m.kg)} кг</small></div></div><p class="note">Без подтверждённого количества веток: ${number(m.kg - m.countedKg)} кг.</p>${row ? "" : chart()}</section><section class="card"><div class="card-header"><h2>Качество</h2><span class="tag">По документам</span></div>${quality(m)}</section></div><div>${row ? `<section class="card"><h2>Документы и полевые отчёты</h2><div class="timeline-row"><span class="tag">Демо-факт продажи</span><h3>Подтверждённые документы депо</h3><p>${number(m.kg)} кг · ${money(m.revenue)}</p></div><div class="timeline-row"><span class="tag amber">Свидетельство работника</span><h3>Полевой отчёт о срезке</h3><p>${state.daily.fieldReports.filter(f=>f.greenhouseId===row.id&&f.date>=state.daily.season.from&&f.date<=state.daily.season.to).map(f=>`${f.date}: ${number(f.bunches)} веток · вес неизвестен · ${f.receiptId?"связь с чеком подтверждена":"не связан с чеком"}`).join("<br>")||"Нет подтверждённых полевых отчётов в этом периоде."}</p>${link("Срезы и сверка","reconcile","btn secondary full","greenhouse-reconcile")}</div></section>` : `<section class="card"><h2>По теплицам</h2>${all.map((r) => link(`${icon("leaf")}<div><strong>${e(r.name)}</strong><p>${number(r.kg)} кг · ${number(r.kg?r.revenue / r.kg:null, 2)} TRY/кг</p></div>${icon("arrow")}`, `harvest/${r.id}`, "greenhouse-row", `harvest-${r.id}`)).join("")}</section>`}${state.proposals.some((p) => p.type === "harvest" && ["pending", "deferred"].includes(p.status)) ? '<div class="notice amber">Неподтверждённый чек 1 200 кг показан в «Проверке» и не включён в продажи.</div>' : state.activity.some((x) => x.type === "harvest") ? '<div class="notice">Подтверждённый демо-чек включён в сезон. Деньги ещё не получены.</div>' : ""}</div></div>`;
+  return `${Header(row ? row.name : "Урожай", (state.harvestFilters.period === "last12" ? "Последние 12 месяцев" : state.harvestFilters.period === "season-2025" ? "Сезон 2025/26" : "Сезон 2026/27") + " · синтетические записи", true)}${row?"":contextualActions([["Записать срез","quick/harvest","harvest-cut"],["Добавить чек депо","quick/depot","harvest-depot"]],[["Срезы и сверка","reconcile","harvest-reconcile"],["Все чеки · сентябрь–октябрь","depots","harvest-all-depots"]])}${monthlyHarvest(state,{...state.harvestFilters,greenhouseId:row?row.id:state.harvestFilters.greenhouseId,lockGreenhouse:!!row})}<details class="source-details harvest-analytics"><summary>1–9 октября 2026 · подтверждённые кг и качество</summary><div class="split-grid"><div><section class="card"><span class="eyebrow">Подтверждённые поставки бананов</span><div class="detail-value">${m.kg?number(m.kg)+" кг":"Нет подтверждённых чеков"}</div>${m.kg?"":"<p class=note>Это отсутствие записей, а не подтверждённый нулевой урожай.</p>"}<div class="harvest-stat-grid"><div><span class="label">Средний вес ветки</span><strong>${number(m.bunchWeight, 1)} кг</strong><small class="coverage">${number(m.countedKg)} кг / ${m.bunches} веток</small></div><div><span class="label">Взвешенная цена</span><strong>${number(m.price, 2)} TRY/кг</strong><small class="coverage">${number(m.revenue)} TRY / ${number(m.kg)} кг</small></div></div><p class="note">Без подтверждённого количества веток: ${number(m.kg - m.countedKg)} кг.</p></section><section class="card"><div class="card-header"><h2>Качество</h2><span class="tag">По документам</span></div>${quality(m)}</section></div><div>${row ? `<section class="card"><h2>Документы и полевые отчёты</h2><div class="timeline-row"><span class="tag">Демо-факт продажи</span><h3>Подтверждённые документы депо</h3><p>${number(m.kg)} кг · ${money(m.revenue)}</p></div><div class="timeline-row"><span class="tag amber">Свидетельство работника</span><h3>Полевой отчёт о срезке</h3><p>${state.daily.fieldReports.filter(f=>f.greenhouseId===row.id&&f.date>=state.daily.season.from&&f.date<=state.daily.season.to).map(f=>`${f.date}: ${number(f.bunches)} веток · вес неизвестен · ${f.receiptId?"связь с чеком подтверждена":"не связан с чеком"}`).join("<br>")||"Нет подтверждённых полевых отчётов в этом периоде."}</p>${link("Срезы и сверка","reconcile","btn secondary full","greenhouse-reconcile")}</div></section>` : `<section class="card"><h2>По теплицам</h2>${all.map((r) => link(`${icon("leaf")}<div><strong>${e(r.name)}</strong><p>${number(r.kg)} кг · ${number(r.kg?r.revenue / r.kg:null, 2)} TRY/кг</p></div>${icon("arrow")}`, `harvest/${r.id}`, "greenhouse-row", `harvest-summary-${r.id}`)).join("")}</section>`}${state.proposals.some((p) => p.type === "harvest" && ["pending", "deferred"].includes(p.status)) ? '<div class="notice amber">Неподтверждённый чек 1 200 кг показан в «Проверке» и не включён в продажи.</div>' : state.activity.some((x) => x.type === "harvest") ? '<div class="notice">Подтверждённый демо-чек включён в сезон. Деньги ещё не получены.</div>' : ""}</div></div></details>${row?"":`<section class="card"><h2>Теплицы</h2>${all.map(r=>link(`${icon("leaf")}<div><strong>${e(r.name)}</strong><p>Помесячный урожай и история срезов</p></div>${icon("arrow")}`,`harvest/${r.id}`,"greenhouse-row",`harvest-${r.id}`)).join("")}</section>`}`;
 }
 function inventory() {
   const f = state.filters.inventory,
@@ -356,7 +370,7 @@ function inventory() {
 function stock(id, showMovements = false) {
   const s = state.stock.find((x) => x.id === id);
   if (!s) return EmptyState("Товар не найден", "Вернитесь к складу.");
-  return `<div class="detail-layout">${Header(showMovements ? "Движения" : s.name, s.place, true)}<section class="card"><span class="eyebrow">${e(s.category)}</span><div class="detail-value">${s.quantity == null ? "Остаток неизвестен" : number(s.quantity, 3) + " " + e(s.unit)}</div><p class="note">Стоимость неизвестна. Порог низкого остатка не задан.</p>${!showMovements ? link("Открыть движения", `stock/${id}/movements`, "btn secondary full", "stock-movements") : s.movements.length ? s.movements.map((m) => `<div class="timeline-row"><div class="summary-pair"><strong>${e(m.label.replace("Подтверждённый физический приход","Физический приход · подтверждён"))}</strong><strong>${m.quantity > 0 ? "+" : ""}${number(m.quantity, 3)} ${e(s.unit)}</strong></div><p>${e(m.date)} · ${e(s.place)}</p></div>`).join("") : EmptyState("Нет движений", "Неизвестный остаток не заменён нулём.")}</section></div>`;
+  return `<div class="detail-layout">${Header(showMovements ? "Движения" : s.name, s.place, true)}<section class="card"><span class="eyebrow">${e(s.category)}</span><div class="detail-value">${s.quantity == null ? "Остаток неизвестен" : number(s.quantity, 3) + " " + e(s.unit)}</div><p class="note">Стоимость неизвестна. Порог низкого остатка не задан.</p>${!showMovements ? (s.category === "Удобрения" ? btn(`${icon("leaf")} Создать задачу на внесение`, `fertilizer:start:${s.id}`, "primary full contextual-primary", "stock-fertilizer") : "") + link("Открыть движения", `stock/${id}/movements`, "btn secondary full", "stock-movements") : s.movements.length ? s.movements.map((m) => `<div class="timeline-row"><div class="summary-pair"><strong>${e(m.label.replace("Подтверждённый физический приход","Физический приход · подтверждён"))}</strong><strong>${m.quantity > 0 ? "+" : ""}${number(m.quantity, 3)} ${e(s.unit)}</strong></div><p>${e(m.date)} · ${e(s.place)}</p></div>`).join("") : EmptyState("Нет движений", "Неизвестный остаток не заменён нулём.")}</section>${fertilizerTaskRows(state,id)}</div>`;
 }
 function more() {
   return `<div class="more-layout">${Header("Ещё", "Всё хозяйство в одном месте")}<section class="card list-card">${[
@@ -406,9 +420,17 @@ function render({ focus = false } = {}) {
 
   const parts = route.split("/"),
     page = parts[0],
-    focused = page === "capture" || page === "assignment" || page === "quick" || page === "daily";
+    focused = page === "capture" || page === "assignment" || page === "quick" || page === "daily" || page === "fertilizer" || page === "settlement" || page === "settlement-review";
   let html;
   switch (page) {
+    case "settlement": html=settlementForm(state,parts[1]); break;
+    case "settlement-review": html=settlementReview(state,parts[1]); break;
+    case "report": html=reportDetail(state,parts[1]); break;
+    case "report-link": html=receiptLinkForm(state,parts[1],parts[2]); break;
+    case "receipt-link-review": html=receiptLinkReview(state,parts[1]); break;
+    case "fertilizer":
+      html = renderFertilizer(state,parts[1],parts[2]);
+      break;
     case "quick":
       html = quickForm(state, parts[1] || "expense",parts[2]);
       break;
@@ -537,6 +559,10 @@ function navigate(to) {
 }
 window.addEventListener("hashchange", () => {
   fileReadAttempt++;
+  if (route === "capture/photo" && location.hash !== "#capture/photo" && state.draft.reportId) {
+    state.reportCaptureDrafts[state.draft.reportId]=structuredClone(state.draft);
+    state.draft=structuredClone(state.captureDrafts.photo||{mode:"photo",text:"",comment:"",file:null,scenario:null});
+  }
   unsavedCaptureId=null;
   if (radialOpen) setRadial(false, { historyChange: false, focus: false });
   captureAttempt++;
@@ -701,6 +727,20 @@ function stopVoice() {
   }
 }
 async function captureSave(retry = false) {
+  if (state.draft.reportId) {
+    if (!state.draft.file) { toast("Выберите фото или PDF для этого среза."); return; }
+    try {
+      const d=state.draft;
+      const evidence=attachEvidence(state,d.reportId,{file:structuredClone(d.file),caption:d.comment,replacesEvidenceId:d.replacesEvidenceId||null},d.evidenceRequestId);
+      state.reportCaptureDrafts[d.reportId]=structuredClone(d);
+      if (!save()) { saveError="Фото пока только в памяти вкладки. Освободите память и повторите сохранение; повтор не создаст второй источник."; render(); return; }
+      const reportId=d.reportId;
+      delete state.reportCaptureDrafts[reportId];
+      state.draft=structuredClone(state.captureDrafts.photo||{mode:"photo",text:"",comment:"",file:null,scenario:null});
+      saveError="";save();navigate("report/"+reportId);toast("Источник приложен к срезу на проверку. Продажа не создана.");
+    } catch(error) { toast(error.message === "IDEMPOTENCY_CONFLICT" ? "Файл или подпись изменились. Вернитесь к источнику и сохраните исправленную версию." : error.message === "EVIDENCE_TOO_LARGE" ? "Выберите источник до 512 КБ." : "Не удалось приложить источник. Проверьте выбранное фото или PDF."); }
+    return;
+  }
   if(unsavedCaptureId && retry){
     if(!save()){saveError="Источник есть только в памяти вкладки. Запись на устройстве не удалась; повторите после освобождения памяти. Не закрывайте эту вкладку.";render();return;}
     const id=unsavedCaptureId;unsavedCaptureId=null;saveError="";navigate("review/"+id);return;
@@ -738,11 +778,39 @@ async function captureSave(retry = false) {
   if(!save()){unsavedCaptureId=p.id;saveError="Источник есть только в памяти вкладки. Запись на устройстве не удалась. Не закрывайте вкладку; после освобождения памяти повторите сохранение.";render();return;}
   navigate("review/" + p.id);
 }
+function reviseReportCapture() {
+  const draft=state.draft;
+  if(!draft.reportId)return;
+  const saved=state.daily.refinement.evidence.find(e=>e.requestId===draft.evidenceRequestId);
+  if(!saved)return;
+  draft.replacesEvidenceId=saved.id;
+  draft.evidenceRequestId=crypto.randomUUID();
+  toast("Изменённый файл или комментарий сохранится новым источником. Предыдущий оригинал останется.");
+}
+function handleFertilizer(ev) {
+  const result=handleFertilizerEvent(state,ev);
+  if (!result.handled) return false;
+  const persisted=save();
+  if(result.error) toast(result.error);
+  else if(result.notice && persisted) toast(result.notice);
+  if(result.route) navigate(result.route);
+  else if(result.render) {
+    const focusTest=ev.target?.dataset?.testid;
+    render();
+    if (focusTest && ev.type === "change") document.querySelector(`[data-testid="${CSS.escape(focusTest)}"]`)?.focus({preventScroll:true});
+  } else if(result.refresh) refreshFertilizerView(state);
+  return true;
+}
 document.addEventListener("input", (ev) => {
+  if (handleFertilizer(ev)) return;
   const el = ev.target;
+  if (el.closest("#settlement-form")) {
+    const form=el.closest("#settlement-form");
+    updateSettlement(state,form.dataset.settlementId,settlementValues(form));save();return;
+  }
   if(el.closest("#daily-form") && el.name) {
     const form=el.closest("#daily-form"),key=form.dataset.key;
-    state.dailyDrafts[key]??={};state.dailyDrafts[key][el.name]=el.value;
+    state.dailyDrafts[key]??={};state.dailyDrafts[key][el.name]=el.type === "checkbox" ? el.checked : el.value;
     if(el.name==="date")state.dailyDrafts[key].dateAssumed=false;
     save();
   }
@@ -752,6 +820,7 @@ document.addEventListener("input", (ev) => {
     save();
   }
   if (el.id === "capture-comment") {
+    if (state.draft.comment !== el.value) reviseReportCapture();
     state.draft.comment = el.value;
     if (state.draft.scenario === "receipt-conflict" && el.value !== CAPTION_CONFLICT) state.draft.scenario = "receipt";
     save();
@@ -780,7 +849,17 @@ document.addEventListener("input", (ev) => {
     );
 });
 document.addEventListener("change", async (ev) => {
+  if (handleFertilizer(ev)) return;
   const el = ev.target;
+  if (el.dataset.harvestOption) {
+    state.harvestFilters[el.dataset.harvestOption]=el.value||null;
+    if (el.dataset.harvestOption === "period") state.harvestFilters.month="";
+    save();render();document.querySelector(`[data-testid="${CSS.escape(el.dataset.testid)}"]`)?.focus({preventScroll:true});return;
+  }
+  if (el.closest("#settlement-form")) {
+    const form=el.closest("#settlement-form");
+    updateSettlement(state,form.dataset.settlementId,settlementValues(form));save();return;
+  }
   if (!["photo-file", "pdf-file", "video-file"].includes(el.id)) return;
   const f = el.files?.[0];
   if (!f) return;
@@ -797,6 +876,7 @@ document.addEventListener("change", async (ev) => {
       r.readAsDataURL(f);
     });
     if(attempt!==fileReadAttempt||state.draft!==originDraft||state.draft.mode!==originMode||route!=="capture/"+originMode)return;
+    reviseReportCapture();
     state.draft.file = {
       name: f.name,
       kind: f.type.startsWith("video/") ? "video" : f.type === "application/pdf" ? "pdf" : "image",
@@ -810,6 +890,7 @@ document.addEventListener("change", async (ev) => {
   }
 });
 document.addEventListener("click", async (ev) => {
+  if (handleFertilizer(ev)) return;
   const anchor = ev.target.closest('a[href^="#"]');
   if (anchor) {
     state.focus ??= {};
@@ -823,12 +904,54 @@ document.addEventListener("click", async (ev) => {
   if (!b) return;
   ev.preventDefault();
   const action = b.dataset.action;
+  if(action === "storage-retry") { if(save())toast("Изменения сохранены на этом устройстве");return; }
+  if (action.startsWith("harvest-metric:") || action.startsWith("harvest-month:")) {
+    const [kind,value]=action.split(":");state.harvestFilters[kind==="harvest-metric"?"metric":"month"]=value;
+    save();render();if(kind==="harvest-month")document.querySelector('[data-testid="harvest-history"]')?.scrollIntoView({block:"start",behavior:"auto"});return;
+  }
+  if (action.startsWith("settlement-")) {
+    const [kind,id,obligationId]=action.split(":");
+    try {
+      if(kind==="settlement-start") {const record=beginSettlement(state,{direction:id,partyId:obligationId,currency:b.dataset.currency});save();navigate("settlement/"+record.id);}
+      else if(kind==="settlement-review" || kind==="settlement-fill" || kind==="settlement-fill-all") {
+        const form=document.querySelector("#settlement-form");updateSettlement(state,id,settlementValues(form));
+        if(kind==="settlement-review") {save();navigate("settlement-review/"+id);}
+        else {settlementFill(state,id,{all:kind==="settlement-fill-all",obligationId});save();render();}
+      } else if(kind==="settlement-confirm") {confirmSettlement(state,id,{revision:Number(b.dataset.revision),ledgerRevision:Number(b.dataset.ledgerRevision)});const durable=save();render();toast(durable?"Один платёж сохранён в DEMO":"Платёж только в памяти вкладки. Повторите сохранение; не закрывайте страницу.");}
+    } catch(error) {toast(error.message==="STALE"?"Остаток или карточка изменились. Проверьте текущую версию ещё раз.":"Проверьте сумму, счёт и явное распределение платежа.");render();}
+    return;
+  }
+  if (action.startsWith("report-photo:")) {
+    const reportId=action.slice(13);
+    if(!state.daily.fieldReports.some(r=>r.id===reportId))return;
+    if(state.draft.reportId)state.reportCaptureDrafts[state.draft.reportId]=structuredClone(state.draft);
+    else state.captureDrafts[state.draft.mode]=structuredClone(state.draft);
+    state.draft=structuredClone(state.reportCaptureDrafts[reportId]||{mode:"photo",text:"",comment:"",file:null,scenario:null,reportId,evidenceRequestId:crypto.randomUUID()});
+    save();navigate("capture/photo");return;
+  }
+  if(action.startsWith("receipt-link-start:")) {
+    const [,reportId,receiptId,evidenceId]=action.split(":");
+    try {const review=beginReceiptLink(state,reportId,receiptId,{evidenceId:evidenceId||null});save();navigate("receipt-link-review/"+review.id);}catch{toast("Не удалось открыть связь. Проверьте срез и чек.");}return;
+  }
+  if(action.startsWith("receipt-link-confirm:")) {
+    try {confirmReceiptLink(state,action.slice(21),Number(b.dataset.revision),{reviewed:!!document.querySelector("#receipt-link-reviewed")?.checked});const durable=save();render();toast(durable?"Подтверждена только связь источников":"Связь пока только в памяти вкладки. Повторите сохранение.");}
+    catch(error){toast(error.message==="STALE"?"Данные изменились. Откройте проверку заново.":"Проверьте связь и отметьте подтверждение.");}return;
+  }
+  if (action.startsWith("worker-quick:")) {
+    const id=action.slice(13), worker=state.workers.find(w=>w.id===id);
+    if (!worker) return;
+    const existing=state.dailyDrafts.worker;
+    state.dailyDrafts.worker={...(existing?.worker===id?existing:{}),worker:id,workerLocked:true,place:existing?.worker===id?existing.place:worker.place};
+    save(); navigate("quick/worker"); return;
+  }
   if(action === "daily-save") {
     const form=document.querySelector("#daily-form"),kind=form.dataset.kind;
     const values=Object.fromEntries(new FormData(form));
     values.dateAssumed=state.dailyDrafts[form.dataset.key]?.dateAssumed!==false;
     try {
       if(kind==="worker") {
+        if(values.workerLocked === "true" && values.translation?.trim() && values.translationReviewed !== "true") throw Error("Отметьте, что вручную проверили текст на дари.");
+        if(!state.workers.some(w=>w.id===values.worker)) throw Error("Выберите существующий TEST-профиль.");
         if(!values.title.trim()||!values.worker||!values.place||!values.date)throw Error("Укажите поручение, работника, теплицу и дату.");
         const id="daily-worker-"+state.daily.nextId++;
         state.workerTasks.unshift({id,title:values.title,place:values.place,when:values.date,date:values.date,worker:values.worker,status:"assigned",report:null,source:values.title,sourceFacts:structuredClone(values),translation:values.translation||null,translationReviewed:!!values.translation,synthetic:true});
@@ -859,7 +982,7 @@ document.addEventListener("click", async (ev) => {
   if (action === "radial-close") { setRadial(false); return; }
   if (
     action.startsWith("capture-") &&
-    ["capture-photo", "capture-voice", "capture-text", "capture-video"].includes(action)
+    ["capture-photo", "capture-voice", "capture-text"].includes(action)
   ) {
     if (radialOpen) { setRadial(false, { historyChange: false, focus: false }); if(history.state?.r3Radial) await new Promise(resolve=>{window.addEventListener("popstate",resolve,{once:true});history.back();}); }
     const mode = action.split("-")[1];
@@ -986,6 +1109,7 @@ document.addEventListener("click", async (ev) => {
   if (action.startsWith("resolve-caption-comment:")) { resolveCaption(state, action.split(":")[1], "comment"); save(); render(); return; }
   if (action.startsWith("resolve-caption:")) { resolveCaption(state, action.split(":")[1], "document"); save(); render(); return; }
   if (["demo-photo", "demo-photo-conflict"].includes(action)) {
+    reviseReportCapture();
     state.draft.file = {
       name: "TEST-чек DEMO-09.svg",
       kind: "image",
@@ -1003,6 +1127,7 @@ document.addEventListener("click", async (ev) => {
     state.draft.scenario="video"; save();render();return;
   }
   if (action === "clear-file") {
+    reviseReportCapture();
     fileReadAttempt++;
     state.draft.file = null;
     state.draft.scenario = null;

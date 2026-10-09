@@ -82,9 +82,10 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
           const hit = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
           return {id: button.dataset.testid, x: b.x, y: b.y, right: b.right, bottom: b.bottom, width: b.width, height: b.height, topmost: hit === button || button.contains(hit), animation: style.animationName};
         }));
-        assert.equal(targets.length, 4);
+        assert.equal(targets.length, 3);
+        assert.equal(await page.getByTestId("capture-video").count(), 0, "Owner removed video from new Capture");
         for (const t of targets) {
-          assert.ok(t.width >= 44 && t.height >= 44, `${t.id} is a touch target`);
+          assert.ok(t.width >= 48 && t.height >= 48, `${t.id} is a touch target`);
           assert.ok(t.x >= 0 && t.right <= width && t.y >= 0 && t.bottom <= 844, `${t.id} fits ${width}px`);
           assert.equal(t.topmost, true, `${t.id} is clickable and unobscured`);
           assert.equal(t.animation === 'none', motion === 'reduce', 'Motion preference is honored');
@@ -97,7 +98,7 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
       await collapsed();
       if (motion === 'reduce') await screenshot(page, engine, 'daily-radial-collapsed', width, 'Daily Home with collapsed AI Capture');
       await open();
-      for (const target of ['capture-voice', 'capture-text', 'capture-video', 'radial-toggle', 'capture-photo']) {
+      for (const target of ['capture-voice', 'capture-text', 'radial-toggle', 'capture-photo']) {
         await key(page, 'Tab');
         assert.equal(await page.evaluate(() => document.activeElement?.dataset.testid), target, 'Tab stays inside the expanded capture controls');
       }
@@ -117,7 +118,7 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
       assert.equal(await page.locator('#daily-form').getAttribute('data-kind'), 'expense', 'Main actions are usable after radial dismissal');
       await go(page, 'back'); await toggle.waitFor();
     }
-    report.checks.push(`${engine}: trusted radial interactions at 320/390, normal/reduced motion, four unobscured 44px targets, Tab trap, toggle/outside/Escape/Back dismissal`);
+    report.checks.push(`${engine}: trusted radial interactions at 320/390, normal/reduced motion, three unobscured 48px targets, Tab trap, toggle/outside/Escape/Back dismissal`);
   });
 
   await journey('raw expense without counterparty, clarification, immutable source and reload', async page => {
@@ -308,7 +309,7 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
     assert.match(await page.locator('#main').innerText(), /TEST Мухаммед/);
   });
 
-  await journey('depot quality lines and estimates, section actions, and synthetic video source', async page => {
+  await journey('depot quality lines and estimates, section actions, and preserved historical video source', async page => {
     await go(page, 'nav-more'); await go(page, 'more-harvest'); await go(page, 'harvest-all-depots');
     await go(page, 'depot-depot-sep17');
     assert.equal(await page.getByTestId('depot-line').count(), 4, 'Repeated quality stays on separate original lines');
@@ -327,43 +328,49 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
     await go(page, 'nav-home');
     await go(page,'capture-text');await fill(page,'capture-input','Нужно переделать полив на Озвади на следующей неделе');await go(page,'back');
     const before = await stateOf(page);
-    await go(page, 'radial-toggle'); await go(page, 'capture-video');
-    assert.match(await page.locator('#main').innerText(), /ИИ не анализирует видео/);
-    assert.equal(await page.getByTestId('video-file').count(), 1);
-    assert.equal((await stateOf(page)).draft.text,'','Video never inherits hidden unsaved text');
-    await go(page, 'demo-video'); await fill(page, 'capture-comment', 'TEST визуальный источник без AI-анализа');
-    await go(page, 'capture-save'); await page.getByText('Нужна ручная проверка', {exact: true}).waitFor();
-    const after = await stateOf(page), source = after.sources.find(s => !before.sources.some(old => old.id === s.id));
-    assert.ok(source); assert.equal(source.file.kind, 'video'); assert.equal(source.file.fixture, true);
-    assert.equal(await page.getByTestId('confirm-proposal').count(), 0, 'Video is not falsely understood or posted');
-    assert.deepEqual(financeOf(after), financeOf(before));
-    await page.getByText('Исходник и история', {exact: true}).click(); assert.match(await page.locator('#main').innerText(), /анализ ИИ не выполнялся/);
-    await screenshot(page, engine, 'daily-video-synthetic-source', 390, 'Saved synthetic video source with explicit no-AI boundary');
-    await correctionReload(page); assert.equal((await stateOf(page)).sources.find(s => s.id === source.id).file.kind, 'video');
-    assert.equal((await stateOf(page)).tasks.length,before.tasks.length,'Video source creates no accidental task');
+    // Seed one pre-refinement historical video source, not a new capture action.
+    await page.evaluate(async(video)=>{
+      const {prepare}=await import('/demo-adapter.js');
+      const state=window.r3Demo.state(), prior=structuredClone(state.draft);
+      state.draft={mode:'video',text:'',comment:'TEST исторический видеоисточник',scenario:null,file:{kind:'video',name:'SYNTHETIC-historical-video.mp4',url:'data:video/mp4;base64,'+video}};
+      const proposal=prepare(state); state.draft=prior; state.historicalVideoTestId=proposal.id;
+      window.r3Demo.set(state);
+    },'AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMxbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAA+gAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAlx0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAA+gAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAGAAAABAAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAPoAAAAAAABAAAAAAHUbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAAAQABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABf21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAT9zdGJsAAAAv3N0c2QAAAAAAAAAAQAAAK9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAGAAQABIAAAASAAAAAAAAAABFUxhdmM2MS4xOS4xMDEgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAANWF2Y0MBZAAK/+EAGGdkAAqs2UYmwEQAAAMABAAAAwAQPEiWWAEABmjr48siwP34+AAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAAXeAAAAAAAAAAYc3R0cwAAAAAAAAABAAAAAgAAIAAAAAAUc3RzcwAAAAAAAAABAAAAAQAAABxzdHNjAAAAAAAAAAEAAAABAAAAAgAAAAEAAAAcc3RzegAAAAAAAAAAAAAAAgAAAuAAAAAPAAAAFHN0Y28AAAAAAAAAAQAAA2EAAABhdWR0YQAAAFltZXRhAAAAAAAAACFoZGxyAAAAAAAAAABtZGlyYXBwbAAAAAAAAAAAAAAAACxpbHN0AAAAJKl0b28AAAAcZGF0YQAAAAEAAAAATGF2ZjYxLjcuMTAzAAAACGZyZWUAAAL3bWRhdAAAAq0GBf//qdxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjQgcjMxMDggMzFlMTlmOSAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjMgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0yIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yIHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9NDAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4wMACAAAAAK2WIhAAU//7s2n4FNtyOTufSkInVjmKemJnYualmddMKRGzPC/FP46g6MskAAAALQZohbEEv/rUqjyg=');
+    await correctionReload(page);
+    const after=await stateOf(page),source=after.sources.find(s=>s.id===after.historicalVideoTestId);
+    assert.ok(source);assert.equal(source.file.kind,'video');assert.match(source.file.url,/^data:video\/mp4;base64,/);
+    await route(page,'review/'+source.id);
+    assert.equal(await page.getByTestId('confirm-proposal').count(),0,'Historical video is never falsely understood or posted');
+    assert.deepEqual(financeOf(await stateOf(page)),financeOf(before));
+    await page.getByText('Исходник и история',{exact:true}).click();assert.match(await page.locator('#main').innerText(),/анализ ИИ не выполнялся/);
+    await page.getByTestId('video-preview').evaluate(video=>new Promise((resolve,reject)=>{if(video.readyState>=1)return resolve();video.addEventListener('loadedmetadata',resolve,{once:true});video.addEventListener('error',()=>reject(Error('Historical synthetic MP4 preview did not decode')),{once:true});}));
+    assert.equal(await page.getByTestId('video-preview').evaluate(video=>video.videoWidth),96,'Historical video remains playable');
+    await screenshot(page,engine,'daily-video-synthetic-source',390,'Historical video source retained after removal of new video Capture');
+    await correctionReload(page);assert.equal((await stateOf(page)).sources.find(s=>s.id===source.id).file.kind,'video');
+    assert.equal((await stateOf(page)).tasks.length,before.tasks.length,'Historical video creates no accidental task');
     await go(page,'nav-home');await go(page,'capture-text');assert.equal(await page.getByTestId('capture-input').inputValue(),'Нужно переделать полив на Озвади на следующей неделе','The independent text draft survives cross-mode capture and reload');
     await go(page,'back');await go(page,'capture-photo');assert.equal((await stateOf(page)).draft.text,'');await go(page,'demo-photo');await go(page,'capture-save');await page.getByTestId('confirm-proposal').waitFor();assert.match(await page.locator('#main').innerText(),/Чек депо/);assert.equal((await stateOf(page)).tasks.length,before.tasks.length);
   });
 
   await journey('media type/size guards, interrupted reader, and failed local storage with idempotent retry', async page => {
-    await go(page,'capture-video');
-    await page.getByTestId('video-file').setInputFiles({name:'SYNTHETIC.png',mimeType:'image/png',buffer:Buffer.from('TEST')});
-    assert.match(await page.locator('#toast').innerText(),/видео MP4/);assert.equal((await stateOf(page)).draft.file,null);
-    await page.getByTestId('video-file').setInputFiles({name:'SYNTHETIC-large.mp4',mimeType:'video/mp4',buffer:Buffer.alloc(512*1024+1)});
+    await go(page,'capture-photo');
+    await page.getByTestId('photo-file').setInputFiles({name:'SYNTHETIC.mp4',mimeType:'video/mp4',buffer:Buffer.from('TEST')});
+    assert.match(await page.locator('#toast').innerText(),/фото JPEG/);assert.equal((await stateOf(page)).draft.file,null);
+    await page.getByTestId('photo-file').setInputFiles({name:'SYNTHETIC-large.png',mimeType:'image/png',buffer:Buffer.alloc(512*1024+1)});
     assert.match(await page.locator('#toast').innerText(),/до 512 КБ/);assert.equal((await stateOf(page)).draft.file,null);
-    await page.getByTestId('video-file').setInputFiles({name:'SYNTHETIC-green-frame.mp4',mimeType:'video/mp4',buffer:Buffer.from('AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMxbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAA+gAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAlx0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAA+gAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAGAAAABAAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAPoAAAAAAABAAAAAAHUbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAAAQABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABf21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAT9zdGJsAAAAv3N0c2QAAAAAAAAAAQAAAK9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAGAAQABIAAAASAAAAAAAAAABFUxhdmM2MS4xOS4xMDEgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAANWF2Y0MBZAAK/+EAGGdkAAqs2UYmwEQAAAMABAAAAwAQPEiWWAEABmjr48siwP34+AAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAAXeAAAAAAAAAAYc3R0cwAAAAAAAAABAAAAAgAAIAAAAAAUc3RzcwAAAAAAAAABAAAAAQAAABxzdHNjAAAAAAAAAAEAAAABAAAAAgAAAAEAAAAcc3RzegAAAAAAAAAAAAAAAgAAAuAAAAAPAAAAFHN0Y28AAAAAAAAAAQAAA2EAAABhdWR0YQAAAFltZXRhAAAAAAAAACFoZGxyAAAAAAAAAABtZGlyYXBwbAAAAAAAAAAAAAAAACxpbHN0AAAAJKl0b28AAAAcZGF0YQAAAAEAAAAATGF2ZjYxLjcuMTAzAAAACGZyZWUAAAL3bWRhdAAAAq0GBf//qdxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjQgcjMxMDggMzFlMTlmOSAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjMgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0yIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yIHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9NDAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yMy4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCBpcF9yYXRpbz0xLjQwIGFxPTE6MS4wMACAAAAAK2WIhAAU//7s2n4FNtyOTufSkInVjmKemJnYualmddMKRGzPC/FP46g6MskAAAALQZohbEEv/rUqjyg=','base64')});
-    await page.getByTestId('video-preview').waitFor();
-    await page.getByTestId('video-preview').evaluate(video=>new Promise((resolve,reject)=>{if(video.readyState>=1)return resolve();video.addEventListener('loadedmetadata',resolve,{once:true});video.addEventListener('error',()=>reject(Error('Synthetic local MP4 preview did not decode')),{once:true});}));
-    assert.equal(await page.getByTestId('video-preview').evaluate(v=>v.videoWidth),96,'A real tiny generated video has a local decoded preview');
+    await page.getByTestId('photo-file').setInputFiles({name:'SYNTHETIC-pixel.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5VQAAAAASUVORK5CYII=','base64')});
+    await page.locator('.photo-preview img').waitFor();
+    await page.locator('.photo-preview img').evaluate(image=>image.decode());
+    assert.equal(await page.locator('.photo-preview img').evaluate(image=>image.naturalWidth),1,'A real tiny synthetic PNG is decoded locally');
     await go(page,'clear-file');
     await page.evaluate(()=>{
       const Native=window.FileReader;window.__restoreReader=()=>{window.FileReader=Native;};
-      window.FileReader=class{readAsDataURL(){window.__finishRead=()=>{this.result='data:video/mp4;base64,VEVTVA==';this.onload();};}};
+      window.FileReader=class{readAsDataURL(){window.__finishRead=()=>{this.result='data:image/png;base64,VEVTVA==';this.onload();};}};
     });
-    await page.getByTestId('video-file').setInputFiles({name:'SYNTHETIC-interrupted.mp4',mimeType:'video/mp4',buffer:Buffer.from('TEST')});
+    await page.getByTestId('photo-file').setInputFiles({name:'SYNTHETIC-interrupted.png',mimeType:'image/png',buffer:Buffer.from('TEST')});
     await go(page,'back');await go(page,'capture-text');await fill(page,'capture-input','TEST независимый текстовый черновик');
     await page.evaluate(()=>{window.__finishRead();window.__restoreReader();});
-    const interrupted=await stateOf(page);assert.equal(interrupted.draft.mode,'text');assert.equal(interrupted.draft.file,null);assert.equal(interrupted.draft.text,'TEST независимый текстовый черновик');assert.equal(interrupted.captureDrafts.video.file,null);
+    const interrupted=await stateOf(page);assert.equal(interrupted.draft.mode,'text');assert.equal(interrupted.draft.file,null);assert.equal(interrupted.draft.text,'TEST независимый текстовый черновик');assert.equal(interrupted.captureDrafts.photo.file,null);
     const before=interrupted.sources.length;
     await page.evaluate(()=>{const original=Storage.prototype.setItem;window.__restoreStorage=()=>{Storage.prototype.setItem=original;};Storage.prototype.setItem=function(){throw new DOMException('Synthetic quota test','QuotaExceededError');};});
     await go(page,'capture-save');await page.getByTestId('capture-retry').waitFor();

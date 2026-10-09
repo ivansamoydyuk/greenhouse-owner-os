@@ -29,7 +29,7 @@ function quantityMinor(raw) {
   return result;
 }
 function validDate(value) {
-  return /^2026-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
 }
 const greenhouseList = () => [
   {id: 'ozvadi', name: 'Özvadi'}, {id: 'imamli', name: 'İmamlı'}, {id: 'yesiloz', name: 'Yeşilöz'},
@@ -244,7 +244,7 @@ function validate(d, kind, input) {
   }
   if(kind==='harvest-link') {
     const report=d.fieldReports.find(r=>r.id===input.reportId),receipt=d.receipts.find(r=>r.id===input.receiptId);
-    need(!!report&&!!receipt,'Выберите отчёт и чек');need(!report?.receiptId,'Этот срез уже связан с чеком');
+    need(!!report&&!!receipt,'Выберите отчёт и чек');need(!d.links.some(l=>l.reportId===input.reportId&&l.receiptId===input.receiptId),'Эта связь среза и чека уже подтверждена');
   }
   return errors;
 }
@@ -307,14 +307,14 @@ export function confirmAction(state,id,revision) {
   }
   if(a.kind.startsWith('inventory-'))a.result=addInventory(d,a);
   if(a.kind==='harvest-link') {
-    const report=d.fieldReports.find(r=>r.id===i.reportId);report.receiptId=i.receiptId;report.linkProvenance='owner-confirmed';
+    const report=d.fieldReports.find(r=>r.id===i.reportId);if(!report.receiptId)report.receiptId=i.receiptId;report.linkProvenance='owner-confirmed';
     d.links.push({id:a.id,reportId:i.reportId,receiptId:i.receiptId,provenance:'owner-confirmed'});
   }
   a.status='confirmed';a.revision++;d.revision++;projectDaily(state);return a;
 }
 export function receiptCandidates(state,reportId) {
   const d=dailyOf(state),report=d.fieldReports.find(r=>r.id===reportId);if(!report)return [];
-  return d.receipts.filter(r=>r.date===report.date).map(r=>({receiptId:r.id,label:`${r.party} · ${r.date} · ${r.adet} ADET`,provenance:'date-candidate',requiresConfirmation:true}));
+  return d.receipts.filter(r=>r.date===report.date).map(r=>({receiptId:r.id,label:`${r.party} · ${r.date} · ${r.adet==null?'Количество веток неизвестно':r.adet+' ADET'}`,provenance:'date-candidate',requiresConfirmation:true}));
 }
 // One-way bridge for the pre-existing, clearly labelled storyboard review cards.
 export function syncLegacyConfirmation(state,p) {

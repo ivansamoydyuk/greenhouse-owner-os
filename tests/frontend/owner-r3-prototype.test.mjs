@@ -37,6 +37,7 @@ import {
   ErrorState,
   LoadingState,
   e,
+  icon,
   money,
 } from "../../prototype/owner-r3/components.js";
 test("R3 initial synthetic positions and season reconcile across shared rows", () => {
@@ -956,4 +957,23 @@ test("R3 design lock task review cards render one escaped action title without a
   assert.ok(html.includes("<h2>Уточнить текст действия</h2>"));
   assert.doesNotMatch(html, /Проверить &lt;насос&gt;|Переделать полив|class="review-value"/);
   assert.equal(p.source, SCENARIO_TEXT);
+});
+
+test('R3 B Capture uses a central leaf and exactly three new-source actions', () => {
+  const nav=Navigation('home',4),capture=CaptureBar();
+  assert.match(nav,/capture-orb/);
+  assert.ok(nav.includes(icon('leaf')));
+  assert.equal((capture.match(/class="btn radial-item/g)||[]).length,3);
+  for (const mode of ['photo','voice','text']) assert.match(capture,new RegExp('capture-'+mode));
+  assert.doesNotMatch(capture,/capture-video|Видео/);
+});
+
+test('R3 B persists historical video sources without enabling a new video entry', () => {
+  const state=initialState();
+  state.draft={mode:'video',text:'',comment:'historical fixture',scenario:null,file:{kind:'video',name:'SYNTHETIC history',fixture:true}};
+  const source=prepare(state),storage={value:null,setItem(key,value){this.value=value;},getItem(){return this.value;}};
+  persist(storage,state);const restored=loadState(storage);
+  assert.equal(restored.sources.find(s=>s.id===source.id).file.kind,'video');
+  assert.equal(restored.proposals.find(p=>p.id===source.id).type,'unknown');
+  assert.doesNotMatch(CaptureBar(),/capture-video/);
 });

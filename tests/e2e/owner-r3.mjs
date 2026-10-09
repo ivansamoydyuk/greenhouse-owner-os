@@ -5,6 +5,8 @@ import fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {runDailyJourneys} from './owner-r3-daily.mjs';
+import {runRefinementJourneys} from './owner-r3-refinement.mjs';
+import {runFertilizerJourneys} from './owner-r3-fertilizer.mjs';
 
 const base=process.env.PREVIEW_URL||'http://127.0.0.1:4173';
 const artifacts=process.env.E2E_ARTIFACTS||'artifacts/owner-r3-evidence';
@@ -105,7 +107,8 @@ async function layout(page,routeName,width){
     const meta=document.querySelector('meta[name=viewport]')?.content||'';
     if(/user-scalable\s*=\s*no|maximum-scale\s*=\s*1(?:\D|$)/i.test(meta))out.push('Text/page zoom is restricted');
     for(const el of document.querySelectorAll('a,button,input:not([type=file]):not([type=hidden]),select,textarea')){
-      const b=el.getBoundingClientRect();
+      const hitTarget=['checkbox','radio'].includes(el.type) && el.labels?.length ? el.labels[0] : el;
+      const b=hitTarget.getBoundingClientRect();
       if(!b.width||!b.height||getComputedStyle(el).visibility==='hidden')continue;
       if(b.width<43.5||b.height<43.5)out.push(`Touch target below 44px: ${el.dataset.testid||el.textContent.trim().slice(0,40)} ${Math.round(b.width)}×${Math.round(b.height)}`);
       if((b.left<-.5||b.right>expectedWidth+.5)&&!el.closest('.filters'))out.push(`Control outside viewport: ${el.dataset.testid||el.tagName}`);
@@ -117,10 +120,10 @@ async function layout(page,routeName,width){
   assert.deepEqual(problems,[],`${width}px #${routeName}: ${problems.join('; ')}`);
   const covered=await page.evaluate(async()=>{const dock=document.querySelector('.dock'),last=document.querySelector('#main')?.lastElementChild;if(!dock||!last)return false;window.scrollTo(0,document.documentElement.scrollHeight);await new Promise(r=>requestAnimationFrame(r));const hidden=last.getBoundingClientRect().bottom>dock.getBoundingClientRect().top+1;window.scrollTo(0,0);return hidden;});
   assert.equal(covered,false,`${width}px #${routeName}: bottom content is covered by capture/navigation dock`);
-  if(!['capture/','task/','quick/','daily/','assignment/'].some(prefix=>routeName.startsWith(prefix))){
+  if(!['capture/','task/','quick/','daily/','assignment/','settlement/','settlement-review/','fertilizer/'].some(prefix=>routeName.startsWith(prefix))){
     assert.equal(await page.getByTestId('radial-toggle').isVisible(),true,'Central radial Capture is available');
     assert.equal(await page.getByTestId('radial-toggle').getAttribute('aria-expanded'),'false','Capture starts collapsed');
-    for(const mode of ['photo','voice','text','video'])assert.equal(await page.getByTestId('capture-'+mode).isVisible(),false,`${mode} remains hidden until the owner opens Capture`);
+    for(const mode of ['photo','voice','text'])assert.equal(await page.getByTestId('capture-'+mode).isVisible(),false,`${mode} remains hidden until the owner opens Capture`);
   }
 }
 async function captureFailure(page){if(!page.isClosed()){await rawShot(page,{path:path.join(artifacts,'failure.png'),fullPage:true}).catch(()=>{});await fs.writeFile(path.join(artifacts,'failure.html'),await page.content()).catch(()=>{});}}
@@ -456,6 +459,8 @@ async function main(browser,engine){
   await correctionJourneys(browser,engine);
   await moneyRegressions(browser,engine);
   await runDailyJourneys({browser,engine,newPage,click,fill,ready,route,screenshot,layout,report,correctionJourney,correctionReload});
+  await runRefinementJourneys({browser,engine,newPage,click,fill,ready,route,screenshot,layout,report,correctionJourney,correctionReload});
+  await runFertilizerJourneys({browser,engine,newPage,click,fill,ready,route,screenshot,layout,report,correctionJourney,correctionReload});
   if(engine!=='chromium')return;
   await journey(browser,'1. Home → review → missing amount → one clarification → demo confirmation',async page=>{
     await click(page,'nav-review');await click(page,'review-clarify');await click(page,'edit-amount');await fill(page,'fact-input','2500');await click(page,'sheet-save');await click(page,'confirm-proposal');
@@ -569,6 +574,12 @@ try{
     const browser=await type.launch({headless:true});
     try{await main(browser,engine);}finally{await browser.close();}
   }
+  assert.equal(report.refinement_journeys.length,14,'Seven refinement journeys in both engines');
+  assert.ok(report.refinement_journeys.every(item=>item.status==='PASS'));
+  assert.equal(report.refinement_layout_checks.length,56,'Four refinement pages by seven widths by two engines');
+  assert.equal(report.fertilizer_journeys.length,8,'Four fertilizer journeys in both engines');
+  assert.ok(report.fertilizer_journeys.every(item=>item.status==='PASS'));
+  assert.equal(report.fertilizer_layout_checks.length,14,'Builder and review checked together at seven widths in both engines');
   assert.equal(report.daily_journeys.length,22,'Eleven additive daily journeys in both engines');
   assert.ok(report.daily_journeys.every(item=>item.status==='PASS'),'All daily journeys pass');
   assert.equal(report.daily_layout_checks.length,98,'Seven daily pages by seven widths by two engines');
@@ -595,6 +606,8 @@ try{
 }finally{
   report.finished_at=new Date().toISOString();
   await fs.writeFile(path.join(artifacts,'daily-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Trusted DOM clicks from Home, with explicit radial expansion counted. Both engines, eleven additive daily journeys, 98 daily screen/width cases.',journeys:report.daily_journeys,layouts:report.daily_layout_checks},null,2)+'\n');
+  await fs.writeFile(path.join(artifacts,'refinement-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Seven trusted browser journeys in each engine: contextual settlements, monthly history, durable report-context evidence and explicit link review, contextual worker and storage recovery. Native picker/camera are not measured.',journeys:report.refinement_journeys,layouts:report.refinement_layout_checks},null,2)+'\n');
+  await fs.writeFile(path.join(artifacts,'fertilizer-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Four trusted browser journeys per engine: per-da multi-component, normal CURRENT topology with unknown mappings acknowledged, separate preparations/overrides, and seven-width builder/review with reload and zero stock/finance effects.',journeys:report.fertilizer_journeys,layouts:report.fertilizer_layout_checks},null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'browser-report.json'),JSON.stringify(report,null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Trusted DOM click events from Home, visible form entry events, actual manual field changes. Dropdown selection uses actual keyboard Home/Arrow/Enter events listed separately. Native file chooser/keyboard tap costs are unmeasured. Photo journey3 explicitly uses the prepared synthetic-source button; real file attachment is covered separately without claiming picker-tap counts.',journeys:report.journeys},null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'correction-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Ten additional trusted browser journeys in each engine. Source/current coherence, each stock/depot fact sheet, separate photo caption, both explicit contradiction resolutions, zero-entry Serkan/tomorrow recovery, compact Home worker signal, saved-task correction/prose guard/DONE/restore, and replaced/cleared conflict captions. Original eight Chromium journeys are retained separately.',journeys:report.correction_journeys},null,2)+'\n');
@@ -602,11 +615,12 @@ try{
   const artifactFiles=await fs.readdir(artifacts), manifest=[];
   for(const file of artifactFiles.filter(f=>/\.(png|json|txt)$/.test(f)&&f!=='evidence-manifest.json')){
     const bytes=await fs.readFile(path.join(artifacts,file));
-    manifest.push({file,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),part:file.endsWith('.png')?(file.includes('-daily-')?'daily':file.startsWith('chromium-')?'chromium-core':file.startsWith('webkit-')?'webkit-core':'metadata'):'metadata'});
+    manifest.push({file,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),part:file.endsWith('.png')?(file.includes('-fertilizer-')?'fertilizer':file.includes('-refinement-')?'refinement':file.includes('-daily-')?'daily':file.startsWith('chromium-')?'chromium-core':file.startsWith('webkit-')?'webkit-core':'metadata'):'metadata'});
   }
-  await fs.writeFile(path.join(artifacts,'evidence-manifest.json'),JSON.stringify({feature_sha:expectedSha,parts:['chromium-core','webkit-core','daily','metadata'],files:manifest},null,2)+'\n');
-  for(const part of ['chromium-core','webkit-core','daily','metadata'])assert.ok(manifest.filter(f=>f.part===part).reduce((n,f)=>n+f.bytes,0)<25*1024*1024,`Evidence ${part} must fit the supported artifact transfer limit`);
+  await fs.writeFile(path.join(artifacts,'evidence-manifest.json'),JSON.stringify({feature_sha:expectedSha,parts:['chromium-core','webkit-core','daily','refinement','fertilizer','metadata'],files:manifest},null,2)+'\n');
+  for(const part of ['chromium-core','webkit-core','daily','refinement','fertilizer','metadata'])assert.ok(manifest.filter(f=>f.part===part).reduce((n,f)=>n+f.bytes,0)<25*1024*1024,`Evidence ${part} must fit the supported artifact transfer limit`);
   console.log(`R3 browser ${report.status}: ${report.screenshots.length} screenshots, ${report.journeys.length}/8 measured journeys, SHA ${expectedSha}`);
   console.log(`R3 correction evidence: ${report.correction_journeys.length}/20 added both-engine journeys; ${report.money_regressions.length}/112 money/font cases`);
+  console.log(`R3 owner-B evidence: ${report.refinement_journeys?.length||0}/14 contextual journeys; ${report.fertilizer_journeys?.length||0}/8 fertilizer journeys`);
   if(report.failure)console.error(report.failure.message);
 }
