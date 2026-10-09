@@ -67,6 +67,7 @@ async function screenshot(page,engine,routeName,width,label){
   const file=`${engine}-${String(width)}-${routeName.replaceAll('/','-')}.png`;
   await page.screenshot({path:path.join(artifacts,file),fullPage:true});
   report.screenshots.push({file,feature_sha:expectedSha,engine,width,screen:label,route:'#'+routeName,full_page:true});
+  if(width===390){await page.evaluate(()=>window.scrollTo(0,0));const viewportFile=file.replace('.png','-viewport.png');await page.screenshot({path:path.join(artifacts,viewportFile),fullPage:false});report.screenshots.push({file:viewportFile,feature_sha:expectedSha,engine,width,height:page.viewportSize().height,screen:label,route:'#'+routeName,full_page:false});}
 }
 async function layout(page,routeName,width){
   const problems=await page.evaluate(()=>{
@@ -151,7 +152,7 @@ async function main(browser,engine){
     await page.getByTestId('assignment-confirm').waitFor();
     assert.match(await page.locator('#main').innerText(),/Не включать насос/);assert.match(await page.locator('.translation').innerText(),/پمپ را روشن نکنید/);
     assert.equal(await page.evaluate(()=>window.r3Demo.state().workerTask.translationReviewed),false,'Review is never automatically marked');
-    assert.match(await page.getByTestId('assignment-confirm').innerText(),/Проверил текст/);await click(page,'assignment-confirm');
+    assert.match(await page.getByTestId('assignment-confirm').innerText(),/Проверил текст/);await screenshot(page,'chromium','state-assignment-before-confirmation',390,'Reviewed assignment before confirmation');await click(page,'assignment-confirm');
     assert.match(await page.locator('#main').innerText(),/назначено|Назначено/);
   });
   await interruptions(browser);
@@ -165,7 +166,7 @@ async function interruptions(browser){
     await page.goBack();await ready(page);await page.goForward();await ready(page);
     assert.equal(await page.getByTestId('capture-input').inputValue(),'TEST незнакомое сообщение, не распознавайте автоматически','Browser Back/Forward preserves draft');
     await click(page,'capture-save');await page.getByText('Нужна ручная проверка',{exact:true}).waitFor();
-    assert.equal(await page.getByTestId('confirm-proposal').count(),0,'Unknown input is never a fabricated understood success');
+    assert.equal(await page.getByTestId('confirm-proposal').count(),0,'Unknown input is never a fabricated understood success');await screenshot(page,'chromium','state-unknown-input',390,'Unknown input without fabricated understanding');
     await route(page,'review/clarify');await click(page,'edit-amount');await fill(page,'fact-input','3500');await click(page,'sheet-cancel');
     assert.equal(await page.locator('dialog[open]').count(),0);
     assert.equal(await page.getByTestId('edit-amount').evaluate(el=>el===document.activeElement),true,'Closing sheet restores focus');
@@ -179,22 +180,32 @@ async function interruptions(browser){
     await route(page,'capture/text');await page.setViewportSize({width:390,height:460});await fill(page,'capture-input',SCENARIO);
     await page.getByTestId('capture-save').scrollIntoViewIfNeeded();assert.equal(await page.getByTestId('capture-save').isVisible(),true);
     await page.getByTestId('capture-input').focus();await page.keyboard.press('Tab');
-    assert.ok(await page.evaluate(()=>document.activeElement!==document.body),'Keyboard tab keeps reachable controls');
+    assert.ok(await page.evaluate(()=>document.activeElement!==document.body),'Keyboard tab keeps reachable controls');await screenshot(page,'chromium','state-keyboard-height-proxy',390,'Reduced-height keyboard proxy, not native iPhone keyboard');
     await page.setViewportSize({width:390,height:844});
     await route(page,'settings');await click(page,'toggle-error');await route(page,'capture/text');await fill(page,'capture-input',SCENARIO);await click(page,'capture-save');await page.getByTestId('capture-retry').waitFor();
-    assert.equal(await page.evaluate(()=>window.r3Demo.state().draft.text),SCENARIO);
+    assert.equal(await page.evaluate(()=>window.r3Demo.state().draft.text),SCENARIO);await screenshot(page,'chromium','state-save-error',390,'Preparation error preserving the source');
     const beforeSources=await page.evaluate(()=>window.r3Demo.state().sources.length);
     await click(page,'capture-retry');await page.getByTestId('task-save').waitFor();assert.equal(await page.evaluate(()=>window.r3Demo.state().sources.length),beforeSources+1,'Retry creates one source');
     await route(page,'settings');await click(page,'toggle-offline');await route(page,'capture/text');await fill(page,'capture-input',SCENARIO);await click(page,'capture-save');await page.getByTestId('capture-retry').waitFor();assert.match(await page.locator('#main').innerText(),/Нет сети/);
     await route(page,'settings');await click(page,'toggle-offline');await route(page,'capture/text');assert.equal(await page.getByTestId('capture-input').inputValue(),SCENARIO);await click(page,'capture-save');await page.getByTestId('task-save').waitFor();
-    await route(page,'settings');await click(page,'toggle-stale');await route(page,'review/clarify');await click(page,'edit-amount');await fill(page,'fact-input','3500');await click(page,'sheet-save');await click(page,'confirm-proposal');await page.getByTestId('refresh-stale').waitFor();
+    await route(page,'settings');await click(page,'toggle-stale');await route(page,'review/clarify');await click(page,'edit-amount');await fill(page,'fact-input','3500');await click(page,'sheet-save');await click(page,'confirm-proposal');await page.getByTestId('refresh-stale').waitFor();await screenshot(page,'chromium','state-stale-card',390,'Stale card blocks confirmation');
     assert.equal(await page.evaluate(()=>window.r3Demo.state().proposals.find(p=>p.id==='clarify').status),'pending','Stale card has no confirmation effect');
     await click(page,'refresh-stale');assert.equal(await page.locator('dialog[open]').count(),0);await click(page,'confirm-proposal');
     assert.equal(await page.evaluate(()=>window.r3Demo.state().proposals.find(p=>p.id==='clarify').status),'confirmed');
-    await route(page,'review');await click(page,'review-harvest');await click(page,'review-depot-review');await page.goBack();await ready(page);assert.equal(await page.getByTestId('review-harvest').getAttribute('aria-pressed'),'true','Back retains queue filter');
+    await route(page,'review');await click(page,'review-harvest');await click(page,'review-depot-review');await page.goBack();await ready(page);assert.equal(await page.getByTestId('review-harvest').getAttribute('aria-pressed'),'true','Back retains queue filter');assert.equal(await page.getByTestId('review-depot-review').evaluate(el=>el===document.activeElement),true,'Browser Back restores focus to the exact review card');
     await page.evaluate(()=>window.r3Demo.reset());await route(page,'settings');await click(page,'toggle-empty');await page.getByText('Здесь пока пусто',{exact:true}).waitFor();await screenshot(page,'chromium','state-empty-review',390,'Empty review');
     await route(page,'settings');await click(page,'toggle-large');await layout(page,'finance/receivable',390);await screenshot(page,'chromium','state-large-finance',390,'Large amount');await page.setViewportSize({width:320,height:844});await layout(page,'finance/receivable',320);await screenshot(page,'chromium','state-large-finance',320,'Large amount');
     report.checks.push('Real UI state controls: empty queue, large amount 320/390, preparation error/retry without duplication, offline draft recovery, stale confirmation blocked, Back preserves review filter');
+    await page.setViewportSize({width:390,height:844});await page.evaluate(()=>window.r3Demo.reset());
+    await route(page,'review/unknown-review');await page.getByText('Исходник и история',{exact:true}).click();await screenshot(page,'chromium','state-incomplete-source',390,'Incomplete synthetic source');await route(page,'finance/payable');await screenshot(page,'chromium','state-long-label',390,'Long counterparty label');
+    await route(page,'review/clarify');await click(page,'edit-amount');await fill(page,'fact-input','1,10');await click(page,'sheet-save');assert.match(await page.locator('.detail-value').innerText(),/^1,10 TRY$/);assert.equal(await page.evaluate(()=>window.r3Demo.state().proposals.find(p=>p.id==='clarify').amount),1.1);
+    await route(page,'workers');const beforeWorker=await page.getByTestId('worker-muhammed').innerText();
+    await route(page,'assignment/worker-task');await click(page,'choose-worker');await click(page,'worker-option-muhammed');await route(page,'workers');assert.equal(await page.getByTestId('worker-muhammed').innerText(),beforeWorker,'Selecting a worker does not count as assignment');
+    await click(page,'worker-muhammed');assert.equal(await page.getByTestId('task-worker-task').count(),0,'Draft is not presented as assigned');await click(page,'assign-open');await click(page,'assignment-confirm');await route(page,'worker/muhammed');await page.getByTestId('task-worker-task').waitFor();await click(page,'task-worker-task');assert.match(await page.locator('#main').innerText(),/TEST Мухаммед/);
+    report.checks.push('Browser Back restores exact review-card focus; 1,10 TRY preserved; selecting worker creates no assigned count/detail before reviewed confirmation');
+    await context.addInitScript(()=>{Object.defineProperty(window,'SpeechRecognition',{configurable:true,value:undefined});Object.defineProperty(window,'webkitSpeechRecognition',{configurable:true,value:undefined});});
+    await route(page,'home');await page.reload();await ready(page);await click(page,'capture-voice');await page.getByText('Голосовой ввод недоступен',{exact:true}).waitFor();await screenshot(page,'chromium','state-voice-unsupported-simulated',390,'Controlled unsupported-speech capability simulation');await click(page,'voice-fallback');await page.getByTestId('capture-input').waitFor();
+    report.checks.push('Explicit negative-capability simulation removes browser speech constructors and verifies unsupported → text fallback; this is not a microphone test');
     report.checks.push('Reload and browser Back/Forward preserve draft; cancel/Escape restores focus and retains typed fact; unsupported photo and real selected image; reduced-viewport/keyboard reachability');
   }catch(error){await captureFailure(page);throw error;}finally{await context.close();}
 }
