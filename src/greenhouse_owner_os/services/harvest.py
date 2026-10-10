@@ -33,6 +33,18 @@ def row_dict(r):return {c.name:harvest_json(getattr(r,c.name)) for c in r.__tabl
 
 def root(area):return area.parent_id or area.id
 
+def field_count_summary(reports):
+    """Known field sum and coverage of the supplied full, filtered population.
+
+    Empty evidence and evidence with no count both have no known sum. The
+    coverage distinguishes them; no depot quantity supplies a missing count.
+    """
+    counts=[r.cut_count for r in reports]
+    known=[count for count in counts if count is not None]
+    return (sum(known) if known else None, dict(report_count=len(counts),
+        known_report_count=len(known),unknown_report_count=len(counts)-len(known),
+        complete=bool(counts) and len(known)==len(counts)))
+
 class HarvestService:
     def __init__(self,factory):self.factory=factory;self.finance=FinanceService(factory)
     def _write(self,entity,actor,key,operation,payload,fn):
@@ -220,7 +232,10 @@ class HarvestService:
         replacement=u.session.scalar(select(SettlementRow.id).where(SettlementRow.replacement_of_id==r.id))
         return dict(row_dict(r),kind='settlement',lines=line_views,batch_ids=[str(b) for b in bids],reports=[row_dict(x) for x in reports],evidence=row_dict(evidence),replacement_id=str(replacement) if replacement else None,
             issues=sorted(set(issues)),reconciliation=dict(field_count=field_count,depot_count=depot_count,field_weight_kg=str(field_kg) if field_kg is not None else None,depot_weight_kg=str(kg)),
-            average_weight_kg=str(confirmed_kg/confirmed_count) if confirmed_count else None,remaining_amount=f'{remaining:.2f}',overdue=bool(remaining>0 and r.due_date and r.due_date<datetime.now(ZoneInfo('Europe/Istanbul')).date()))
+            average_weight_kg=str(confirmed_kg/confirmed_count) if confirmed_count else None,
+            confirmed_kg=harvest_json(confirmed_kg),confirmed_count=confirmed_count,
+            count_coverage_complete=bool(kg) and confirmed_kg==kg,
+            remaining_amount=f'{remaining:.2f}',overdue=bool(remaining>0 and r.due_date and r.due_date<datetime.now(ZoneInfo('Europe/Istanbul')).date()))
     def get(self,e,sid):
         with self.factory() as u:return self._settlement_view(u,self._get(u,e,sid))
     def post(self,e,actor,key,sid,body):
@@ -307,6 +322,14 @@ class HarvestService:
                 if not r.greenhouse_id:attention.append(dict(type='unknown_greenhouse',message=ISSUES['unknown_greenhouse'],kind='harvest_report',id=str(r.id)))
                 if not u.session.scalar(select(BatchReportRow.batch_id).where(BatchReportRow.report_id==r.id)):attention.append(dict(type='unbatched_report',message='Срез ещё не включён в партию',kind='harvest_report',id=str(r.id)))
             areas={a.id:a for a in u.session.scalars(select(WorkAreaRow).where(WorkAreaRow.entity_id==e))}
+            # Aggregate the full query, never the capped raw source lists below.
+            period_reports=[r for r in reports if in_range(r)]
+            total_cut_count,cut_count_coverage=field_count_summary(period_reports)
+            reports_by_greenhouse=defaultdict(list)
+            for r in period_reports:reports_by_greenhouse[r.greenhouse_id].append(r)
+            field_summaries={gid:field_count_summary(rows) for gid,rows in reports_by_greenhouse.items()}
+            def field_summary(gid):return field_summaries.get(gid,field_count_summary([]))
+            unknown_cut_count,unknown_cut_count_coverage=field_summary(None)
             grouped={};unallocated={}
             def bucket(gid,currency):
                 target=grouped if gid else unallocated
@@ -345,8 +368,12 @@ class HarvestService:
                 kg=b['total_depot_kg'];ct=b['confirmed_count']
                 b['average_price_kg']=str(b['sales_amount']/kg) if kg else None
                 b['average_weight_kg']=str(b['confirmed_kg']/ct) if ct else None
-                b['total_cut_count']=sum((r.cut_count or 0 for r in reports if in_range(r) and str(r.greenhouse_id or '')==str(b['greenhouse_id'] or '')),0)
+                b['count_coverage_complete']=bool(kg) and b['confirmed_kg']==kg
+                b['total_cut_count'],b['cut_count_coverage']=field_summary(UUID(b['greenhouse_id']) if b['greenhouse_id'] else None)
                 b['settlement_status']={status:sum(1 for v in views if (not start or date.fromisoformat(v['event_date'])>=start) and (not end or date.fromisoformat(v['event_date'])<=end) and v['status']==status and (str(v['greenhouse_id'])==str(b['greenhouse_id']))) for status in ('draft','posted','reversed')}
                 analytics.append({k:harvest_json(v) for k,v in b.items()})
             return dict(entity_id=str(e),reports=[row_dict(r) for r in reports[:100]],batches=batch_views[:100],settlements=views[:100],attention=attention,analytics=analytics,date_from=str(start) if start else None,date_to=str(end) if end else None,
-                total_cut_count=sum((r.cut_count or 0 for r in reports if in_range(r)),0),cut_counts=[dict(greenhouse_id=str(a.id),name=a.name,count=sum((r.cut_count or 0 for r in reports if in_range(r) and r.greenhouse_id==a.id),0)) for a in areas.values() if a.kind=='greenhouse'],unknown_cut_count=sum((r.cut_count or 0 for r in reports if in_range(r) and r.greenhouse_id is None),0),debt_attribution_policy='Exact single-greenhouse sale only; mixed outstanding stays unallocated')
+                total_cut_count=total_cut_count,cut_count_coverage=cut_count_coverage,
+                cut_counts=[dict(greenhouse_id=str(a.id),name=a.name,count=field_summary(a.id)[0],count_coverage=field_summary(a.id)[1]) for a in areas.values() if a.kind=='greenhouse'],
+                unknown_cut_count=unknown_cut_count,unknown_cut_count_coverage=unknown_cut_count_coverage,
+                debt_attribution_policy='Exact single-greenhouse sale only; mixed outstanding stays unallocated')
