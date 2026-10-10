@@ -127,8 +127,10 @@ class InventoryInput(StrictModel):
             expected=InventoryLine(product_id=f['product_id'] or None,original_product_name=f['original_product_name'],location_id=f['location_id'] or None,quantity=form_decimal(f['quantity']),unit=f['unit'] or None)
             if ln.original_quantity not in (None,f['quantity']) or ln.original_unit not in (None,f['unit']):raise ValueError('Contradictory original unit or quantity')
             keys=('product_id','original_product_name','location_id','quantity','unit')
-            if any(getattr(ln,k)!=getattr(expected,k) for k in keys) or (f['event_date'] or None)!=(self.event_date.isoformat() if self.event_date else None) or (f['notes'] or None)!=self.notes:
+            if any(getattr(ln,k)!=getattr(expected,k) for k in keys) or (f['event_date'] or None)!=(self.event_date.isoformat() if self.event_date else None) or self.notes is not None:
                 raise ValueError('Initial receipt differs from immutable form source')
+            # Optional form notes stay only in the immutable original, like
+            # legacy raw_text. They do not alter the physical-event payload.
             if any(v is not None for v in (self.supplier_id,self.finance_obligation_id,self.method,ln.unit_cost,ln.currency,ln.destination_id,ln.greenhouse_id,ln.work_area_id)):
                 raise ValueError('Typed receipt does not assert additional accounting or location facts')
         return self

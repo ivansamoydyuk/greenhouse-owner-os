@@ -296,9 +296,9 @@
       "path": "docs/R3_CAPTURE_SOURCE_CONTRACT.md",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "b4c8a88480f3a712fdf3d5377b147e2a63fe6ed5",
-      "sha256": "071bacb069a5d9012818069ef8d84617c90dd8845bcf3d963788eb2d5ce2576c",
-      "size": 3820
+      "git_blob": "80e52c4f60ce9f28d7928c160059fcef16cf8728",
+      "sha256": "01f7aed442eb0f861fb83687c060ca7ddf5687d1e76d5494ee7a3f7cbaa3a70a",
+      "size": 4017
     },
     {
       "path": "docs/R3_CONNECTED_TEST_PILOT.md",
@@ -400,9 +400,9 @@
       "path": "prototype/owner-r3/connected.js",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "a376b2809e192efd431e79cb06d6fdca0b483b29",
-      "sha256": "99f43836debde5e3a43d37ddd50c8230e5aa7b6dab6745e82e385c7c63d67d37",
-      "size": 100494
+      "git_blob": "1903e89642c438ad0ecb6dd7022a4316405d8db1",
+      "sha256": "bde45e2a38a56ba8cb8cbca92d48efc155fffdb47a21fcdaeb79ba05125f6314",
+      "size": 100555
     },
     {
       "path": "prototype/owner-r3/daily-demo.js",
@@ -808,9 +808,9 @@
       "path": "src/greenhouse_owner_os/domain/inventory.py",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "6e1481636e2cb129fdac93fbaf0e0f4d7f6d1cde",
-      "sha256": "14cf4664bcb38f336bd47eb2f5f6ea5878474e3c36a6f3a9e2efa1ee47627088",
-      "size": 7289
+      "git_blob": "e2feb2cd38d7a460472a1e49c5413ece548ed17c",
+      "sha256": "d70daf9a892333818f2d4fabcc5a5ecb3a73550385b54303b77b4e000aa9aec3",
+      "size": 7432
     },
     {
       "path": "src/greenhouse_owner_os/domain/opening.py",
@@ -1576,8 +1576,8 @@
       "path": "tests/e2e/r3-capture-friction.mjs",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "d250c1d4281aebb6c49321c4737c4daaed840379",
-      "sha256": "a0dabafa3b35919f1b5afc1e3f1d3fdf63dd9d7057679ac7317fbb4912d18fd4",
+      "git_blob": "3e18abadaa84ae28977052a7d968fc735bf9e3d1",
+      "sha256": "215f5c2aacbf7ed948711742ffbd9cdbdbb5c2c0c40a075f0ee495cfefb9e890",
       "size": 11315
     },
     {
@@ -1808,9 +1808,9 @@
       "path": "tests/frontend/owner-r3-capture-friction.test.mjs",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "94fe7aaaa14b988600a7c54abebd8e541da8c80c",
-      "sha256": "84910de4f0de8772f17a61806fd2474ac3365f0db22ad084bb58b32e07a5f411",
-      "size": 3523
+      "git_blob": "dfdd8ca9df10d9a4500eefcab9ab488a3182c472",
+      "sha256": "9e47ec492320a92d6a5a5398705cc2042a8befc91116cbaf11967bf1d9036c9a",
+      "size": 3968
     },
     {
       "path": "tests/frontend/owner-r3-connected.test.mjs",
@@ -1936,9 +1936,9 @@
       "path": "tests/integration/test_postgres_capture_friction.py",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "e52036634509551b8adac08d7673255a8eccdc46",
-      "sha256": "b66f00ef3d73f28858a1f455b42741faff628438b5a7bd4d5ec0b85747ec84c8",
-      "size": 9144
+      "git_blob": "8f7a0b9a2e733d059ddd26febdea71c115a96c32",
+      "sha256": "4f3a1916530a3a794e6c367a33dc99ebc7eb6350aea35eabc0b871359be8e96e",
+      "size": 10403
     },
     {
       "path": "tests/integration/test_postgres_cash.py",
@@ -2480,9 +2480,9 @@
       "path": "tests/unit/test_owner_form_source.py",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "de8e8d2b73eb5a7ba1d4ff90107cdf3642d0ba70",
-      "sha256": "5d6c62c67d8d807eb0639676eddfb2df90ef5f73a08b17f0fe074f9997fb17c4",
-      "size": 5116
+      "git_blob": "40c1181b8183c5fc99efd65b18ecf132d367f4f0",
+      "sha256": "9dad28d1f0eef2ae87bd0bf5a35c8ded7b2a2b73b22a7ff8cb015a45752b2c66",
+      "size": 5607
     },
     {
       "path": "tests/unit/test_owner_ocr.py",

@@ -1543,7 +1543,7 @@ async function submitForm(formEl, snapshot) {
           currency: null,
         },
       ],
-      notes: draft.original || null,
+      notes: null, // Optional comment belongs to the immutable source, not the physical payload.
       evidence: {
         source: "owner_form:v1:inventory_receipt",
         locator: draft.id,

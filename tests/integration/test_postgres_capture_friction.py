@@ -128,3 +128,18 @@ def test_typed_receipt_incomplete_and_replacement_keep_original(migrated_databas
     post(i,child)
     assert i['c'].get('/v1'+path+'/'+saved['id']).json()['evidence']['structured_original']==b['evidence']['structured_original']
     assert counts(i)['finance.postings']==before['finance.postings']
+def test_typed_receipt_notes_remain_source_only_and_duplicate_gate_survives(migrated_database):
+    i=context(migrated_database);path=i['root']+'/events'
+    first=receipt(i['p']['id'],i['l']['id']);first['evidence']['structured_original']['fields']['notes']='TEST first owner comment'
+    saved=send(i['c'],path,first);post(i,saved)
+    second=receipt(i['p']['id'],i['l']['id']);second['evidence']['structured_original']['fields']['notes']='TEST second owner comment'
+    duplicate=send(i['c'],path,second)
+    assert duplicate['payload']['notes'] is None
+    assert duplicate['evidence']['structured_original']['fields']['notes']=='TEST second owner comment'
+    assert 'duplicate' in duplicate['issues']
+    post(i,duplicate,expected=422)
+    changed=copy.deepcopy(second);changed['evidence']['structured_original']['fields']['notes']='TEST silently changed original'
+    send(i['c'],path,changed,expected=409)
+    posted=send(i['c'],path+'/'+duplicate['id']+'/post',dict(confirmed=True,expected_version=1,duplicate_reviewed=True),expected=200)
+    assert posted['status']=='posted' and len(posted['movements'])==1
+    assert i['c'].get('/v1'+path+'/'+posted['id']).json()['evidence']['structured_original']['fields']['notes']=='TEST second owner comment'

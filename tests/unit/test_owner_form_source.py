@@ -63,3 +63,11 @@ def test_decimal_comma_comparison_preserves_exact_original():
 def test_receipt_cannot_assert_extra_original_or_cost(extra):
     b=receipt();b['lines'][0].update(extra)
     with pytest.raises(ValidationError):InventoryInput.model_validate(b)
+
+def test_receipt_optional_comment_is_source_only_not_physical_payload():
+    b=receipt();b['evidence']['structured_original']['fields']['notes']='  TEST exact owner comment\nline two '
+    value=InventoryInput.model_validate(b)
+    assert value.notes is None
+    assert value.evidence.structured_original.fields['notes']=='  TEST exact owner comment\nline two '
+    b['notes']='  TEST exact owner comment\nline two '
+    with pytest.raises(ValidationError):InventoryInput.model_validate(b)
