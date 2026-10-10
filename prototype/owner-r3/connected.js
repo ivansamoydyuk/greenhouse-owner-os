@@ -1050,6 +1050,10 @@ function workerForm() {
   );
 }
 function workerDetail(t) {
+  const workerName = id => data.workers?.workers.find(w => w.id === id)?.display_name || id;
+  const cycleLabel = cycle => `Цикл ${cycle} · ${cycle === t.cycle ? "текущий" : "предыдущий"}`;
+  const reportClaim = {done:"Сделано", issue:"Проблема", note:"Замечание"};
+  const reportState = {draft:"Черновик", submitted:"Передан владельцу"};
   return (
     Header(t.title, `${t.execution_contract === "R2_RECEIVED_REPORT" ? "Получение и отчёт" : "Поручение R1"} · ${statuses[t.status] || t.status}`, true) +
     panel(
@@ -1106,7 +1110,7 @@ function workerDetail(t) {
       }`,
     ) +
     panel(
-      `<h2>Отчёты</h2>${t.execution_contract === "R2_RECEIVED_REPORT" ? `<details><summary>Исходные ответы работников</summary>${(t.response_history || []).map(x => `<div class="list-row"><strong>${e(x.button_label)}</strong><p class="original-text">${e(x.comment || "")}</p><small>Цикл ${e(x.cycle)} · ${e(x.captured_at)} · выбор кнопки сохранён</small></div>`).join("") || "<p>Пока нет ответов.</p>"}</details>` : ""}${t.reports.map((r) => `<div class="list-row"><strong>${e(r.claim)} · ${e(r.state)}</strong><p class="original-text">${e(r.original_text)}</p>${r.state === "submitted" ? btn("Проверить отчёт", "review-report:" + r.id) : ""}</div>`).join("") || "<p>Отчётов пока нет.</p>"}<div id="action-error" class="form-error" role="alert"></div><div class="page-actions">${t.can_complete ? btn("Завершить после проверки", "worker-action:complete", "primary") : t.status === "reported" ? '<button type="button" class="btn primary" disabled>Ожидаются результаты и проверка проблем</button>' : ""}${["reported", "completed", "cancelled"].includes(t.status) ? btn("Вернуть в работу", "worker-action:reopen") : ""}${!["completed", "cancelled"].includes(t.status) ? btn("Отменить поручение", "worker-action:cancel") : ""}</div><details><summary>История жизненного цикла</summary>${(
+      `<h2>Отчёты</h2>${t.execution_contract === "R2_RECEIVED_REPORT" ? `<details><summary>Исходные ответы работников</summary>${(t.response_history || []).map(x => `<div class="list-row"><strong>${e(workerName(x.worker_id))} · ${e(x.button_label)}</strong><p class="original-text">${e(x.comment || "")}</p><small>${e(cycleLabel(x.cycle))} · ${e(x.captured_at)} · выбор кнопки сохранён</small><details><summary>Идентичность источника</summary><p>${e(x.client_response_id)} · ${e(x.worker_id)}</p></details></div>`).join("") || "<p>Пока нет ответов.</p>"}</details>` : ""}${t.reports.map((r) => `<div class="list-row"><strong>${e(workerName(r.worker_id))} · ${e(reportClaim[r.claim] || r.claim)}</strong><small>${e(cycleLabel(r.cycle))} · ${e(reportState[r.state] || r.state)}</small><p class="original-text">${e(r.original_text)}</p>${r.state === "submitted" ? btn("Проверить отчёт", "review-report:" + r.id) : ""}</div>`).join("") || "<p>Отчётов пока нет.</p>"}<div id="action-error" class="form-error" role="alert"></div><div class="page-actions">${t.can_complete ? btn("Завершить после проверки", "worker-action:complete", "primary") : t.status === "reported" ? '<button type="button" class="btn primary" disabled>Ожидаются результаты и проверка проблем</button>' : ""}${["reported", "completed", "cancelled"].includes(t.status) ? btn("Вернуть в работу", "worker-action:reopen") : ""}${!["completed", "cancelled"].includes(t.status) ? btn("Отменить поручение", "worker-action:cancel") : ""}</div><details><summary>История жизненного цикла</summary>${(
         t.actions || []
       )
         .map((a) =>

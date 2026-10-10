@@ -10,7 +10,7 @@ from greenhouse_owner_os.services.reconciliation import reconcile
 url=os.environ['TEST_DATABASE_URL'];require_disposable_database(url,'test');sf=make_session_factory(url)
 TABLES=('finance.obligations','finance.payments','finance.direct_expenses','finance.postings','finance.posting_entries','inventory.events','inventory.movements','harvest.worker_reports','harvest.depot_settlements')
 def effects_snapshot(db):
- return {table:[dict(row) for row in db.execute(text('SELECT * FROM '+table+' ORDER BY id')).mappings()] for table in TABLES}
+ return {table:sorted([dict(row) for row in db.execute(text('SELECT * FROM '+table)).mappings()],key=lambda row:json.dumps(row,sort_keys=True,default=str)) for table in TABLES}
 if sys.argv[1]=='--before':
  with sf() as db:
   db.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'));_require_connected_runtime(db)

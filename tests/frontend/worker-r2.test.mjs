@@ -37,3 +37,7 @@ test('Dari manual instruction button labels retained without pretending translat
 test('owner new task declares R2 and completion uses trusted server guard',()=>{
  const src=fs.readFileSync('prototype/owner-r3/connected.js','utf8');assert.match(src,/execution_contract: "R2_RECEIVED_REPORT"/);assert.match(src,/t.can_complete \? btn/);assert.match(src,/Исходные ответы работников/);
 });
+
+test('owner review attributes each report to a worker and explicit current or prior cycle',()=>{
+ const src=fs.readFileSync('prototype/owner-r3/connected.js','utf8');assert.match(src,/workerName\(r.worker_id\)/);assert.match(src,/cycleLabel\(r.cycle\)/);assert.match(src,/workerName\(x.worker_id\)/);assert.match(src,/Идентичность источника/);
+});
