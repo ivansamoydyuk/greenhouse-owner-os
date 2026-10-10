@@ -404,6 +404,8 @@
 .connected .money-tab {min-height:44px;display:flex;align-items:center;padding:10px 14px;background:#eef4ed;border-radius:12px;font-weight:650;color:#385d43;}
 .connected .money-tab.active {background:#176442;color:#fff;}
 .connected .money-filters {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;margin-bottom:16px;}
+.connected .money-filters label {min-width:0;max-width:100%;overflow-wrap:anywhere;}
+.connected .money-filters select {max-width:100%;}
 .connected .money-filters .form-error {grid-column:1/-1;}
 .connected .money-filters button {align-self:end;margin:16px 0;min-height:48px;}
 .connected .money-summary-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
