@@ -204,7 +204,9 @@
 }
 .connected .metric-card {
   min-width: 0;
-  overflow: hidden;
+}
+.connected .financial-grid .very-long-money .metric-value {
+  font-size: clamp(15px, 5cqi, 24px);
 }
 .connected .metric-card .metric-detail {
   white-space: normal;

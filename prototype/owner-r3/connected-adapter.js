@@ -11,6 +11,11 @@ export const CAPABILITIES = Object.freeze({
   realDispatch: "NOT_AVAILABLE",
   latePostedReceiptLink: "NOT_AVAILABLE",
 });
+export const canRecoverSourceExpense = (source) =>
+  !source.proposals?.length &&
+  source.job?.state === "FAILED" &&
+  source.job.attempts >= 3;
+
 export const canonical = (value) =>
   JSON.stringify(value, (_, v) =>
     v && typeof v === "object" && !Array.isArray(v)

@@ -11,6 +11,7 @@ import {
   paymentPayload,
   totalByCurrency,
   CAPABILITIES,
+  canRecoverSourceExpense,
 } from "../../prototype/owner-r3/connected-adapter.js";
 class Store {
   constructor() {
@@ -344,4 +345,22 @@ test("two clients with one intent cannot send changed payload under a new server
   ]);
   assert.equal(result.filter((x) => x.status === "fulfilled").length, 1);
   assert.equal(requests.length, 1);
+});
+
+test("source-only expense recovery requires exhausted preparation and no existing proposal", () => {
+  assert.equal(
+    canRecoverSourceExpense({
+      proposals: [],
+      job: { state: "FAILED", attempts: 3 },
+    }),
+    true,
+  );
+  for (const source of [
+    { proposals: [{ id: "existing" }], job: { state: "FAILED", attempts: 3 } },
+    { proposals: [], job: { state: "FAILED", attempts: 2 } },
+    { proposals: [], job: { state: "SUCCEEDED", attempts: 3 } },
+    { proposals: [], job: { state: "QUEUED", attempts: 0 } },
+    { proposals: [], job: { state: "RUNNING", attempts: 1 } },
+  ])
+    assert.equal(canRecoverSourceExpense(source), false);
 });

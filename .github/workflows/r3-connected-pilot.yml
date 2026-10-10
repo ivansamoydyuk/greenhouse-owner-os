@@ -47,6 +47,12 @@ jobs:
         run: node tests/e2e/r3-connected.mjs
       - name: Prove SQL effects and reconciliation
         run: python scripts/r3_connected_sql_evidence.py artifacts/r3-connected/browser-results.json artifacts/r3-connected/sql-evidence.json
+      - name: Capture owned runtime diagnostics
+        if: always()
+        run: |
+          mkdir -p artifacts/r3-connected
+          if [ -f "$RUNNER_TEMP/r3-connected-server.log" ]; then cp "$RUNNER_TEMP/r3-connected-server.log" artifacts/r3-connected/server.log; fi
+          if [ -n "${R3_PILOT_CONTAINER:-}" ]; then docker logs "$R3_PILOT_CONTAINER" > artifacts/r3-connected/postgres.log 2>&1 || true; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -59,4 +65,8 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/r3-connected-server.log" ]; then tail -100 "$RUNNER_TEMP/r3-connected-server.log"; fi
           if [ -f "$RUNNER_TEMP/r3-connected-server.pid" ]; then kill "$(cat "$RUNNER_TEMP/r3-connected-server.pid")" || true; fi
-          if [ -n "${R3_PILOT_CONTAINER:-}" ]; then docker stop "$R3_PILOT_CONTAINER" || true; fi
+          if [ -n "${R3_PILOT_CONTAINER:-}" ]; then
+            docker logs "$R3_PILOT_CONTAINER" 2>&1 | tail -80 || true
+            docker stop "$R3_PILOT_CONTAINER" || true
+            docker rm -v "$R3_PILOT_CONTAINER" || true
+          fi

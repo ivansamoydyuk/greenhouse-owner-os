@@ -18,6 +18,7 @@ import {
   paymentPayload,
   fileSource,
   CAPABILITIES,
+  canRecoverSourceExpense,
 } from "./connected-adapter.js";
 import {
   proposalSummary,
@@ -174,10 +175,20 @@ function unavailable(name) {
 }
 function metric(label, values, to, primary = false) {
   const list = Object.entries(values || {});
+  const longest = Math.max(
+    0,
+    ...list.map(([, value]) => displayQuantity(value).length),
+  );
+  const amountClass =
+    longest > 19
+      ? "long-money very-long-money"
+      : longest > 9
+        ? "long-money"
+        : "";
   return link(
     `<span class="metric-label">${icon(primary ? "down" : "up")}${label}</span>${list.length ? list.map(([c, v]) => `<strong class="metric-value">${e(displayQuantity(v))}</strong><span class="currency">${e(c)}</span>`).join("") : '<strong class="metric-value no-value">Нет долгов</strong>'}<span class="metric-detail">Подтверждённые документы ${icon("arrow")}</span>`,
     to,
-    `metric-card ${primary ? "mint" : ""}`,
+    `metric-card ${primary ? "mint" : ""} ${amountClass}`,
     primary ? "home-receivable" : "home-payable",
   );
 }
@@ -271,7 +282,7 @@ function sourceDetail(s) {
       `<span class="eyebrow">ОРИГИНАЛ</span><p class="original-text" data-testid="source-original">${e(s.text || "Текст не добавлен")}</p>${s.original_name ? `<p>${e(s.original_name)}</p><a class="btn secondary" href="${entityPath("/owner/captures/" + s.id + "/original")}" target="_blank" rel="noopener">Открыть неизменённый файл</a>` : ""}<p class="note">Источник остаётся доступен после подтверждения и исправления фактов.</p>`,
     ) +
     panel(
-      `<h2>Подготовка</h2>${stateTag(s.job?.state || s.state)}<p>${e(s.job?.error_code || "")}</p>${btn("Обновить", "refresh")}${s.retryable ? btn("Повторить подготовку", "prepare:" + s.id) : ""}${(s.proposals || []).map((p) => `<div class="list-row">${link(e((title[p.action_type] || p.action_type || "Открыть предложение") + " · " + (statuses[p.state] || p.state)), `review/${p.id}`, "btn secondary")}</div>`).join("")}${notice("Если это именно оплаченный текущий расход, откройте связанный ручной режим. Долг или аванс расходом не становится.")}${btn("Оформить прямой расход", "recover-source:" + s.id, "secondary")}`,
+      `<h2>Подготовка</h2>${stateTag(s.job?.state || s.state)}<p>${e(s.job?.error_code || "")}</p>${btn("Обновить", "refresh")}${s.retryable ? btn("Повторить подготовку", "prepare:" + s.id) : ""}${(s.proposals || []).map((p) => `<div class="list-row">${link(e((title[p.action_type] || p.action_type || "Открыть предложение") + " · " + (statuses[p.state] || p.state)), `review/${p.id}`, "btn secondary")}</div>`).join("")}${notice("Если это именно оплаченный текущий расход, откройте связанный ручной режим. Долг или аванс расходом не становится.")}${canRecoverSourceExpense(s) ? btn("Оформить прямой расход", "recover-source:" + s.id, "secondary") : s.proposals?.length ? notice("Выберите существующее предложение выше. Ручной расход открывается из выбранного предложения и сохраняет его связь с оригиналом.") : notice("Дождитесь подготовки или повторите её при ошибке. Оригинал уже сохранён.")}`,
     )
   );
 }
@@ -304,7 +315,7 @@ function proposalDetail(p) {
             )}</div>${p.action_type === "UNRESOLVED" ? btn("Оформить прямой расход", "recover:" + p.id) : ""}`,
         )
       : "") +
-    `<div class="form-error" role="alert" id="action-error"></div>${!done && p.state !== "REJECTED" ? `<div class="confirmation-bar">${btn("Подтвердить действие в TEST", "confirm-proposal", "primary full", "confirm-proposal", p.revision.missing?.length || p.action_type === "UNRESOLVED" ? "disabled" : "")}</div><div class="page-actions">${btn("Отложить", "defer-proposal")}${btn("Отклонить", "reject-proposal")}</div>` : notice("Сервер подтвердил действие. Оригинал и версии сохранены.")}<div class="page-actions">${link("Финансы", "finance", "btn secondary")}${link("К источнику", "source/" + p.source.id, "btn secondary")}</div>`
+    `<div class="form-error" role="alert" id="action-error"></div>${!done && p.state !== "REJECTED" ? `<div class="confirmation-bar">${btn("Подтвердить действие в TEST", "confirm-proposal", "primary full", "confirm-proposal", p.revision.missing?.length || p.action_type === "UNRESOLVED" ? "disabled" : "")}</div><div class="page-actions">${btn("Отложить", "defer-proposal")}${btn("Отклонить", "reject-proposal")}</div>` : done ? notice("Сервер подтвердил действие. Оригинал и версии сохранены.") : notice("Предложение отклонено. Оригинал и версии сохранены.")}<div class="page-actions">${link("Финансы", "finance", "btn secondary")}${link("К источнику", "source/" + p.source.id, "btn secondary")}</div>`
   );
 }
 const labels = {
@@ -476,15 +487,41 @@ function paymentDetail(p) {
         ["Валюта", p.currency],
         ["Дата", displayDate(p.event_date)],
       ])}<h2>Явное распределение</h2>${(p.allocations || [])
-        .map((x) =>
-          facts([
-            ["Документ", x.obligation_id],
-            ["Сумма", money(x.amount, p.currency)],
-          ]),
-        )
+        .map((x) => {
+          const document = data.home?.finance?.obligations?.find(
+            (o) => o.obligation_id === x.obligation_id,
+          );
+          const rows = [
+            ["Документ", document?.description || "Описание не загружено"],
+            [
+              "Дата документа",
+              document?.event_date
+                ? displayDate(document.event_date)
+                : "UNKNOWN",
+            ],
+            ["ID документа", x.obligation_id],
+            ["В эту оплату", money(x.amount, p.currency)],
+            [
+              "Текущий остаток",
+              document
+                ? money(document.remaining_amount, p.currency)
+                : "UNKNOWN",
+            ],
+          ];
+          if (p.status === "draft" && document) {
+            rows.push([
+              "Остаток после оплаты · прогноз",
+              money(
+                decimal(cents(document.remaining_amount) - cents(x.amount)),
+                p.currency,
+              ),
+            ]);
+          }
+          return facts(rows);
+        })
         .join(
           "",
-        )}${notice("Погашение документов. Новая выручка/расход не создаётся.")}<div id="action-error" class="form-error" role="alert"></div>${p.status === "draft" ? btn("Подтвердить оплату в TEST", "post-payment", "primary full") : (p.status==="posted"?notice("Сервер подтвердил платёж. Повтор не создаёт вторую проводку."):notice("Платёж отменён обратным событием. Сохранена история оригинала."))}<div class="page-actions">${link("К финансам", "finance", "btn secondary")}</div>`,
+        )}${notice("Погашение документов. Новая выручка/расход не создаётся.")}<div id="action-error" class="form-error" role="alert"></div>${p.status === "draft" ? btn("Подтвердить оплату в TEST", "post-payment", "primary full") : p.status === "posted" ? notice("Сервер подтвердил платёж. Повтор не создаёт вторую проводку.") : notice("Платёж отменён обратным событием. Сохранена история оригинала.")}<div class="page-actions">${link("К финансам", "finance", "btn secondary")}</div>`,
     )
   );
 }
@@ -499,7 +536,7 @@ function harvest() {
     ) +
     `<div class="page-actions">${link("Сбор урожая", "quick/harvest", "btn primary")}</div>` +
     panel(
-      `<h2>Полевые срезы</h2><strong class="exact-value">${e(h.total_cut_count ?? "UNKNOWN")}</strong><p class="note">Известная сумма по ${e(coverage.known_report_count??0)} из ${e(coverage.report_count??0)} отчётов. В ${e(coverage.unknown_report_count??0)} отчётах количество неизвестно. Неизвестное не считается нулём.</p>${h.reports.map((r) => link(`<strong>${e(r.original_greenhouse)} · ${e(displayDate(r.event_date))}</strong><small>${e(r.cut_count ?? "UNKNOWN")} срезов · ${e(r.field_weight_kg ?? "UNKNOWN")} кг · ${e(r.reporter)}</small>`, `report/${r.id}`, "list-row")).join("") || "<p>Нет полевых наблюдений.</p>"}`,
+      `<h2>Полевые срезы</h2><strong class="exact-value">${e(h.total_cut_count ?? "UNKNOWN")}</strong><p class="note">Известная сумма по ${e(coverage.known_report_count ?? 0)} из ${e(coverage.report_count ?? 0)} отчётов. В ${e(coverage.unknown_report_count ?? 0)} отчётах количество неизвестно. Неизвестное не считается нулём.</p>${h.reports.map((r) => link(`<strong>${e(r.original_greenhouse)} · ${e(displayDate(r.event_date))}</strong><small>${e(r.cut_count ?? "UNKNOWN")} срезов · ${e(r.field_weight_kg ?? "UNKNOWN")} кг · ${e(r.reporter)}</small>`, `report/${r.id}`, "list-row")).join("") || "<p>Нет полевых наблюдений.</p>"}`,
     ) +
     panel(
       `<h2>Чеки депо</h2>${h.settlements.map((s) => link(`<strong>${e(refName(s.depot_id))} · ${e(money(s.total_amount, s.currency))}</strong><small>${e(statuses[s.status] || s.status)} · ${e(displayDate(s.event_date))}</small>`, `depot/${s.id}`, "list-row")).join("") || "<p>Документов депо пока нет.</p>"}`,
@@ -744,7 +781,7 @@ function receiptDetail(r) {
         .join("")}${facts([
         ["Дата", displayDate(r.event_date)],
         ["Начальный остаток", "UNKNOWN"],
-      ])}${notice("Увеличится только учтённое физическое количество. Абсолютный остаток не подтверждён. Долг/счёт/оплата не создаются.")}<h2>Оригинал</h2><p class="original-text">${e(r.evidence.raw_text || "Текст не добавлен")}</p>${r.evidence.filename ? `<a class="btn secondary" href="${entityPath("/inventory/events/" + r.id + "/original")}" target="_blank" rel="noopener">${e(r.evidence.filename)}</a>` : ""}${(r.issue_messages || []).map((x) => notice(x, "amber")).join("")}<div id="action-error" class="form-error" role="alert"></div>${r.status === "draft" ? `${r.issues?.includes("duplicate") ? '<label class="check-label"><input type="checkbox" id="duplicate-reviewed"><span>Я проверил: это отдельный приход, не повтор.</span></label>' : ""}${btn("Подтвердить физический приход в TEST", "post-receipt", "primary full")}` : (r.status==="posted"?notice("Сервер подтвердил приход. Физическое движение создано один раз."):notice("Приход отменён обратным движением. Оригинал и история сохранены."))}<div class="page-actions">${link("К складу", "inventory", "btn secondary")}</div>`,
+      ])}${notice("Увеличится только учтённое физическое количество. Абсолютный остаток не подтверждён. Долг/счёт/оплата не создаются.")}<h2>Оригинал</h2><p class="original-text">${e(r.evidence.raw_text || "Текст не добавлен")}</p>${r.evidence.filename ? `<a class="btn secondary" href="${entityPath("/inventory/events/" + r.id + "/original")}" target="_blank" rel="noopener">${e(r.evidence.filename)}</a>` : ""}${(r.issue_messages || []).map((x) => notice(x, "amber")).join("")}<div id="action-error" class="form-error" role="alert"></div>${r.status === "draft" ? `${r.issues?.includes("duplicate") ? '<label class="check-label"><input type="checkbox" id="duplicate-reviewed"><span>Я проверил: это отдельный приход, не повтор.</span></label>' : ""}${btn("Подтвердить физический приход в TEST", "post-receipt", "primary full")}` : r.status === "posted" ? notice("Сервер подтвердил приход. Физическое движение создано один раз.") : notice("Приход отменён обратным движением. Оригинал и история сохранены.")}<div class="page-actions">${link("К складу", "inventory", "btn secondary")}</div>`,
     ) +
     panel(
       `<h2>Движения именно этого события</h2>${

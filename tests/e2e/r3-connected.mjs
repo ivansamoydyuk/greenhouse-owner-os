@@ -5,9 +5,8 @@ import { chromium, webkit } from "playwright";
 import { navigateOwner, revealOwnerControl } from "./navigation.mjs";
 import { syntheticPixelPng } from "../fixtures/owner-r3-media.mjs";
 
-function syntheticPdfReceipt() {
-  const stream =
-    "BT /F1 18 Tf 40 760 Td (TEST DEPOT RECEIPT - Grand 60 kg x 10 TRY - ADET 6) Tj ET";
+function syntheticPdfReceipt(price = "10.00") {
+  const stream = `BT /F1 18 Tf 40 760 Td (TEST DEPOT RECEIPT - Grand 60 kg x ${price} TRY - ADET 6) Tj ET`;
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -167,14 +166,28 @@ try {
     await click(page, "Сохранить оригинал");
     await waitHash(page, "source/");
     const sourceId = page.url().split("#source/")[1];
-    await click(page, "Оформить прямой расход");
+    await page.locator('a[href^="#review/"]').first().click();
     await waitHash(page, "review/");
+    const manualRecovery = page.getByRole("button", {
+      name: "Оформить прямой расход",
+      exact: true,
+    });
+    if (await manualRecovery.count()) {
+      const originHash = new URL(page.url()).hash;
+      await manualRecovery.click();
+      await page.waitForFunction(
+        (previous) => location.hash !== previous,
+        originHash,
+      );
+      await waitHash(page, "review/");
+    }
     const proposalId = page.url().split("#review/")[1];
     let proposal = await read(
       context,
       root + "/owner/confirmations/" + proposalId + "/preview",
     );
     assert.equal(proposal.source.text, original);
+    assert.equal(proposal.action_type, "DIRECT_EXPENSE");
     for (const [key, value, isSelect] of [
       ["description", `TEST ${engine} фильтр после уточнения`, false],
       ["amount", "125.00", false],
@@ -419,10 +432,15 @@ try {
       .getByText(`TEST ${engine} field original seven cuts`, { exact: true })
       .waitFor();
     await nav(page, "attach-depot/" + reportId);
+    const receiptPrice = engine === "webkit" ? "123456789.12" : "10.00";
+    const originalBytes =
+      engine === "webkit"
+        ? syntheticPdfReceipt(receiptPrice)
+        : syntheticPixelPng();
     await page.locator("[name=file]").setInputFiles({
-      name: `TEST-${engine}-receipt.png`,
-      mimeType: "image/png",
-      buffer: syntheticPixelPng(),
+      name: `TEST-${engine}-receipt.${engine === "webkit" ? "pdf" : "png"}`,
+      mimeType: engine === "webkit" ? "application/pdf" : "image/png",
+      buffer: originalBytes,
     });
     await fill(page, "caption", `TEST ${engine} separate owner caption`);
     await select(page, "depot", fixture.counterparties.depot.id);
@@ -433,9 +451,13 @@ try {
     );
     await fill(page, "quality", "Grand");
     await fill(page, "kg", "60");
-    await fill(page, "price", "10.00");
+    await fill(page, "price", receiptPrice);
     await fill(page, "count", "6");
-    await fill(page, "source_line", "Grand 60 kg x 10 TRY, ADET 6");
+    await fill(
+      page,
+      "source_line",
+      `Grand 60 kg x ${receiptPrice} TRY, ADET 6`,
+    );
     await click(page, "Сохранить черновик чека");
     await waitHash(page, "depot/");
     const settlementId = page.url().split("#depot/")[1];
@@ -526,6 +548,17 @@ try {
     await page.unroute("**/v1/payments");
     await waitHash(page, "payment/");
     let paymentId = page.url().split("#payment/")[1];
+    const obligation = (
+      await read(context, root + "/owner/home")
+    ).finance.obligations.find(
+      (o) => o.counterparty_id === party && o.direction === direction,
+    );
+    assert.ok(obligation?.description);
+    await page.getByText(obligation.description, { exact: true }).waitFor();
+    await page.getByText("Текущий остаток", { exact: true }).waitFor();
+    await page
+      .getByText("Остаток после оплаты · прогноз", { exact: true })
+      .waitFor();
     await snap(page, engine + "-390-payment-review");
     let postLost = false;
     await page.route("**/v1/payments/" + paymentId + "/post?*", async (r) => {
@@ -678,7 +711,9 @@ try {
     assert.equal(await page.locator("#secret").count(), 0);
     await snap(page, engine + "-390-home-partial");
     await page.unroute("**/inventory");
-    await click(page, "Повторить загрузку").catch(() => {});
+    await route(page, "inventory");
+    await page.getByRole("heading", { name: "Склад", exact: true }).waitFor();
+    assert.equal(await page.getByText(/Раздел временно недоступен/).count(), 0);
     result.journeys.push({
       engine,
       name: "F secondary outage keeps owner Home authenticated",

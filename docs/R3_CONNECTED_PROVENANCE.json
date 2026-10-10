@@ -32,9 +32,9 @@
       "path": ".github/workflows/r3-connected-pilot.yml",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "56d1914d98ea53fe95657175c59da742f1965064",
-      "sha256": "98f846710452e4ee5a348fe9ce16541d2eb4f1c49bd2c78219c90c179ef5831f",
-      "size": 2558
+      "git_blob": "5a7aaf4a89258502ef666f13750e8f6a4ab14a46",
+      "sha256": "03b268df61d1cf0de9aa3773211981e908d52809f1becbd89fda4f173f70eadb",
+      "size": 3116
     },
     {
       "path": ".gitignore",
@@ -302,11 +302,11 @@
     },
     {
       "path": "openapi/owner_core_v1.yaml",
-      "origin": "G",
-      "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
-      "git_blob": "90868b8eedad0df1e5a8907db19c88dd6ae7a3e6",
-      "sha256": "56c0a5cbe7feb6a39d3a53183ed4068f1d6c9544f62df8dfaa049e5b2ae3dd1e",
-      "size": 170525
+      "origin": "CONNECTED_PILOT",
+      "remote_ref": null,
+      "git_blob": "ee6309027d81f5a3f87500dd39a5200bdcb45247",
+      "sha256": "167f8176e1e881a51fbf979b37d5c25ad3129aeec6a396b9e0fb3052a215bcc2",
+      "size": 177144
     },
     {
       "path": "package-lock.json",
@@ -368,17 +368,17 @@
       "path": "prototype/owner-r3/connected-adapter.js",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "49536db261db8c25b95931f911c7092182582353",
-      "sha256": "71637f5f66ebce31bcc25e4df8987d8db25e2aaf753bc5c6217bdbbb202e8c86",
-      "size": 12879
+      "git_blob": "1d8c4d40fe8359569f46a8c0f51821fd703ad700",
+      "sha256": "63d35aeb956d34c01d7ac7194004b8c84d6500225e6bd020fef4ec15e890a7ea",
+      "size": 13026
     },
     {
       "path": "prototype/owner-r3/connected.css",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "39af07c5bafe2ce6078279f453dd5859ce9ddd01",
-      "sha256": "c40fead5ffa481e6839de90ed816fead24f65fe67818c05423f16e049ad0801d",
-      "size": 4522
+      "git_blob": "78cd4a217304f0cc3e673ed4d5938f6eea3b740b",
+      "sha256": "802a84f80381d3571b83db03199d56344bd4968eceaafbae9a5c0d1f9ad151ef",
+      "size": 4602
     },
     {
       "path": "prototype/owner-r3/connected.html",
@@ -392,9 +392,9 @@
       "path": "prototype/owner-r3/connected.js",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "a9927f230b1f9b278385a5a9090d7139536f1e93",
-      "sha256": "ffb7fd8b8463d47f6db32b45daf82c86e1f8a2f3d8e7b525db5452e2421ef8ee",
-      "size": 86984
+      "git_blob": "90af201f037f35188dc23c8888e0cc9c82e7d05d",
+      "sha256": "dcab55f8f77a1cd55c2419ccd6c76ab6b46a3c462b2c2ee1cb510f18d52a1cd1",
+      "size": 88831
     },
     {
       "path": "prototype/owner-r3/daily-demo.js",
@@ -624,9 +624,9 @@
       "path": "scripts/start_r3_connected_ci.sh",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "f72c4cb400f64c2cad07524f0924440c6258692f",
-      "sha256": "6e21d151cbda2195331bc96de00ae61253bffbd769612e6d98a130ce002b980d",
-      "size": 2477
+      "git_blob": "8a3f96618f3f8a94ddfaad84b69ab131a019e0b3",
+      "sha256": "98b290245e1836564c06e66617470caf227a59415788e4d3f775818fa363f7d0",
+      "size": 2837
     },
     {
       "path": "scripts/validate_owner_opening.py",
@@ -1528,9 +1528,9 @@
       "path": "tests/e2e/r3-connected.mjs",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "14f592127fb1ab0007a87a8aebe0ec5fdd5bbccc",
-      "sha256": "86544f42f93179fdc75e374a915c46d1346d7d6703bf42cc6398ebe13a1b23d8",
-      "size": 28745
+      "git_blob": "1d6e5a23ec723fa7e2cfefdc131be7f68eafadb7",
+      "sha256": "fb1954420f23de305943627ad0d1fa2b24ef01ed386f1da2955abf04b6dae046",
+      "size": 30212
     },
     {
       "path": "tests/e2e/task-review-fixture.mjs",
@@ -1752,9 +1752,9 @@
       "path": "tests/frontend/owner-r3-connected.test.mjs",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "9782a67686b85ce5b0018ca2e78dd7d04494d9b0",
-      "sha256": "03bdb58b1ce4a6e9127cb2b510d7e19b25c65d5947bc8b7d2b8f6dbd6a55ca57",
-      "size": 10137
+      "git_blob": "884c217d9bc66c333aa73f100bf25e6980b9ded0",
+      "sha256": "599076a0c642565e7e8a353845ba680e324cd4083e6bb08d904659a1ed323219",
+      "size": 10825
     },
     {
       "path": "tests/frontend/owner-r3-daily-demo.test.mjs",
@@ -2374,11 +2374,11 @@
     },
     {
       "path": "tests/unit/test_openapi_and_migrations.py",
-      "origin": "G",
-      "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
-      "git_blob": "7e660287fa8cf999240ad47814266e583724fa35",
-      "sha256": "3169c0b00fa4636afaea0ff772a848e3a80c4244433977e8d126b3fa5cf9ab09",
-      "size": 2818
+      "origin": "CONNECTED_PILOT",
+      "remote_ref": null,
+      "git_blob": "27ce2d1ded67fda23eccb725b843366f8b058fa1",
+      "sha256": "8e4479ae981a31997ea02d52954fd9dd5f01a224eb4b7ea397d628f5c2df30b6",
+      "size": 7071
     },
     {
       "path": "tests/unit/test_opening_contract.py",
