@@ -88,6 +88,15 @@ jobs:
         run: |
           node tests/e2e/r3-capture-friction.mjs
           python scripts/r3_capture_sql_evidence.py artifacts/friction-after/capture-friction-results.json artifacts/friction-after/sql-evidence.json
+      - name: Overnight Stage D fertilizer plan to actual
+        if: github.ref_name == '09-owner-overnight-connected-program'
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/overnight-fertilizer
+        run: |
+          python scripts/overnight_fertilizer_sql_evidence.py --prepare artifacts/overnight-fertilizer
+          node tests/e2e/overnight-fertilizer.mjs
+          python scripts/overnight_fertilizer_sql_evidence.py artifacts/overnight-fertilizer/fertilizer-results.json artifacts/overnight-fertilizer/sql-evidence.json artifacts/overnight-fertilizer/before.json
       - name: Complete Harvest owner journey and source accounting proof
         if: github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program'
         env:
@@ -131,6 +140,7 @@ jobs:
             artifacts/overnight-finance/
             artifacts/overnight-purchases/
             artifacts/overnight-workers/
+            artifacts/overnight-fertilizer/
           retention-days: 14
           if-no-files-found: error
       - name: Preserve diagnostics and stop only owned runtime
@@ -143,110 +153,3 @@ jobs:
             docker stop "$R3_PILOT_CONTAINER" || true
             docker rm -v "$R3_PILOT_CONTAINER" || true
           fi
-
-  connected-preview:
-    if: github.ref_name == '06-owner-r3-connected-test-pilot'
-    needs: connected-browser
-    name: Owner TEST access (rerun only after frozen gate)
-    runs-on: ubuntu-latest
-    timeout-minutes: 43
-    steps:
-      - name: Initial push never opens public access
-        if: github.run_attempt == 1
-        run: echo 'NO PUBLIC PREVIEW STARTED. This job may be explicitly rerun only after exact-head final verification.'
-      - uses: actions/checkout@v4
-        if: github.run_attempt > 1
-        with:
-          ref: ${{ github.sha }}
-      - uses: actions/setup-python@v5
-        if: github.run_attempt > 1
-        with:
-          python-version: '3.13.15'
-      - name: Install existing backend dependencies
-        if: github.run_attempt > 1
-        run: |
-          pip install -e '.[dev]'
-          sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
-      - name: Start existing approved tunnel and fresh synthetic runtime
-        if: github.run_attempt > 1
-        run: |
-          test "$(git rev-parse HEAD)" = "$OWNER_PREVIEW_FEATURE_SHA"
-          mkdir -p artifacts/r3-connected artifacts/r3-connected-preview
-          curl --fail --location --retry 2 -o "$RUNNER_TEMP/cloudflared" https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-linux-amd64
-          chmod +x "$RUNNER_TEMP/cloudflared"
-          "$RUNNER_TEMP/cloudflared" tunnel --no-autoupdate --protocol http2 --url http://127.0.0.1:4173 > "$RUNNER_TEMP/r3-connected-tunnel.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/r3-connected-tunnel.pid"
-          preview_url=''
-          for i in $(seq 1 60); do
-            preview_url=$(sed -n 's/.*\(https:\/\/[a-z0-9-]*\.trycloudflare\.com\).*/\1/p' "$RUNNER_TEMP/r3-connected-tunnel.log" | head -1)
-            if [ -n "$preview_url" ]; then break; fi
-            if ! kill -0 "$(cat "$RUNNER_TEMP/r3-connected-tunnel.pid")" 2>/dev/null; then tail -60 "$RUNNER_TEMP/r3-connected-tunnel.log"; exit 1; fi
-            sleep 1
-          done
-          test -n "$preview_url"
-          export PREVIEW_PUBLIC_ORIGIN="$preview_url" R3_PREVIEW_DURATION_SECONDS=2100
-          echo "PREVIEW_PUBLIC_ORIGIN=$PREVIEW_PUBLIC_ORIGIN" >> "$GITHUB_ENV"
-          bash scripts/start_r3_connected_ci.sh
-      - name: Verify HTTPS boundary and prepare private owner access
-        if: github.run_attempt > 1
-        run: python scripts/r3_connected_preview_access.py open --output artifacts/r3-connected-preview
-      - uses: actions/upload-artifact@v4
-        if: github.run_attempt > 1 && success()
-        with:
-          name: r3-connected-private-access-${{ github.sha }}
-          path: artifacts/r3-connected-preview/private-access.txt
-          retention-days: 1
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        if: github.run_attempt > 1 && success()
-        with:
-          name: r3-connected-preview-metadata-${{ github.sha }}
-          path: artifacts/r3-connected-preview/preview-metadata.json
-          retention-days: 1
-          if-no-files-found: error
-      - name: Keep access open only until server expiry
-        if: github.run_attempt > 1 && success()
-        run: |
-          python - <<'PY'
-          import datetime, os, time
-          expiry=datetime.datetime.fromisoformat(os.environ['PREVIEW_EXPIRES_AT']).timestamp()
-          remaining=expiry-time.time()
-          if not 0 < remaining <= 2100: raise RuntimeError('Unexpected TEST expiry')
-          time.sleep(remaining+1)
-          import httpx, json, pathlib
-          paths=['/health','/r3/','/preview/config']
-          codes={path:httpx.get(os.environ['PREVIEW_PUBLIC_ORIGIN']+path,timeout=30).status_code for path in paths}
-          pathlib.Path('artifacts/r3-connected-preview/expiry.json').write_text(json.dumps({'feature_sha':os.environ['OWNER_PREVIEW_FEATURE_SHA'],'expires_at':os.environ['PREVIEW_EXPIRES_AT'],'status_codes':codes},indent=2))
-          assert all(status==410 for status in codes.values()), 'Expired preview must refuse all tested routes'
-          PY
-      - name: Preserve sanitized final TEST audit
-        if: always() && github.run_attempt > 1 && env.R3_CONNECTED_PILOT == '1'
-        run: python scripts/r3_connected_preview_access.py audit --output artifacts/r3-connected-preview
-      - name: Stop only owned app, tunnel and database
-        if: always() && github.run_attempt > 1
-        run: |
-          mkdir -p artifacts/r3-connected-preview
-          for process_file in "$RUNNER_TEMP/r3-connected-server.pid" "$RUNNER_TEMP/r3-connected-tunnel.pid"; do
-            if [ -f "$process_file" ]; then kill "$(cat "$process_file")" || true; fi
-          done
-          if [ -n "${R3_PILOT_CONTAINER:-}" ]; then
-            docker stop "$R3_PILOT_CONTAINER" || true
-            docker rm -v "$R3_PILOT_CONTAINER" || true
-          fi
-          python - <<'PY'
-          import json, os, pathlib, subprocess
-          container=os.environ.get('R3_PILOT_CONTAINER')
-          absent=not container or subprocess.run(['docker','inspect',container],capture_output=True).returncode != 0
-          assert absent, 'Owned container still exists'
-          pathlib.Path('artifacts/r3-connected-preview/cleanup.json').write_text(json.dumps({'owned_container_absent':absent,'feature_sha':os.environ['OWNER_PREVIEW_FEATURE_SHA']},indent=2))
-          PY
-      - uses: actions/upload-artifact@v4
-        if: always() && github.run_attempt > 1
-        with:
-          name: r3-connected-preview-final-evidence-${{ github.sha }}
-          path: |
-            artifacts/r3-connected-preview/final-audit.json
-            artifacts/r3-connected-preview/cleanup.json
-            artifacts/r3-connected-preview/expiry.json
-          retention-days: 14
-          if-no-files-found: warn

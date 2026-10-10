@@ -4698,6 +4698,585 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/references:
+    get:
+      summary: References
+      operationId: references_v1_entities__entity_id__fertilizer_references_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: event_date
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Event Date
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      summary: Reference
+      operationId: reference_v1_entities__entity_id__fertilizer_references_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReferenceInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer:
+    get:
+      summary: Calendar
+      operationId: calendar_v1_entities__entity_id__fertilizer_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: date_from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date From
+      - name: date_to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date To
+      - name: greenhouse_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/preview:
+    post:
+      summary: Preview
+      operationId: preview_v1_entities__entity_id__fertilizer_plans_preview_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanPreview'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans:
+    post:
+      summary: Create
+      operationId: create_v1_entities__entity_id__fertilizer_plans_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}:
+    get:
+      summary: Get
+      operationId: get_v1_entities__entity_id__fertilizer_plans__plan_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}/revisions:
+    post:
+      summary: Revise
+      operationId: revise_v1_entities__entity_id__fertilizer_plans__plan_id__revisions_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevisionInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}/dispatch:
+    post:
+      summary: Dispatch
+      operationId: dispatch_v1_entities__entity_id__fertilizer_plans__plan_id__dispatch_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DispatchInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DispatchView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}/actual-preview:
+    post:
+      summary: Actual Preview
+      operationId: actual_preview_v1_entities__entity_id__fertilizer_plans__plan_id__actual_preview_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActualInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActualPreview'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}/actual:
+    post:
+      summary: Actual
+      operationId: actual_v1_entities__entity_id__fertilizer_plans__plan_id__actual_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActualConfirm'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActualView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}/revisions/{revision}/cards/{card_id}/components/{component_id}/photo:
+    get:
+      summary: Photo
+      operationId: photo_v1_entities__entity_id__fertilizer_plans__plan_id__revisions__revision__cards__card_id__components__component_id__photo_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: revision
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Revision
+      - name: card_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Card Id
+      - name: component_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Component Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/fertilizer:
+    get:
+      summary: Worker List
+      operationId: worker_list_v1_worker_fertilizer_get
+      parameters:
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerCalendarView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/fertilizer/{plan_id}:
+    get:
+      summary: Worker Detail
+      operationId: worker_detail_v1_worker_fertilizer__plan_id__get
+      parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPlanView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/fertilizer/{plan_id}/responses:
+    post:
+      summary: Response
+      operationId: response_v1_worker_fertilizer__plan_id__responses_post
+      parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FertilizerResponseInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/fertilizer/{plan_id}/revisions/{revision}/cards/{card_id}/components/{component_id}/photo:
+    get:
+      summary: Worker Photo
+      operationId: worker_photo_v1_worker_fertilizer__plan_id__revisions__revision__cards__card_id__components__component_id__photo_get
+      parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: revision
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Revision
+      - name: card_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Card Id
+      - name: component_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Component Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -10023,6 +10602,1478 @@ components:
       - task_version
       - task_status
       title: WorkerResponseResult
+    ActualConfirm:
+      properties:
+        input:
+          $ref: '#/components/schemas/ActualInput'
+        actual_preview_digest:
+          type: string
+          maxLength: 64
+          minLength: 64
+          title: Actual Preview Digest
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - input
+      - actual_preview_digest
+      - confirmed
+      title: ActualConfirm
+    ActualInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/FormSource'
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        revision:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Revision
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        duplicate_reviewed:
+          type: boolean
+          title: Duplicate Reviewed
+          default: false
+        lines:
+          items:
+            $ref: '#/components/schemas/ActualLine'
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Lines
+        completed_card_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 50
+          title: Completed Card Ids
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - expected_version
+      - revision
+      - event_date
+      - lines
+      title: ActualInput
+    ActualLine:
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        component_id:
+          type: string
+          format: uuid
+          title: Component Id
+        report_id:
+          type: string
+          format: uuid
+          title: Report Id
+        quantity:
+          type: string
+          title: Quantity
+        disposition:
+          type: string
+          enum:
+          - APPLIED
+          - NOT_APPLIED
+          title: Disposition
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - card_id
+      - component_id
+      - report_id
+      - quantity
+      - disposition
+      title: ActualLine
+    ActualPreview:
+      properties:
+        input:
+          $ref: '#/components/schemas/ActualInput'
+        actual_preview_digest:
+          type: string
+          title: Actual Preview Digest
+        selected_scope:
+          items:
+            $ref: '#/components/schemas/ActualLine'
+          type: array
+          title: Selected Scope
+        totals:
+          items:
+            $ref: '#/components/schemas/ProductTotal'
+          type: array
+          title: Totals
+        zero_lines:
+          items:
+            $ref: '#/components/schemas/ActualLine'
+          type: array
+          title: Zero Lines
+        remainder:
+          items:
+            $ref: '#/components/schemas/ProposedActualLine'
+          type: array
+          title: Remainder
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        can_confirm:
+          type: boolean
+          title: Can Confirm
+        inventory_effect:
+          additionalProperties: true
+          type: object
+          title: Inventory Effect
+      additionalProperties: false
+      type: object
+      required:
+      - input
+      - actual_preview_digest
+      - selected_scope
+      - totals
+      - zero_lines
+      - remainder
+      - issues
+      - can_confirm
+      - inventory_effect
+      title: ActualPreview
+    ActualView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        plan_id:
+          type: string
+          format: uuid
+          title: Plan Id
+        revision_id:
+          type: string
+          format: uuid
+          title: Revision Id
+        source_id:
+          type: string
+          format: uuid
+          title: Source Id
+        application_id:
+          type: string
+          format: uuid
+          title: Application Id
+        input:
+          $ref: '#/components/schemas/ActualInput'
+        source_snapshot:
+          $ref: '#/components/schemas/ActualConfirm'
+        preview_digest:
+          type: string
+          title: Preview Digest
+        created_by:
+          type: string
+          format: uuid
+          title: Created By
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        inventory_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Inventory Status
+        replacement_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Id
+        current_application_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Current Application Id
+        current_inventory_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Inventory Status
+        application_history:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Application History
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - entity_id
+      - plan_id
+      - revision_id
+      - source_id
+      - application_id
+      - input
+      - source_snapshot
+      - preview_digest
+      - created_by
+      - created_at
+      title: ActualView
+    AreaView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        kind:
+          type: string
+          title: Kind
+        parent_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Parent Id
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      - kind
+      - parent_id
+      title: AreaView
+    CardInput:
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        area_reference_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Area Reference Id
+        mix_label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Mix Label
+        worker_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Worker Id
+        worker_reference_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Worker Reference Id
+        original_instruction:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Original Instruction
+        rendered_text:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Rendered Text
+        language:
+          type: string
+          const: fa
+          title: Language
+          default: fa
+        rendering_reviewed:
+          type: boolean
+          title: Rendering Reviewed
+          default: false
+        components:
+          items:
+            $ref: '#/components/schemas/ComponentInput'
+          type: array
+          maxItems: 30
+          minItems: 1
+          title: Components
+      additionalProperties: false
+      type: object
+      required:
+      - card_id
+      - work_area_id
+      - mix_label
+      - components
+      title: CardInput
+    CardView:
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        area_reference_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Area Reference Id
+        mix_label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Mix Label
+        worker_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Worker Id
+        worker_reference_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Worker Reference Id
+        original_instruction:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Original Instruction
+        rendered_text:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Rendered Text
+        language:
+          type: string
+          const: fa
+          title: Language
+          default: fa
+        rendering_reviewed:
+          type: boolean
+          title: Rendering Reviewed
+          default: false
+        components:
+          items:
+            $ref: '#/components/schemas/ComponentView'
+          type: array
+          title: Components
+        greenhouse_name:
+          type: string
+          title: Greenhouse Name
+        part_name:
+          type: string
+          title: Part Name
+        worker_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Worker Name
+        area_da:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Area Da
+        area_provenance:
+          anyOf:
+          - $ref: '#/components/schemas/ReferenceView'
+          - type: 'null'
+        prepared_instruction:
+          type: string
+          title: Prepared Instruction
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        current_report:
+          anyOf:
+          - $ref: '#/components/schemas/ReportView'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - card_id
+      - work_area_id
+      - mix_label
+      - components
+      - greenhouse_name
+      - part_name
+      - worker_name
+      - area_da
+      - area_provenance
+      - prepared_instruction
+      - issues
+      title: CardView
+    ComponentInput:
+      properties:
+        component_id:
+          type: string
+          format: uuid
+          title: Component Id
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        location_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+        dose_per_da:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Dose Per Da
+        unit:
+          type: string
+          enum:
+          - kg
+          - L
+          title: Unit
+        quantity_override:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity Override
+        override_reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Override Reason
+        photo_source_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Photo Source Id
+      additionalProperties: false
+      type: object
+      required:
+      - component_id
+      - product_id
+      - unit
+      title: ComponentInput
+    ComponentView:
+      properties:
+        component_id:
+          type: string
+          format: uuid
+          title: Component Id
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        location_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+        dose_per_da:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Dose Per Da
+        unit:
+          type: string
+          enum:
+          - kg
+          - L
+          title: Unit
+        quantity_override:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity Override
+        override_reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Override Reason
+        photo_source_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Photo Source Id
+        product_name:
+          type: string
+          title: Product Name
+        location_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location Name
+        calculated_quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Calculated Quantity
+        proposed_quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Proposed Quantity
+        quantity_basis:
+          type: string
+          enum:
+          - UNKNOWN
+          - OWNER_OVERRIDE
+          - DOSE_TIMES_AREA
+          title: Quantity Basis
+        photo_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Photo Url
+      additionalProperties: false
+      type: object
+      required:
+      - component_id
+      - product_id
+      - unit
+      - product_name
+      - location_name
+      - calculated_quantity
+      - proposed_quantity
+      - quantity_basis
+      title: ComponentView
+    DispatchInput:
+      properties:
+        client_approval_id:
+          type: string
+          format: uuid
+          title: Client Approval Id
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        revision:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Revision
+        preview_digest:
+          type: string
+          maxLength: 64
+          minLength: 64
+          title: Preview Digest
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - client_approval_id
+      - captured_at
+      - expected_version
+      - revision
+      - preview_digest
+      - confirmed
+      title: DispatchInput
+    DispatchView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        plan_id:
+          type: string
+          format: uuid
+          title: Plan Id
+        revision_id:
+          type: string
+          format: uuid
+          title: Revision Id
+        created_by:
+          type: string
+          format: uuid
+          title: Created By
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        source_snapshot:
+          $ref: '#/components/schemas/DispatchInput'
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - entity_id
+      - plan_id
+      - revision_id
+      - created_by
+      - created_at
+      - source_snapshot
+      title: DispatchView
+    FertilizerResponseInput:
+      properties:
+        client_response_id:
+          type: string
+          format: uuid
+          title: Client Response Id
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        expected_revision:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Revision
+        dispatch_id:
+          type: string
+          format: uuid
+          title: Dispatch Id
+        response:
+          type: string
+          enum:
+          - DONE
+          - PARTIAL
+          - PROBLEM
+          title: Response
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        button_label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Button Label
+        original_language:
+          type: string
+          enum:
+          - ru
+          - tr
+          - fa
+          - uz
+          title: Original Language
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Comment
+        quantities:
+          items:
+            $ref: '#/components/schemas/ReportQuantity'
+          type: array
+          maxItems: 30
+          title: Quantities
+      additionalProperties: false
+      type: object
+      required:
+      - client_response_id
+      - card_id
+      - expected_revision
+      - dispatch_id
+      - response
+      - captured_at
+      - button_label
+      - original_language
+      title: FertilizerResponseInput
+    FormSource:
+      properties:
+        form_id:
+          type: string
+          format: uuid
+          title: Form Id
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        source_kind:
+          type: string
+          const: OWNER_FORM
+          title: Source Kind
+          default: OWNER_FORM
+        origin:
+          type: string
+          enum:
+          - owner
+          - agronomist
+          title: Origin
+          default: owner
+        original_text:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Original Text
+        inbox_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Inbox Id
+      additionalProperties: false
+      type: object
+      required:
+      - form_id
+      - captured_at
+      title: FormSource
+    GreenhouseView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      title: GreenhouseView
+    PlanInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/FormSource'
+        greenhouse_id:
+          type: string
+          format: uuid
+          title: Greenhouse Id
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        intended_send_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Intended Send At
+        copied_from_plan_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Copied From Plan Id
+        copied_from_revision:
+          anyOf:
+          - type: integer
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Copied From Revision
+        copy_reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Copy Reason
+        cards:
+          items:
+            $ref: '#/components/schemas/CardInput'
+          type: array
+          maxItems: 50
+          minItems: 1
+          title: Cards
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - greenhouse_id
+      - event_date
+      - cards
+      title: PlanInput
+    PlanPreview:
+      properties:
+        input:
+          $ref: '#/components/schemas/PlanInput'
+        cards:
+          items:
+            $ref: '#/components/schemas/CardView'
+          type: array
+          title: Cards
+        totals:
+          items:
+            $ref: '#/components/schemas/ProductTotal'
+          type: array
+          title: Totals
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        preview_digest:
+          type: string
+          title: Preview Digest
+        can_dispatch:
+          type: boolean
+          title: Can Dispatch
+        greenhouse:
+          $ref: '#/components/schemas/AreaView'
+      additionalProperties: false
+      type: object
+      required:
+      - input
+      - cards
+      - totals
+      - issues
+      - preview_digest
+      - can_dispatch
+      - greenhouse
+      title: PlanPreview
+    PlanView:
+      properties:
+        late_evidence_count:
+          type: integer
+          title: Late Evidence Count
+        late_evidence_review_supported:
+          type: boolean
+          const: false
+          title: Late Evidence Review Supported
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        revision:
+          type: integer
+          title: Revision
+        version:
+          type: integer
+          title: Version
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - APPROVED
+          - PARTIALLY_APPLIED
+          - APPLIED
+          - ACTUAL_REVERSED
+          - ACTUAL_CORRECTED
+          title: Status
+        input:
+          $ref: '#/components/schemas/PlanInput'
+        source_snapshot:
+          $ref: '#/components/schemas/FormSource'
+        preview_digest:
+          type: string
+          title: Preview Digest
+        cards:
+          items:
+            $ref: '#/components/schemas/CardView'
+          type: array
+          title: Cards
+        totals:
+          items:
+            $ref: '#/components/schemas/ProductTotal'
+          type: array
+          title: Totals
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        can_dispatch:
+          type: boolean
+          title: Can Dispatch
+        current_dispatch_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Current Dispatch Id
+        dispatches:
+          items:
+            $ref: '#/components/schemas/DispatchView'
+          type: array
+          title: Dispatches
+        reports:
+          items:
+            $ref: '#/components/schemas/ReportView'
+          type: array
+          title: Reports
+        actual:
+          anyOf:
+          - $ref: '#/components/schemas/ActualView'
+          - type: 'null'
+        revisions:
+          items:
+            $ref: '#/components/schemas/RevisionView'
+          type: array
+          title: Revisions
+        proposed_actual_lines:
+          items:
+            $ref: '#/components/schemas/ProposedActualLine'
+          type: array
+          title: Proposed Actual Lines
+        remainder:
+          items:
+            $ref: '#/components/schemas/ProposedActualLine'
+          type: array
+          title: Remainder
+        subsequent_scope_supported:
+          type: boolean
+          const: false
+          title: Subsequent Scope Supported
+      additionalProperties: false
+      type: object
+      required:
+      - late_evidence_count
+      - late_evidence_review_supported
+      - id
+      - entity_id
+      - revision
+      - version
+      - status
+      - input
+      - source_snapshot
+      - preview_digest
+      - cards
+      - totals
+      - issues
+      - can_dispatch
+      - current_dispatch_id
+      - dispatches
+      - reports
+      - actual
+      - revisions
+      - proposed_actual_lines
+      - remainder
+      - subsequent_scope_supported
+      title: PlanView
+    ProductTotal:
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        unit:
+          type: string
+          enum:
+          - kg
+          - L
+          title: Unit
+        quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity
+      additionalProperties: false
+      type: object
+      required:
+      - product_id
+      - unit
+      - quantity
+      title: ProductTotal
+    ProposedActualLine:
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        component_id:
+          type: string
+          format: uuid
+          title: Component Id
+        report_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Report Id
+        quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity
+        quantity_basis:
+          type: string
+          enum:
+          - WORKER_REPORTED
+          - PLAN_CANDIDATE
+          - UNKNOWN
+          title: Quantity Basis
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        product_name:
+          type: string
+          title: Product Name
+        unit:
+          type: string
+          enum:
+          - kg
+          - L
+          title: Unit
+        resolution_required:
+          type: boolean
+          title: Resolution Required
+        remaining_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Remaining Status
+      additionalProperties: false
+      type: object
+      required:
+      - card_id
+      - component_id
+      - report_id
+      - quantity
+      - quantity_basis
+      - product_id
+      - product_name
+      - unit
+      - resolution_required
+      title: ProposedActualLine
+    ReferenceInput:
+      properties:
+        client_reference_id:
+          type: string
+          format: uuid
+          title: Client Reference Id
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        area_da:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Area Da
+        default_worker_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Default Worker Id
+        canonical_key:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Canonical Key
+        verification:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Verification
+        effective_from:
+          type: string
+          format: date
+          title: Effective From
+        replaces_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replaces Id
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - client_reference_id
+      - captured_at
+      - work_area_id
+      - verification
+      - effective_from
+      - confirmed
+      title: ReferenceInput
+    ReferenceView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        area_da:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Area Da
+        default_worker_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Default Worker Id
+        canonical_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Canonical Key
+        verification:
+          type: string
+          title: Verification
+        effective_from:
+          type: string
+          format: date
+          title: Effective From
+        replaces_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replaces Id
+        created_by:
+          type: string
+          format: uuid
+          title: Created By
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        source_snapshot:
+          $ref: '#/components/schemas/ReferenceInput'
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - entity_id
+      - work_area_id
+      - area_da
+      - default_worker_id
+      - canonical_key
+      - verification
+      - effective_from
+      - replaces_id
+      - created_by
+      - created_at
+      - source_snapshot
+      title: ReferenceView
+    ReportOriginal:
+      properties:
+        client_response_id:
+          type: string
+          format: uuid
+          title: Client Response Id
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        expected_revision:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Revision
+        dispatch_id:
+          type: string
+          format: uuid
+          title: Dispatch Id
+        response:
+          type: string
+          enum:
+          - DONE
+          - PARTIAL
+          - PROBLEM
+          title: Response
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        button_label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Button Label
+        original_language:
+          type: string
+          enum:
+          - ru
+          - tr
+          - fa
+          - uz
+          title: Original Language
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Comment
+        quantities:
+          items:
+            $ref: '#/components/schemas/ReportQuantity'
+          type: array
+          maxItems: 30
+          title: Quantities
+        schema_version:
+          type: integer
+          const: 1
+          title: Schema Version
+        source_kind:
+          type: string
+          const: UI_ACTION
+          title: Source Kind
+      additionalProperties: false
+      type: object
+      required:
+      - client_response_id
+      - card_id
+      - expected_revision
+      - dispatch_id
+      - response
+      - captured_at
+      - button_label
+      - original_language
+      - schema_version
+      - source_kind
+      title: ReportOriginal
+    ReportQuantity:
+      properties:
+        component_id:
+          type: string
+          format: uuid
+          title: Component Id
+        quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity
+      additionalProperties: false
+      type: object
+      required:
+      - component_id
+      title: ReportQuantity
+    ReportView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        plan_id:
+          type: string
+          format: uuid
+          title: Plan Id
+        revision_id:
+          type: string
+          format: uuid
+          title: Revision Id
+        dispatch_id:
+          type: string
+          format: uuid
+          title: Dispatch Id
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        worker_id:
+          type: string
+          format: uuid
+          title: Worker Id
+        actor_id:
+          type: string
+          format: uuid
+          title: Actor Id
+        response:
+          type: string
+          enum:
+          - DONE
+          - PARTIAL
+          - PROBLEM
+          title: Response
+        source_snapshot:
+          $ref: '#/components/schemas/ReportOriginal'
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - entity_id
+      - plan_id
+      - revision_id
+      - dispatch_id
+      - card_id
+      - worker_id
+      - actor_id
+      - response
+      - source_snapshot
+      - received_at
+      title: ReportView
+    RevisionInput:
+      properties:
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        input:
+          $ref: '#/components/schemas/PlanInput'
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - input
+      title: RevisionInput
+    RevisionView:
+      properties:
+        revision:
+          type: integer
+          title: Revision
+        preview_digest:
+          type: string
+          title: Preview Digest
+        input:
+          $ref: '#/components/schemas/PlanInput'
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        created_by:
+          type: string
+          format: uuid
+          title: Created By
+      additionalProperties: false
+      type: object
+      required:
+      - revision
+      - preview_digest
+      - input
+      - created_at
+      - created_by
+      title: RevisionView
+    WorkerCalendarView:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/WorkerPlanView'
+          type: array
+          title: Items
+        attention:
+          type: integer
+          title: Attention
+        filters:
+          additionalProperties: true
+          type: object
+          title: Filters
+      additionalProperties: false
+      type: object
+      required:
+      - items
+      - attention
+      - filters
+      title: WorkerCalendarView
+    WorkerPlanView:
+      properties:
+        current_revision:
+          type: integer
+          title: Current Revision
+        can_respond:
+          type: boolean
+          title: Can Respond
+        id:
+          type: string
+          format: uuid
+          title: Id
+        plan_id:
+          type: string
+          format: uuid
+          title: Plan Id
+        revision:
+          type: integer
+          title: Revision
+        version:
+          type: integer
+          title: Version
+        dispatch_id:
+          type: string
+          format: uuid
+          title: Dispatch Id
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        greenhouse:
+          $ref: '#/components/schemas/GreenhouseView'
+        cards:
+          items:
+            $ref: '#/components/schemas/CardView'
+          type: array
+          title: Cards
+        reports:
+          items:
+            $ref: '#/components/schemas/ReportView'
+          type: array
+          title: Reports
+      additionalProperties: false
+      type: object
+      required:
+      - current_revision
+      - can_respond
+      - id
+      - plan_id
+      - revision
+      - version
+      - dispatch_id
+      - event_date
+      - greenhouse
+      - cards
+      - reports
+      title: WorkerPlanView
   responses:
     Conflict:
       description: Version or idempotency conflict

@@ -1,37 +1,24 @@
-"""The optional owner window stays dry until an explicitly rerun verified job."""
+"""This delivery branch verifies isolated TEST journeys without public access."""
 from pathlib import Path
 import yaml
 
 
-def test_connected_preview_has_success_dependency_and_every_live_step_is_fenced():
-    workflow = yaml.safe_load(Path('.github/workflows/r3-connected-pilot.yml').read_text())
+def test_program_workflow_has_no_public_preview_or_access_artifact():
+    raw = Path('.github/workflows/r3-connected-pilot.yml').read_text()
+    workflow = yaml.safe_load(raw)
     assert workflow['permissions'] == {'contents': 'read'}
-    preview = workflow['jobs']['connected-preview']
-    assert preview['needs'] == 'connected-browser'
-    assert preview['timeout-minutes'] == 43
-    first, *operations = preview['steps']
-    assert first['if'] == 'github.run_attempt == 1'
-    assert 'NO PUBLIC PREVIEW STARTED' in first['run']
-    assert 'PREVIEW_SECRET' not in first['run']
-    for step in operations:
-        assert 'github.run_attempt > 1' in step['if']
-    checkout = next(step for step in operations if step.get('uses', '').startswith('actions/checkout'))
-    assert checkout['with']['ref'] == '${{ github.sha }}'
-    cleanup = next(step for step in operations if step.get('name') == 'Stop only owned app, tunnel and database')
-    assert cleanup['if'].startswith('always()')
-    assert 'docker rm -v "$R3_PILOT_CONTAINER"' in cleanup['run']
+    assert set(workflow['jobs']) == {'connected-browser'}
+    for forbidden in ('cloudflared', 'trycloudflare', 'connected-preview:', 'private-access.txt', 'r3_connected_preview_access.py open'):
+        assert forbidden not in raw
 
 
-def test_private_access_is_separate_short_lived_and_not_in_sanitized_evidence():
+def test_isolated_gate_keeps_inherited_and_all_four_stage_journeys():
     workflow = yaml.safe_load(Path('.github/workflows/r3-connected-pilot.yml').read_text())
-    uploads = [step for step in workflow['jobs']['connected-preview']['steps']
-               if step.get('uses', '').startswith('actions/upload-artifact')]
-    private = next(step for step in uploads if 'private-access' in step['with']['name'])
-    assert private['with']['path'] == 'artifacts/r3-connected-preview/private-access.txt'
-    assert private['with']['retention-days'] == 1
-    final = next(step for step in uploads if 'final-evidence' in step['with']['name'])
-    assert set(final['with']['path'].splitlines()) == {
-        'artifacts/r3-connected-preview/final-audit.json',
-        'artifacts/r3-connected-preview/cleanup.json',
-        'artifacts/r3-connected-preview/expiry.json',
-    }
+    job = workflow['jobs']['connected-browser']
+    runs = '\n'.join(step.get('run', '') for step in job['steps'])
+    for journey in ('r3-connected.mjs', 'r3-capture-friction.mjs', 'harvest-owner-journey.mjs', 'overnight-finance.mjs', 'overnight-purchases.mjs', 'overnight-workers.mjs', 'overnight-fertilizer.mjs'):
+        assert journey in runs
+    cleanup = next(step for step in job['steps'] if step.get('name') == 'Preserve diagnostics and stop only owned runtime')
+    assert cleanup['if'] == 'always()'
+    assert 'docker rm -v "$R3_PILOT_CONTAINER"' in cleanup['run']
+    assert all(step.get('env', {}).get('PREVIEW_URL', 'http://127.0.0.1:4173') == 'http://127.0.0.1:4173' for step in job['steps'])

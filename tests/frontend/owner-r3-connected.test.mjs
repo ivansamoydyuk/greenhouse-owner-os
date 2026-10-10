@@ -174,7 +174,8 @@ test("large amount round trips without binary floats", () =>
 test("quantity uses exact decimal and unknown remains explicit", () => {
   assert.equal(quantity("0,125"), "0.125");
   assert.throws(() => quantity("0"));
-  assert.equal(CAPABILITIES.fertilizer, "DEMO_ONLY");
+  assert.equal(CAPABILITIES.fertilizer, "CONNECTED_TEST");
+  assert.equal(CAPABILITIES.realDispatch, "NOT_AVAILABLE");
 });
 test("double click coalesces same mutation and retains ACK", async () => {
   let calls = 0;

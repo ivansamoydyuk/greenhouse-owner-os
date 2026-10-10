@@ -440,3 +440,16 @@
 .connected .purchase-fact>* {min-width:0;overflow-wrap:anywhere;}
 .connected .purchase-fact strong {max-width:60%;text-align:right;}
 @media(min-width:768px){.connected .purchase-filters{grid-template-columns:repeat(3,minmax(0,1fr));}}
+
+/* Connected fertilizer cards retain exact server quantities and mobile actions. */
+.connected .fertilizer-connected fieldset { min-width:0; border:1px solid var(--line,#dce6dd); border-radius:14px; margin:16px 0; padding:14px; }
+.connected .fertilizer-connected legend { max-width:100%; font-weight:700; overflow-wrap:anywhere; }
+.connected .fertilizer-component { border-bottom:1px solid var(--line,#dce6dd); padding:14px 0; }
+.connected .fertilizer-quantity { display:grid; grid-template-columns:minmax(0,1fr) minmax(70px,auto); gap:8px; padding:12px 0; border-bottom:1px solid var(--line,#dce6dd); }
+.connected .fertilizer-quantity small { grid-column:1/-1; }
+.connected .fertilizer-quantity span,.connected .fertilizer-totals span { white-space:normal; overflow-wrap:anywhere; font-weight:700; }
+.connected .fertilizer-totals p { display:flex; flex-wrap:wrap; justify-content:space-between; gap:10px; }
+.connected .fertilizer-totals strong,.connected .fertilizer-quantity strong { min-width:0; overflow-wrap:anywhere; }
+.connected .fertilizer-connected textarea { min-height:110px; scroll-margin-block:110px; }
+.connected .fertilizer-connected .source-json { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; max-height:480px; overflow:auto; }
+.connected .fertilizer-connected button,.connected .fertilizer-connected .btn { min-height:44px; white-space:normal; }

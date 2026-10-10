@@ -8,7 +8,7 @@ export const CAPABILITIES = Object.freeze({
   personalTasks: "CONNECTED_TEST",
   workersR1: "CONNECTED_TEST",
   workersR2: "CONNECTED_TEST",
-  fertilizer: "DEMO_ONLY",
+  fertilizer: "CONNECTED_TEST",
   realDispatch: "NOT_AVAILABLE",
   latePostedReceiptLink: "CONNECTED_TEST",
 });
