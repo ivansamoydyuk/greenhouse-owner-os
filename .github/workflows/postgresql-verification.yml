@@ -59,6 +59,8 @@ jobs:
         run: npm ci && npx playwright install --with-deps chromium
       - name: Fresh-fixture Capture to Confirmation browser gate
         run: python scripts/run_owner_e2e.py
+      - name: Isolated source queue and service outage browser gate
+        run: python scripts/run_source_queue_e2e.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
