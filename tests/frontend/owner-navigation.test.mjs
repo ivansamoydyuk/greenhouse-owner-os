@@ -13,7 +13,7 @@ const destination = (button, attribute) => button.attributes.match(new RegExp(`$
 test('four primary destinations cover every existing owner route without orphan modules', () => {
   assert.deepEqual(primaryRoutes, ['home', 'review', 'overview', 'more']);
   assert.deepEqual(financeRoutes, ['overview', 'debts', 'operations']);
-  assert.deepEqual(moreRoutes, ['harvest', 'inventory', 'tasks', 'inbox', 'parties']);
+  assert.deepEqual(moreRoutes, ['harvest', 'inventory', 'tasks', 'inbox', 'parties', 'personal_tasks']);
   assert.deepEqual(new Set(Object.keys(routes)), new Set([...primaryRoutes, ...financeRoutes, ...moreRoutes]));
   for (const [key, route] of Object.entries(routes)) {
     assert.ok(primaryRoutes.includes(route.group), key);
@@ -67,7 +67,7 @@ test('Finance tabs preserve all destinations and their selected state', () => {
   }
 });
 
-test('More contains the five working modules with descriptive text', () => {
+test('More contains the six working modules with descriptive text', () => {
   const items = buttons(moreNavigation());
   assert.deepEqual(items.map(item => destination(item, 'data-go')), moreRoutes);
   for (const item of items) {
