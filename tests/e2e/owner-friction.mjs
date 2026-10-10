@@ -272,12 +272,34 @@ async function runCase(test) {
       assert.fail(`Supported sample still blocked: ${test.id}: ${proposal.revision.missing.join('; ')}`);
     }
     const responsePromise = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === owner + `/confirmations/${record.proposal_id}/confirm`);
+    const expensePreviewPromise = test.kind === 'DIRECT_EXPENSE' ? page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname === owner + `/confirmations/${record.proposal_id}/preview`) : null;
     await measured.click(sheet().locator('#r2-confirm'), 'Confirm reviewed TEST effect');
     const response = await responsePromise, result = await response.json();
     if (response.ok() && result.effect && !confirmed.some(row => row.effect.id === result.effect.id)) confirmed.push({case_id: test.id, kind: test.kind, proposal_id: record.proposal_id, effect: result.effect});
     const expectedState = test.kind === 'WORKER_TASK' ? 'CONFIRMED_NONPOSTING' : 'POSTED';
     assert.equal(response.status(), 200, JSON.stringify(result)); assert.equal(result.state, expectedState);
     assert.ok(result.effect?.id, 'Authoritative effect recorded for reversal');
+    if (expensePreviewPromise) {
+      // DirectExpense keeps a fresh, read-only receipt open after Confirm so
+      // current posting/reversal truth is not replaced by a historical toast.
+      const previewResponse = await expensePreviewPromise, current = await previewResponse.json();
+      assert.equal(previewResponse.status(), 200, JSON.stringify(current));
+      assert.equal(current.id, record.proposal_id); assert.equal(current.source.id, record.source_id);
+      assert.equal(current.action_type, 'DIRECT_EXPENSE'); assert.equal(current.state, 'POSTED');
+      assert.equal(current.current_effect.id, result.effect.id); assert.equal(current.current_effect.status, 'posted');
+      const receipt = sheet().locator(`[data-proposal="${record.proposal_id}"]`);
+      await receipt.getByText('Расход подтверждён. Деньги списаны с выбранного счёта; долг и аванс не созданы.', {exact: true}).waitFor();
+      assert.equal(await receipt.locator(':scope > small').first().innerText(), 'Расход · Подтверждено');
+      assert.equal(await sheet().locator('#r2-confirm').isDisabled(), true);
+      assert.equal(await sheet().locator('#r2-edit,#r2-defer,#r2-reject,#r2-reopen').count(), 0);
+      record.current_read_only_receipt = {proposal_id: current.id, source_id: current.source.id,
+        effect_id: current.current_effect.id, state: current.state, effect_status: current.current_effect.status};
+      await page.screenshot({path: `${artifacts}/owner-friction-${test.id}-posted-receipt.png`, fullPage: true});
+      // Receipt dismissal is a real logged click after successful Confirm,
+      // outside the measured capture-to-confirm interval.
+      measured.setPhase('post_confirmation');
+      await measured.click(sheet().getByRole('button', {name: 'Закрыть', exact: true}), 'Dismiss confirmed read-only expense receipt');
+    }
     await sheet().waitFor({state: 'hidden'});
     record.status = 'completed'; record.authoritative_effect_id = result.effect.id;
     assert.equal((await api(owner + `/confirmations/${record.proposal_id}/preview`)).state, expectedState);

@@ -41,7 +41,9 @@ PERSONAL_TASK_SELECT="""SELECT t.*,r.payload->>'category' category,
         AND r.version=c.version AND r.entity_id=c.entity_id
     WHERE t.entity_id=:e AND t.owner_id=:a"""
 
-class OwnerCaptureService:
+from .owner_recovery import ExpenseRecoveryMixin, expense_revision
+
+class OwnerCaptureService(ExpenseRecoveryMixin):
     def __init__(self,factory,recognizer=None):
         self.factory=factory;self.finance=FinanceService(factory);self.recognizer=recognizer or LocalOCR()
 
@@ -55,6 +57,7 @@ class OwnerCaptureService:
         from sqlalchemy.exc import IntegrityError
         try:
             with self.factory() as u:
+                u.session.execute(text('SET TRANSACTION ISOLATION LEVEL READ COMMITTED'))
                 self.owner(u,e,a);u.idempotency.lock(a,op,key)
                 replay=self.finance._replay_if_exists(u,a,op,key,h)
                 if replay:return replay
@@ -97,11 +100,16 @@ class OwnerCaptureService:
 
     def _capture_view(self,u,s):
         job=rows(u,'SELECT id,state,attempts,error_code FROM core.processing_jobs WHERE inbox_id=:s ORDER BY created_at DESC LIMIT 1',s=s.id)[0]
-        actions=rows(u,'SELECT id,state FROM core.proposed_actions WHERE inbox_id=:s ORDER BY priority,id',s=s.id)
+        actions=rows(u,'''SELECT p.id,p.state,l.recovery_proposal_id FROM core.proposed_actions p
+            LEFT JOIN core.owner_recovery_links l ON l.origin_proposal_id=p.id
+            WHERE p.inbox_id=:s ORDER BY p.priority,p.id''',s=s.id)
+        recovery_links=rows(u,'SELECT * FROM core.owner_recovery_links WHERE inbox_id=:s ORDER BY recovery_proposal_id',s=s.id)
+        active_actions=[p for p in actions if not p['recovery_proposal_id']]
         state='SERVER_SAVED' if job['state']=='QUEUED' else 'PROCESSING' if job['state']=='RUNNING' else 'FAILED' if job['state']=='FAILED' else 'NEEDS_REVIEW'
-        if actions and all(p['state'] in TERMINAL for p in actions):state='CONFIRMED' if any(p['state']!='REJECTED' for p in actions) else 'REJECTED'
-        elif actions and all(p['state']=='READY' for p in actions):state='READY'
-        return dict(id=str(s.id),client_capture_id=s.locator,state=state,server_saved=True,job=job,proposals=actions,retryable=job['attempts']<3,
+        if active_actions and all(p['state'] in TERMINAL for p in active_actions):state='CONFIRMED' if any(p['state']!='REJECTED' for p in active_actions) else 'REJECTED'
+        elif active_actions and all(p['state']=='READY' for p in active_actions):state='READY'
+        elif recovery_links:state='NEEDS_REVIEW'
+        return dict(id=str(s.id),client_capture_id=s.locator,state=state,server_saved=True,job=job,proposals=actions,recovery_links=recovery_links,retryable=job['attempts']<3 and not recovery_links,
                     captured_at=s.received_at.isoformat(),original_name=s.filename,text=s.raw_text,duplicate_of_id=str(s.duplicate_of_id) if s.duplicate_of_id else None)
 
     def source(self,e,a,i):
@@ -122,37 +130,46 @@ class OwnerCaptureService:
             if not s or s.entity_id!=e or s.source!='owner:r2':raise NotFoundError('Источник не найден')
             return s.file_bytes or (s.raw_text or '').encode(),s.mime_type or 'text/plain; charset=utf-8'
 
+    def _process_source(self,u,i):
+        u.session.execute(text('SET TRANSACTION ISOLATION LEVEL READ COMMITTED'))
+        s=u.session.get(InboxRow,i)
+        if not s or s.source!='owner:r2':return None
+        self._source_lock(u,s.entity_id,i)
+        return None if self._source_reserved(u,i) else s
+
     def process(self,i):
-        """Lease commit, external recognition, fenced result commit. No domain effect."""
+        """Source-first short lease transactions; recognition never holds a lock."""
         token=uuid4()
         with self.factory() as u:
-            # A crash on the final attempt cannot leave a source "preparing"
-            # forever. Exhaustion is terminal, honest and preserves the original.
+            s=self._process_source(u,i)
+            if s is None:return
             rows(u,"UPDATE core.processing_jobs SET state='FAILED',error_code='RETRY_EXHAUSTED',lease_token=NULL,lease_until=NULL WHERE inbox_id=:i AND engine_version=:v AND attempts=3 AND state='RUNNING' AND lease_until<clock_timestamp() RETURNING id",i=i,v=ENGINE)
             u.commit()
+            s=self._process_source(u,i)
+            if s is None:return
             job=rows(u,"SELECT * FROM core.processing_jobs WHERE inbox_id=:i AND engine_version=:v AND attempts<3 AND (state='QUEUED' OR state='FAILED' AND retry_at<=clock_timestamp() OR state='RUNNING' AND lease_until<clock_timestamp()) FOR UPDATE SKIP LOCKED",i=i,v=ENGINE)
             if not job:return
             j=job[0];rows(u,"UPDATE core.processing_jobs SET state='RUNNING',attempts=attempts+1,lease_token=:t,lease_until=clock_timestamp()+interval '15 minutes',error_code=NULL WHERE id=:id RETURNING id",t=token,id=j['id'])
-            s=u.session.get(InboxRow,i);source=dict(id=s.id,e=s.entity_id,a=s.created_by,raw=s.raw_text,binary=s.file_bytes,mime=s.mime_type,fp=s.fingerprint,saved_at=s.created_at,day=s.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(),duplicate=bool(s.duplicate_of_id))
+            source=dict(id=s.id,e=s.entity_id,a=s.created_by,raw=s.raw_text,binary=s.file_bytes,mime=s.mime_type,fp=s.fingerprint,saved_at=s.created_at,day=s.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(),duplicate=bool(s.duplicate_of_id))
             u.commit()
         try:
             if source['binary']:
                 output=self.recognizer.recognize(source['binary'],source['mime'])
             else:output=dict(provider='local',engine='source-text',version=ENGINE,text=source['raw'],pages=[],warnings=[])
             with self.factory() as u:
+                if self._process_source(u,i) is None:return
                 j=rows(u,'SELECT * FROM core.processing_jobs WHERE id=:id FOR UPDATE',id=j['id'])[0]
                 if j['state']!='RUNNING' or j['lease_token']!=str(token):return
                 run_id=uuid4()
-                # Retain actual OCR even when later typed normalization fails.
                 normalized=dict(text=output['text'],lines=[line for page in output.get('pages',[]) for line in page['lines']])
                 rows(u,'INSERT INTO core.extraction_runs(id,entity_id,inbox_id,job_id,attempt,provider,engine_version,input_hash,raw_output,normalized,warnings,lease_token) VALUES(:id,:e,:s,:j,:n,:p,:v,:h,CAST(:raw AS jsonb),CAST(:norm AS jsonb),CAST(:w AS jsonb),:lease) RETURNING id',id=run_id,e=source['e'],s=i,j=j['id'],n=j['attempts'],p=output['provider'],v=output['version'],h=source['fp'],raw=js(output),norm=js(normalized),w=js(output['warnings']),lease=token)
                 u.commit()
+                if self._process_source(u,i) is None:return
                 j=rows(u,'SELECT * FROM core.processing_jobs WHERE id=:id FOR UPDATE',id=j['id'])[0]
                 if j['state']!='RUNNING' or j['lease_token']!=str(token):return
                 specs=self.prepare(u,source,output)
                 for idx,(kind,payload,provenance) in enumerate(specs):
                     slot=f'{kind}:{idx}'
-                    # Never regenerate a reviewed slot or change its effect kind.
                     if rows(u,'SELECT id FROM core.proposed_actions WHERE inbox_id=:s AND slot=:slot',s=i,slot=slot):continue
                     pid=uuid4();priority=0 if kind in ('PAYABLE','PAYMENT','DIRECT_EXPENSE','STOCK_RECEIPT','STOCK_APPLICATION','INVOICE_MATCH') else 1 if kind=='DEPOT_RECEIPT' else 2
                     rows(u,"INSERT INTO core.proposed_actions(id,entity_id,inbox_id,slot,action_type,state,version,priority,created_by,first_unresolved_at) VALUES(:id,:e,:s,:slot,:k,'PREPARING',1,:p,:a,:saved) RETURNING id",id=pid,e=source['e'],s=i,slot=slot,k=kind,p=priority,a=source['a'],saved=source['saved_at'])
@@ -162,8 +179,8 @@ class OwnerCaptureService:
                     self._revision(u,p,payload,provenance,source['a'],'PREPARE',run_id,warnings)
                 rows(u,"UPDATE core.processing_jobs SET state='SUCCEEDED',lease_token=NULL,lease_until=NULL WHERE id=:id RETURNING id",id=j['id']);u.commit()
         except Exception:
-            # No raw provider exception/original/credentials in API or logs.
             with self.factory() as u:
+                if self._process_source(u,i) is None:return
                 rows(u,"UPDATE core.processing_jobs SET state='FAILED',error_code='PREPARATION_FAILED',retry_at=clock_timestamp()+interval '1 minute',lease_token=NULL,lease_until=NULL WHERE id=:id AND lease_token=:t RETURNING id",id=j['id'],t=token);u.commit()
 
     def prepare(self,u,s,out):
@@ -188,6 +205,10 @@ class OwnerCaptureService:
         return depot_text(raw,parties)
 
     def _proposal(self,u,e,i,lock=False):
+        if lock:
+            identity=rows(u,'SELECT inbox_id FROM core.proposed_actions WHERE id=:i AND entity_id=:e',i=i,e=e)
+            if not identity:raise NotFoundError('Предложение не найдено')
+            self._source_lock(u,e,identity[0]['inbox_id'])
         p=rows(u,'SELECT * FROM core.proposed_actions WHERE id=:i AND entity_id=:e'+(' FOR UPDATE' if lock else ''),i=i,e=e)
         if not p:raise NotFoundError('Предложение не найдено')
         return p[0]
@@ -207,6 +228,16 @@ class OwnerCaptureService:
         if kind in ('PAYABLE','PAYMENT','DIRECT_EXPENSE'):
             required('amount','Сумма');required('event_date','Дата');required('currency','Валюта: уточните явно указанную валюту')
             if kind!='DIRECT_EXPENSE':required('counterparty_id','Кому / от кого')
+            if kind=='DIRECT_EXPENSE':
+                # MoneyProposal is shared, but this trusted adapter recognises
+                # only a current operating expense. Never ignore debt/advance
+                # fields and accidentally recognise a second economic cost.
+                if fields.get('payment_purpose') not in (None,'expense'):
+                    missing.append('Долг / аванс не является прямым расходом; проверьте вид действия')
+                if fields.get('obligation_id') is not None:
+                    missing.append('Связанный долг нельзя погасить прямым расходом')
+                if fields.get('due_date') is not None:
+                    missing.append('Срок будущей оплаты не поддерживается прямым расходом')
             scoped('core.counterparties',fields.get('counterparty_id'))
             account=scoped('finance.money_accounts',fields.get('money_account_id'))
             if account and account['currency']!=fields['currency']:raise ValidationError('Валюта счёта не совпадает')
@@ -308,13 +339,13 @@ class OwnerCaptureService:
         rev=rows(u,'SELECT * FROM core.proposal_revisions WHERE proposal_id=:i AND version=:v',i=p['id'],v=p['version'])[0]
         src=u.session.get(InboxRow,UUID(p['inbox_id']))
         overdue=reminder_eligible(datetime.fromisoformat(p['first_unresolved_at']),now(),p['state'])
-        return dict(p,revision=rev,source=dict(id=str(src.id),text=src.raw_text,filename=src.filename,has_file=src.file_bytes is not None),reminder_eligible=overdue)
+        return dict(p,revision=rev,source=dict(id=str(src.id),text=src.raw_text,filename=src.filename,has_file=src.file_bytes is not None),reminder_eligible=overdue and not rows(u,'SELECT recovery_proposal_id FROM core.owner_recovery_links WHERE origin_proposal_id=:p',p=p['id']),**self._recovery_view(u,p,rev))
 
     def queue(self,e,a,offset=0,limit=50):
         with self.factory() as u:
             u.session.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'))
             self.owner(u,e,a)
-            ps=rows(u,"SELECT * FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED') ORDER BY priority,first_unresolved_at,id OFFSET :o LIMIT :l",e=e,o=offset,l=limit+1)
+            ps=rows(u,"SELECT * FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED') AND NOT EXISTS(SELECT 1 FROM core.owner_recovery_links recovery WHERE recovery.origin_proposal_id=core.proposed_actions.id) ORDER BY priority,first_unresolved_at,id OFFSET :o LIMIT :l",e=e,o=offset,l=limit+1)
             preparing=rows(u,"SELECT count(*) n FROM core.processing_jobs WHERE entity_id=:e AND state IN ('QUEUED','RUNNING')",e=e)[0]['n']
             return dict(items=[self._view(u,p) for p in ps[:limit]],preparing=preparing,next_offset=offset+limit if len(ps)>limit else None)
 
@@ -324,11 +355,15 @@ class OwnerCaptureService:
     def review(self,e,a,i,key,b,action):
         def run(u):
             p=self._proposal(u,e,i,True)
+            self._recovery_origin_guard(u,p)
             if p['version']!=b.expected_version or p['state'] in ('POSTED','CONFIRMED_NONPOSTING'):raise ConflictError('Карточка изменилась; обновите её')
             if p['state']=='REJECTED' and action!='REOPEN':raise ConflictError('Предложение отклонено; восстановите новой ревизией')
             if action=='EDIT' or action=='REOPEN':
                 payload=b.payload if action=='EDIT' else self._view(u,p)['revision']['payload']
-                return self._revision(u,p,payload,{k:{'category':'OWNER INPUT'} for k in payload},a,action,review_reason=b.reason)
+                provenance={k:{'category':'OWNER INPUT'} for k in payload}
+                if p['action_type']=='DIRECT_EXPENSE':
+                    payload,provenance=expense_revision(self._view(u,p)['revision'],payload)
+                return self._revision(u,p,payload,provenance,a,action,review_reason=b.reason)
             previous=self._view(u,p)['revision']
             revised=self._revision(u,p,previous['payload'],previous['provenance'],a,action,warnings=previous['missing'],review_reason=b.reason)
             state='DEFERRED' if action=='DEFER' else 'REJECTED'
@@ -339,6 +374,7 @@ class OwnerCaptureService:
     def confirm(self,e,a,i,key,b):
         def run(u):
             p=self._proposal(u,e,i,True)
+            self._recovery_origin_guard(u,p)
             linked=rows(u,'SELECT response FROM core.confirmation_effects WHERE proposal_id=:i',i=i)
             rev=self._view(u,p)['revision']
             if p['version']!=b.expected_version or rev['preview_digest']!=b.preview_digest:raise ConflictError('Карточка изменилась; подтвердите актуальную версию')
@@ -352,7 +388,7 @@ class OwnerCaptureService:
                 if payload.get('depot_id'):u.session.execute(text('SELECT id FROM core.counterparties WHERE id=:d FOR UPDATE'),{'d':payload['depot_id']})
                 fingerprint=u.session.get(InboxRow,UUID(p['inbox_id'])).fingerprint
                 u.session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:identity,0))'),{'identity':f'owner-depot-original:{e}:{fingerprint}'})
-            if payload.get('obligation_id'):u.finance.get_obligation(UUID(payload['obligation_id']),for_update=True)
+            if kind=='PAYMENT' and payload.get('obligation_id'):u.finance.get_obligation(UUID(payload['obligation_id']),for_update=True)
             if payload.get('money_account_id'):u.finance.lock_money_accounts([UUID(payload['money_account_id'])])
             # Lock mutable references before taking the fresh preview basis.
             for basis_key in sorted(rev['basis']):
@@ -374,6 +410,7 @@ class OwnerCaptureService:
             rows(u,'UPDATE core.proposed_actions SET state=:s,updated_at=clock_timestamp() WHERE id=:i RETURNING id',s=state,i=i)
             cols={'obligation_id':None,'payment_id':None,'inventory_id':None,'settlement_id':None,'owner_task_id':None,'worker_task_id':None,'direct_expense_id':None,'invoice_match_id':None};cols.update(link)
             rows(u,'INSERT INTO core.confirmation_effects(proposal_id,entity_id,version,actor_id,preview_digest,obligation_id,payment_id,inventory_id,settlement_id,owner_task_id,worker_task_id,direct_expense_id,invoice_match_id,response) VALUES(:p,:e,:v,:a,:d,:obligation_id,:payment_id,:inventory_id,:settlement_id,:owner_task_id,:worker_task_id,:direct_expense_id,:invoice_match_id,CAST(:r AS jsonb)) RETURNING proposal_id',p=i,e=e,v=p['version'],a=a,d=b.preview_digest,r=js(response),**cols)
+            self._retire_recovery_origin(u,p,a)
             return response
         return self._write(e,a,key,'owner_confirm',dict(id=str(i),**b.model_dump(mode='json')),run)
 
@@ -480,7 +517,7 @@ class OwnerCaptureService:
     def reminders(self,e,a):
         with self.factory() as u:
             self.owner(u,e,a)
-            ps=rows(u,"SELECT id FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED') AND first_unresolved_at<CAST(:current AS timestamptz)-interval '36 hours' ORDER BY id",e=e,current=now())
+            ps=rows(u,"SELECT id FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED') AND NOT EXISTS(SELECT 1 FROM core.owner_recovery_links recovery WHERE recovery.origin_proposal_id=core.proposed_actions.id) AND first_unresolved_at<CAST(:current AS timestamptz)-interval '36 hours' ORDER BY id",e=e,current=now())
             day=now().astimezone(ZoneInfo('Europe/Istanbul')).date()
             if ps:rows(u,"INSERT INTO core.owner_reminders(id,entity_id,actor_id,reminder_day,reason,state,proposal_ids) VALUES(:id,:e,:a,:d,'UNCONFIRMED','ELIGIBLE',CAST(:p AS jsonb)) ON CONFLICT DO NOTHING RETURNING id",id=uuid4(),e=e,a=a,d=day,p=js([p['id'] for p in ps]))
             if not ps:rows(u,"UPDATE core.owner_reminders SET state='CANCELLED' WHERE entity_id=:e AND actor_id=:a AND state='ELIGIBLE' RETURNING id",e=e,a=a)
@@ -510,7 +547,7 @@ class OwnerCaptureService:
                     AND r.version=c.version AND r.entity_id=c.entity_id
                 WHERE t.entity_id=:e AND t.owner_id=:a AND t.state='TO_DO'
                 ORDER BY t.planned_date NULLS LAST,t.created_at LIMIT 3""",e=e,a=a)
-            count=rows(u,"SELECT count(*) n,count(*) FILTER(WHERE first_unresolved_at<clock_timestamp()-interval '36 hours') overdue FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED')",e=e)[0]
+            count=rows(u,"SELECT count(*) n,count(*) FILTER(WHERE first_unresolved_at<clock_timestamp()-interval '36 hours') overdue FROM core.proposed_actions WHERE entity_id=:e AND state NOT IN ('POSTED','CONFIRMED_NONPOSTING','REJECTED') AND NOT EXISTS(SELECT 1 FROM core.owner_recovery_links recovery WHERE recovery.origin_proposal_id=core.proposed_actions.id)",e=e)[0]
             task_count=rows(u,"SELECT count(*) n FROM core.owner_tasks WHERE entity_id=:e AND owner_id=:a AND state='TO_DO'",e=e,a=a)[0]['n']
             return dict(id=str(e),owner_id=str(a),as_of=now().isoformat(),finance=v,season_start=str(date(year,10,1)),season_end=str(date(year+1,10,1)),season=season,tasks=tasks,task_count=task_count,confirmations=count,
                         worker_exceptions=rows(u,"SELECT t.id,t.title FROM workers.tasks t WHERE t.entity_id=:e AND t.status NOT IN ('completed','cancelled') AND EXISTS(SELECT 1 FROM workers.reports r WHERE r.task_id=t.id AND r.cycle=t.cycle AND r.state='submitted' AND r.claim='issue' AND NOT EXISTS(SELECT 1 FROM workers.actions a WHERE a.report_id=r.id AND a.kind='review_report')) ORDER BY t.planned_date NULLS LAST,t.id LIMIT 3",e=e))
@@ -528,6 +565,9 @@ class OwnerCaptureService:
     def reverse_expense(self,e,a,i,key,b):
         from greenhouse_owner_os.domain.finance import FinancialPosting,PostingLine,PostingSide
         def run(u):
+            identity=rows(u,'SELECT p.inbox_id FROM finance.direct_expenses d JOIN core.proposed_actions p ON p.id=d.proposal_id WHERE d.id=:i AND d.entity_id=:e',i=i,e=e)
+            if not identity:raise NotFoundError('Расход не найден')
+            self._source_lock(u,e,identity[0]['inbox_id'])
             rs=rows(u,'SELECT * FROM finance.direct_expenses WHERE id=:i AND entity_id=:e FOR UPDATE',i=i,e=e)
             if not rs:raise NotFoundError('Расход не найден')
             r=rs[0]

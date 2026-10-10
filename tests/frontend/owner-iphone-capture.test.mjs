@@ -8,7 +8,7 @@ const ownerData=()=>({preview:{},owner:{owner_id:'owner-a',finance:{entity_name:
 
 // Small deterministic DOM harness: real callbacks execute, reads/API responses can
 // finish out of order, and each dialog render has a distinct identity.
-function harness({data=ownerData(),items=[proposal()],navigate,online=false,dock=true,onWrite=()=>{}}={}){
+function harness({data=ownerData(),items=[proposal()],navigate,online=false,dock=true,onWrite=()=>{},reload=async()=>{}}={}){
  const previous=new Map(['document','window','navigator','indexedDB','FileReader'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
  const nodes=new Map(),groups=new Map(),readers=[],requests=[],calls=[],notices=[],records=new Map(),windowEvents=new Map(),documentEvents=new Map();let html='',currentData=data;
  const makeNode=(id='')=>({id,dataset:{},attributes:{},events:{},children:[],open:false,hidden:false,disabled:false,textContent:'',value:'',files:[],firstElementChild:null,elements:{},classList:{toggle(){},remove(){}},setAttribute(key,value){this.attributes[key]=value;},removeAttribute(key){delete this.attributes[key];},focus(){this.focused=true;},addEventListener(key,fn){this.events[key]=fn;},append(child){this.children.push(child);nodes.set('#'+child.id,child);},querySelector(query){if(query==='[type=submit]')return this.submit;if(query==='[data-r2-mode]')return this.buttons?.[0]||null;return null;},querySelectorAll(){return this.buttons||[];},click(){return this.onclick?.()??this.events.click?.();},close(){this.open=false;this.events.close?.();},set innerHTML(value){this._html=value;if(this.id==='owner-capture-bar')this.buttons=[...value.matchAll(/data-r2-mode="([^"]+)"/g)].map(m=>{const b=makeNode();b.dataset.r2Mode=m[1];return b;});},get innerHTML(){return this._html||'';}});
@@ -22,7 +22,7 @@ function harness({data=ownerData(),items=[proposal()],navigate,online=false,dock
  globalThis.indexedDB={open(){const r={};queueMicrotask(()=>{r.result={close(){},transaction(){const tx={};tx.objectStore=()=>({getAll(){const result={result:[...records.values()]};queueMicrotask(()=>{result.onsuccess?.();tx.oncomplete?.();});return result;},put(record){records.set(record.key,record);onWrite(record);queueMicrotask(()=>tx.oncomplete?.());},delete(key){records.delete(key);queueMicrotask(()=>tx.oncomplete?.());}});return tx;}};r.onsuccess();});return r;}};
  const api=(path,body)=>{calls.push({path,body});if(path.includes('/confirmations?'))return Promise.resolve({items,preparing:0,next_offset:null});return new Promise((resolve,reject)=>requests.push({path,body,resolve,reject}));};
  const openSheet=(title,markup)=>{html=title+markup;nodes.get('#sheet-content').firstElementChild={};nodes.get('#sheet').open=true;for(const key of nodes.keys())if(key.startsWith('#r2-'))nodes.delete(key);groups.clear();for(const match of markup.matchAll(/\bid="([^"]+)"/g))nodes.set('#'+match[1],makeNode(match[1]));for(const attr of ['r2-open','r2-edit','r2-later','r2-evidence','capture-mode']){const datasetKey=attr.replace(/-([a-z])/g,(_,x)=>x.toUpperCase());groups.set(`[data-${attr}]`,[...markup.matchAll(new RegExp(`data-${attr}="([^"]+)"`,'g'))].map(m=>{const b=makeNode();b.dataset[datasetKey]=m[1];return b;}));}for(const formId of ['r2-source-form','r2-edit-form']){const form=nodes.get('#'+formId);if(form){form.submit=makeNode();for(const match of markup.matchAll(/<(?:input|select|textarea)[^>]*name="([^"]+)"/g))form.elements[match[1]]=makeNode();}}};
- const ui=ownerR2({api,openSheet,reload:async()=>{},getData:()=>currentData,getEntity:()=> 'entity',notice:message=>notices.push(message),advanced(){},navigate});
+ const ui=ownerR2({api,openSheet,reload,getData:()=>currentData,getEntity:()=> 'entity',notice:message=>notices.push(message),advanced(){},navigate});
  const cleanup=()=>{ui.logout();for(const[key,descriptor]of previous)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];};
  return {ui,nodes,groups,readers,requests,calls,records,notices,body,windowEvents,documentEvents,cleanup,html:()=>html,changeOwner(){currentData={...currentData,owner:{...currentData.owner,owner_id:'owner-b'}};},async clickOpen(){const pending=groups.get('[data-r2-open]')[0].click();await tick();return {pending,request:requests.at(-1)};}};
 }
@@ -271,4 +271,63 @@ test('relative personal task can be revised without a day and without dropping i
   assert.match(h.html(),/<textarea name="note"[^>]*>Оставить трубы &lt;TEST&gt;<\/textarea>/);assert.doesNotMatch(h.html(),/<input name="planned_date"[^>]*required/);
   const pending=form.onsubmit({preventDefault(){},target:form});await tick();const request=h.requests.at(-1);assert.equal(request.body.payload.planned_date,null);assert.equal(request.body.payload.note,'Оставить трубы <TEST>');assert.equal(request.body.payload.relative_time_context,'следующая неделя');assert.equal(request.body.payload.category,'irrigation');h.nodes.get('#sheet').close();request.resolve({});await pending;
  }finally{h.cleanup();globalThis.FormData=originalFormData;}
+});
+
+// Inherited timer edge found by G aggregate verification. Exercise the real
+// successful-save continuation with a deterministic timer, not wall-clock sleeps.
+for (const interruption of ['none', 'delayed own close', 'offline', 'navigation', 'new capture', 'logout']) test(`capture preparation poll respects ${interruption}`, async () => {
+ const oldSetTimeout=globalThis.setTimeout,oldClearTimeout=globalThis.clearTimeout,timers=[];
+ globalThis.setTimeout=(callback,delay)=>{const timer={callback,delay,cancelled:false};timers.push(timer);return timer;};
+ globalThis.clearTimeout=timer=>{if(timer)timer.cancelled=true;};
+ let reloads=0;const h=harness({online:true,reload:async()=>{reloads++;}});
+ let delayedClose;
+ if(interruption==='delayed own close')h.nodes.get('#sheet').close=function(){this.open=false;delayedClose=()=>this.events.close?.();};
+ try {
+  h.ui.capture('text');const form=h.nodes.get('#r2-source-form');form.elements.text.value='TEST saved source before poll';
+  const saving=form.onsubmit({preventDefault(){},target:form});await tick();
+  const request=h.requests[0];request.resolve({server_saved:true,client_capture_id:request.body.client_capture_id});await saving;
+  assert.equal(reloads,1,'Successful save immediately refreshes current preparation');
+  assert.equal(h.records.size,0,'Matching server acknowledgement clears only its durable copy');
+  const timer=timers.find(timer=>timer.delay===1500);assert.ok(timer,'Active capture schedules preparation refresh');
+  if(interruption==='delayed own close'){assert.ok(delayedClose);delayedClose();}
+  if(interruption==='offline')navigator.onLine=false;
+  if(interruption==='navigation')h.ui.invalidateView();
+  if(interruption==='new capture')h.ui.capture('text');
+  if(interruption==='logout')h.ui.logout();
+  // A callback already queued by the event loop must be fenced even after clearTimeout.
+  timer.callback();await tick();
+  assert.equal(reloads,['none','delayed own close'].includes(interruption)?2:1,`${interruption}: stale/offline background poll must not launch a current-screen reload`);
+  if(interruption==='offline'){
+   h.ui.capture('text');const offline=h.nodes.get('#r2-source-form');offline.elements.text.value='TEST original saved offline after completed capture';
+   await offline.onsubmit({preventDefault(){},target:offline});
+   assert.equal(h.records.size,1);assert.equal(h.nodes.get('#sheet').open,true);
+   assert.equal(h.nodes.get('#r2-source-status').dataset.state,'pending');
+   assert.equal(h.requests.length,1,'Offline save performs no network write');
+   navigator.onLine=true;const sync=h.ui.sync();await tick();const retry=h.requests[1];
+   assert.equal(retry.body.text,'TEST original saved offline after completed capture');
+   retry.resolve({server_saved:true,client_capture_id:retry.body.client_capture_id});await sync;
+   assert.equal(h.records.size,0,'Online retry preserves and acknowledges the same offline source');
+  }
+ } finally {h.cleanup();globalThis.setTimeout=oldSetTimeout;globalThis.clearTimeout=oldClearTimeout;}
+});
+
+for (const interruption of ['navigation', 'new capture', 'offline']) test(`late initial capture reload cannot arm a poll after ${interruption}`, async () => {
+ const oldSetTimeout=globalThis.setTimeout,oldClearTimeout=globalThis.clearTimeout,timers=[];
+ globalThis.setTimeout=(callback,delay)=>{const timer={callback,delay};timers.push(timer);return timer;};
+ globalThis.clearTimeout=()=>{};
+ let releaseReload,reloads=0;const pendingReload=new Promise(resolve=>{releaseReload=resolve;});
+ const h=harness({online:true,reload:async()=>{reloads++;await pendingReload;}});
+ try {
+  h.ui.capture('text');const form=h.nodes.get('#r2-source-form');form.elements.text.value='TEST original before late reload';
+  const saving=form.onsubmit({preventDefault(){},target:form});await tick();const request=h.requests[0];
+  request.resolve({server_saved:true,client_capture_id:request.body.client_capture_id});await tick();
+  assert.equal(reloads,1);assert.equal(timers.length,0);assert.equal(h.records.size,0);
+  if(interruption==='navigation')h.ui.invalidateView();
+  if(interruption==='new capture'){h.ui.capture('text');h.nodes.get('#r2-source-form').elements.text.value='TEST newer draft';}
+  if(interruption==='offline')navigator.onLine=false;
+  releaseReload();await saving;
+  assert.equal(timers.length,0,'Obsolete/offline completion must not schedule a new background reload');
+  assert.equal(reloads,1);assert.equal(h.calls.length,1,'No duplicate source write');
+  if(interruption==='new capture'){assert.equal(h.nodes.get('#sheet').open,true);assert.equal(h.nodes.get('#r2-source-form').elements.text.value,'TEST newer draft');}
+ } finally {h.cleanup();globalThis.setTimeout=oldSetTimeout;globalThis.clearTimeout=oldClearTimeout;}
 });

@@ -2,7 +2,7 @@ name: PostgreSQL verification
 
 on:
   push:
-    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1, 04-fertilizers-inventory-r1, 08-workers-tasks-r1, 06-owner-ux-r2-capture-confirmation, 06-owner-ui-r2-modern-dashboard, 06-capture-aud001-002-semantic-fixes, 06-owner-source-queue-errors, 06-owner-personal-task-access]
+    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1, 04-fertilizers-inventory-r1, 08-workers-tasks-r1, 06-owner-ux-r2-capture-confirmation, 06-owner-ui-r2-modern-dashboard, 06-capture-aud001-002-semantic-fixes, 06-owner-source-queue-errors, 06-owner-personal-task-access, 06-owner-direct-expense-recovery]
   workflow_dispatch:
 
 permissions:
@@ -63,6 +63,8 @@ jobs:
         run: python scripts/run_source_queue_e2e.py
       - name: Isolated personal task access and restore browser gate
         run: python scripts/run_personal_tasks_e2e.py
+      - name: Isolated source-linked DirectExpense recovery browser gate
+        run: python scripts/run_expense_recovery_e2e.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -135,8 +137,8 @@ jobs:
           from sqlalchemy import create_engine, text
           with create_engine(os.environ['DATABASE_URL']).connect() as conn:
               revisions = conn.execute(text('SELECT version_num FROM public.alembic_version')).scalars().all()
-          assert revisions == ['20261008_0024'], 'Unexpected Alembic revision'
-          print('Alembic head: 20261008_0024')
+          assert revisions == ['20261010_0025'], 'Unexpected Alembic revision'
+          print('Alembic head: 20261010_0025')
           PY
       - name: Operational API smoke and reference safety
         run: pytest tests/integration/test_postgres_readiness.py -v
@@ -153,6 +155,7 @@ jobs:
           assert not any(case.find('skipped') is not None for case in cases), 'PostgreSQL tests skipped'
           workers = [case for case in cases if 'test_postgres_workers' in case.get('classname', '')]
           assert len(workers) >= 125, 'Workers adversarial gate did not execute'
+          assert sum('test_postgres_owner_expense_recovery' in case.get('classname', '') for case in cases) >= 54, 'DirectExpense recovery authority gate did not execute'
           for module, minimum in [('test_postgres_owner_language_benchmark', 21), ('test_postgres_owner_language_preparation', 11), ('test_postgres_owner_actor_scope', 3), ('test_postgres_owner_worker_identity', 1), ('test_postgres_owner_friction_evidence', 1), ('test_postgres_owner_relative_irrigation', 15)]:
               assert sum(module in case.get('classname', '') for case in cases) >= minimum, 'Owner language boundary gate did not execute: ' + module
           PY

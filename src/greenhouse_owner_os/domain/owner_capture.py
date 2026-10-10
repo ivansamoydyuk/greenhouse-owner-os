@@ -128,6 +128,16 @@ class ConfirmAction(ReviewAction):
     confirmed: Literal[True]
     preview_digest: str = Field(pattern=r'^[0-9a-f]{64}$')
 
+class ExpenseRecoveryAction(StrictModel):
+    origin_proposal_id: UUID | None = None
+    expected_version: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode='after')
+    def selected_origin(self):
+        if (self.origin_proposal_id is None) != (self.expected_version is None):
+            raise ValueError('Selected origin and its version must be supplied together')
+        return self
+
 class TaskStateAction(StrictModel):
     expected_version: int = Field(gt=0)
     state: Literal['TO_DO','DONE']
