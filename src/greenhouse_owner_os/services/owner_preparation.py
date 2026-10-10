@@ -11,9 +11,10 @@ from .preparation_language import (corrected,date_value,entity_matches,fold,mone
 from .tasks_capture import extract_task,task_audience,irrigation_rework,IRRIGATION_REWORK,IRRIGATION_OBJECT
 from .preparation_scope import (PAID,OWED,PURCHASE,financial_evidence_view,other_financial_actor,
                                 split_outside_quotes,reported_speech,future_financial_intent,enumerated_fragments)
-from .inventory_capture import extract_inventory
+from .inventory_capture import (extract_inventory,inventory_document_facts,
+                                no_arrival_evidence,DOCUMENT_RECEIVED)
 
-INTERPRETATION_VERSION='owner-language-preparation-r2-v3'
+INTERPRETATION_VERSION='owner-language-preparation-r2-v4'
 
 INVOICE=r'\b(?:fatura|invoice|счет\s+поставщика)\b'
 UNSUPPORTED=r'\b(?:аванс\w*|предоплат\w*|стратегическ\w*|финансирован\w*|кредит(?:а|у|ом|е|ы|ов|ный|ная|ное)?|заем\w*|займ\w*|обменял|обменяли|перевод\s+между|перевел\s+между|между\s+своими\s+счетами|внес\s+свои|переместил\w*)\b|\b(?:получил|получили)\s+(?:деньги|оплату)|\b(?:должен|должны)\s+мне\b'
@@ -34,6 +35,12 @@ def unresolved_parts(raw):
 def provenance(payload,source,*,inferred=(),defaults=()):
     return {k:dict(category='UNKNOWN' if v is None else 'INFERENCE' if k in inferred or k in defaults else 'SOURCE FACT',
                    source_text=source,**({'basis':'capture_candidate'} if k in defaults and v is not None else {})) for k,v in payload.items()}
+
+
+def nonposting_inventory_provenance(raw,refs,today):
+    facts=inventory_document_facts(raw,products=refs.get('products',()),locations=refs.get('locations',()),areas=refs.get('areas',()),today=today)
+    return dict(category='SOURCE FACT',source_text=raw,nonposting_inventory_evidence=facts,
+                authority='DOCUMENT_OR_CONTRADICTORY_EVIDENCE_ONLY',no_new_arrival=no_arrival_evidence(raw))
 
 
 def account_for(raw,accounts,currency):
@@ -144,7 +151,7 @@ def depot_text(raw,parties):
     if len(deps)!=1 or 'gorgun' not in fold(value(deps[0],'name')):qualities=[None for _ in lines]
     return dict(depot_id=str(value(deps[0],'id')) if len(deps)==1 else None,event_date=event,lines=lines,qualities=qualities,currency=source_currency(raw),stated_total=num(totals[0]) if len(set(totals))==1 else None,alacak_value=num(alacak[0]) if len(alacak)==1 else None,unreadable_lines=unreadable)
 
-def _parts(raw,*,binary=False,refs=None):
+def _parts(raw,*,binary=False,refs=None,today=None):
     # An explicit standalone payment assertion next to receipt rows is its own
     # semantic slot. Never reinterpret Alacak or numeric table cells as cash.
     if _depot_evidence(raw):
@@ -187,15 +194,30 @@ def _parts(raw,*,binary=False,refs=None):
         area_context=re.sub(r'^(?:на|в)\s+','',after).rstrip('.!')
         return any(area_context==fold(alias) for area in (refs or {}).get('areas',()) for alias in names(area,'area'))
     attribute_start=r'^(?:сумма\b|этот\s+счет\b|пока\s+вся\s+сумма\b|остаток\s+долга\b|продавца\b|стоимость\b|ни\s+счета\b|товар\s+ранее\b|деньги\s+(?:отправлен\w*|взял)\b|по\s+кассе\b|оплата\s+прошла\b|в\s+часов\b|у\s+нас\s+нет\s+задолженности\b|это\s+только\s+счет\b)'
+    def same_arrival_context(previous,following):
+        # A denial with a different explicit place/day is an independent
+        # sibling, not a correction of the preceding goods event.
+        for key,kind in [('locations','name'),('areas','area'),('products','name')]:
+            before={str(value(v,'id')) for v in entity_matches(previous,(refs or {}).get(key,()),kind)}
+            after={str(value(v,'id')) for v in entity_matches(following,(refs or {}).get(key,()),kind)}
+            if before and after and before!=after:return False
+        if today:
+            before,explicit_before=date_value(previous,today)
+            after,explicit_after=date_value(following,today)
+            if explicit_before and explicit_after and before!=after:return False
+        return True
     for part in parts:
         position=raw.find(part,cursor);end=position+len(part);separator=raw[cursor:position];cursor=end
         t=fold(part).strip()
-        if coherent and (re.search(attribute_start,t) or re.match(r'(?i)^\s*исполнитель\s+[^.!?]+$',coherent[-1]) or re.search(r'\bна\s+нее\b',t) and re.search(r'\b(?:подкормк\w*|обработк\w*)\b',fold(coherent[-1])) or '\n' in separator and not separator.strip() and task_continuation(coherent[-1],part)):coherent[-1]=raw[start:end]
+        arrival_qualification=no_arrival_evidence(part) and bool(re.match(r'^(?:(?:нового|физического)\s+)*(?:прихода|поступления|прибытия)\b|^товар\b',t))
+        if coherent and arrival_qualification:arrival_qualification=same_arrival_context(coherent[-1],part)
+        preceding_denial=bool(coherent and re.fullmatch(r'(?:(?:нового|физического)\s+)*(?:прихода|поступления|прибытия)(?:\s+товара)?\s+не\s+было[.!]?',fold(coherent[-1]).strip()) and re.match(r'^(?:привезли|доставили|получил(?:и|а)?)\b',t))
+        if coherent and (re.search(attribute_start,t) or arrival_qualification or preceding_denial or re.match(r'(?i)^\s*исполнитель\s+[^.!?]+$',coherent[-1]) or re.search(r'\bна\s+нее\b',t) and re.search(r'\b(?:подкормк\w*|обработк\w*)\b',fold(coherent[-1])) or '\n' in separator and not separator.strip() and task_continuation(coherent[-1],part)):coherent[-1]=raw[start:end]
         else:coherent.append(part);start=position
     parts=coherent
     result=[]
     active_paid=r'\b(?:заплатил(?:а|и)?|оплатил(?:а|и)?|отдал(?:а|и)?|передал(?:а|и)?|перевел(?:а|и)?|выплатил(?:а|и)?|выдал(?:а|и)?|отправил(?:а|и)?|перечислил(?:а|и)?)\b'
-    event_start=r'(?:я\s+)?(?:'+active_paid+r'|\b(?:должен|должна|должны|нужно\s+(?:заплатить|оплатить)|(?:остался|образовался|подтвержден)\s+долг)\b|'+r'\b(?:купил(?:а|и)?|потратил(?:а|и)?|заправил(?:а|и)?)\b|\b(?:привезли|доставили|внесли|счет\s+потом|счет\s+еще|invoice|fatura)\b)'
+    event_start=r'(?:я\s+)?(?:'+active_paid+r'|\b(?:должен|должна|должны|нужно\s+(?:заплатить|оплатить)|(?:остался|образовался|подтвержден)\s+долг)\b|'+r'\b(?:купил(?:а|и)?|потратил(?:а|и)?|заправил(?:а|и)?)\b|\b(?:привезли|доставили|внесли|счет\s+потом|счет\s+еще|invoice|fatura)\b|'+DOCUMENT_RECEIVED+r')'
     for part in parts:
         if re.search(UNCERTAIN,fold(part)) or reported_speech(part):result.append(part);continue
         clauses=split_outside_quotes(r'(?:,\s*|\s+и\s+)(?='+event_start+r')',part,flags=re.I)
@@ -293,14 +315,17 @@ def _prepare_one(raw,semantic,*,today,refs,pages):
         worker=next((w for w in refs.get('workers',()) if str(value(w,'id'))==payload['worker_id']),None)
         if worker:payload['language']=value(worker,'language')
         return [(task_audience(semantic,refs.get('workers',()),areas=refs.get('areas',())),payload,provenance(payload,raw,inferred=('category','greenhouse_id','worker_id','language')))]
-    inventory=extract_inventory(raw,products=refs.get('products',()),locations=refs.get('locations',()),areas=refs.get('areas',()),today=today)
+    quantity_provenance={}
+    inventory=extract_inventory(raw,products=refs.get('products',()),locations=refs.get('locations',()),areas=refs.get('areas',()),today=today,preparation_evidence=quantity_provenance)
     if inventory:
         f=inventory[1];kind={'receipt':'STOCK_RECEIPT','application':'STOCK_APPLICATION'}.get(f.get('kind'))
         if not kind:return unresolved_parts(raw)
         event,mentioned=date_value(re.split(r'(?i)[,;]\s*(?:осталось|остаток)\b',semantic)[0],today)
         if event and date.fromisoformat(event)>today:return unresolved_parts(raw)
         payload=dict(event_date=event if mentioned else today.isoformat(),lines=f['lines'],notes=raw[:2000])
-        return [(kind,payload,provenance(payload,raw,inferred=('lines',),defaults=('event_date',) if not mentioned else ()))]
+        prov=provenance(payload,raw,inferred=('lines',),defaults=('event_date',) if not mentioned else ())
+        prov['lines'].update(quantity_provenance)
+        return [(kind,payload,prov)]
     depot=depot_text(raw,refs.get('counterparties',()))
     if depot:return [('DEPOT_RECEIPT',depot,{'lines':{'category':'SOURCE FACT','pages':pages},'qualities':{'category':'INFERENCE','basis':'depot_scoped_unverified_candidate'},'stated_total':{'category':'INFERENCE' if depot.get('stated_total') is not None else 'UNKNOWN','basis':'document_total_candidate_requires_review'}})]
     if re.search(INVOICE,t) and (invoice_document_evidence(raw) or re.match(r'^(?:fatura|invoice)\b',t) or re.search(r'\b(?:счет\s+поставщика|(?:пришел|получили|получил|прислал|есть|вот)\s+(?:fatura|invoice))\b',t)):
@@ -309,8 +334,14 @@ def _prepare_one(raw,semantic,*,today,refs,pages):
         payload=dict(description=raw[:2000],amount=money_amount(semantic),event_date=event if mentioned else today.isoformat(),currency=source_currency(semantic))
         parties=entity_matches(semantic,refs.get('counterparties',()),inflect=True)
         if len(parties)==1:payload['counterparty_id']=str(value(parties[0],'id'))
-        return [('PAYABLE',payload,provenance(payload,raw,defaults=('event_date','currency'))),('INVOICE_MATCH',dict(note=raw[:2000]),{})]
-    return unresolved_parts(raw)
+        prov=provenance(payload,raw,defaults=('event_date','currency'))
+        evidence=nonposting_inventory_provenance(raw,refs,today)
+        prov['description'].update(evidence)
+        return [('PAYABLE',payload,prov),('INVOICE_MATCH',dict(note=raw[:2000]),{'note':evidence})]
+    unresolved_slots=unresolved_parts(raw)
+    if re.search(DOCUMENT_RECEIVED,t) or no_arrival_evidence(raw):
+        for _,_,prov in unresolved_slots:prov['note']=nonposting_inventory_provenance(raw,refs,today)
+    return unresolved_slots
 
 
 def prepare_owner_source(raw,*,today,refs,binary=False,pages=()):
@@ -354,7 +385,7 @@ def prepare_owner_source(raw,*,today,refs,binary=False,pages=()):
         return annotated(slots)
     if _depot_evidence(raw) and re.search(r'\b(?:(?:разных|отдельных)\s+|(?:два|две|три|четыре|[2-9]\d*)\s+)(?:чека|чеков|квитанции|документа|документов)\b|\b(?:другой|отдельный)\s+чек\b',fold(raw)):
         return annotated(unresolved_parts(raw))
-    parts=_parts(raw,binary=binary,refs=refs)
+    parts=_parts(raw,binary=binary,refs=refs,today=today)
     if not binary:
         worker_names=[re.escape(n) for worker in refs.get('workers',()) for n in names(worker,'worker')]
         expanded=[]

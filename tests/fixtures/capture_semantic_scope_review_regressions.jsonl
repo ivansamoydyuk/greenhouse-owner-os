@@ -1,0 +1,2 @@
+{"id": "DIFF-07", "text": "Внесли 5 кг Atocrop в Имамлы со склада Имамлы. Нового прихода не было.", "expected": "Retain exact actual application 5 kg; denial of arrival does not deny application."}
+{"id": "DIFF-08", "text": "Внесли 0,5 кг Atocrop на каждый донюм первой части Имамлы со склада Имамлы, а во второй части всего внесли 5 кг Atocrop.", "expected": "Retain unknown first-part dose plus explicit second-part total5 separately; same greenhouse/product do not establish identical part scope."}
