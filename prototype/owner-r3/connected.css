@@ -395,3 +395,6 @@
 .connected .harvest-bar.bar-h-99{height:99%;}
 .connected .harvest-bar.bar-h-100{height:100%;}
 @media(max-width:359px){.connected .harvest-month-chart{grid-template-columns:repeat(4,minmax(0,1fr));}.connected .harvest-bar-track{height:75px;}.connected .harvest-month{min-height:105px;}}
+
+/* Source facts remain readable even for long original labels and exact values. */
+.connected #main[data-rendered-route^="depot/"] .fact-row > * { min-width: 0; overflow-wrap: anywhere; }

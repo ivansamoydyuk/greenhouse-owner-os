@@ -781,7 +781,7 @@ function depotDetail(s) {
           ]),
         )
         .join("")}${facts([
-        ["Средний вес по ADET, кг/ADET", s.average_weight_kg ?? "UNKNOWN"],
+        ["Средний вес по ADET, кг/ADET", s.average_weight_kg == null ? "UNKNOWN" : "≈ " + displayMetric(s.average_weight_kg)],
         ["Известное количество", s.confirmed_count],
         ["Вес с количеством", s.confirmed_kg + " кг"],
         ["Покрытие", s.count_coverage_complete ? "Полное" : "Частичное"],
