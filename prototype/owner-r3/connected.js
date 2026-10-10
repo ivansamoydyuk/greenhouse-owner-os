@@ -43,6 +43,7 @@ const btn = (...args) =>
   visualButton(...args).replace("<button ", '<button type="button" ');
 let activeActionRoute = null;
 let config = null,
+  ready = false,
   route = location.hash.slice(1) || "home",
   epoch = 0,
   busy = false,
@@ -54,6 +55,7 @@ let config = null,
   readTimer = null;
 const api = new ConnectedAPI({
   onAuth: () => {
+    ready = false;
     epoch++;
     clearTimeout(readTimer);
     location.assign("/r3/?return=" + encodeURIComponent(location.hash));
@@ -70,6 +72,11 @@ const title = {
   DEPOT_RECEIPT: "Чек депо",
   UNRESOLVED: "Уточнить событие",
   INVOICE_MATCH: "Счёт к приходу",
+};
+const operationLabels = {
+  payment: "Платёж",
+  owner_funding: "Взнос владельца",
+  receipt: "Приход",
 };
 const statuses = {
   open: "Открыто",
@@ -483,7 +490,7 @@ function finance(direction = "") {
         .slice(0, 20)
         .map(
           (o) =>
-            `<div class="list-row"><strong>${e(o.description || o.kind)}</strong><small>${e(statuses[o.status] || o.status)} · ${e(money(o.amount || o.original_amount || "0.00", o.currency))}</small>${o.kind === "payment" ? link("Открыть платёж", "payment/" + o.id) : ""}</div>`,
+            `<div class="list-row"><strong>${e(o.description || operationLabels[o.kind] || o.kind)}</strong><small>${e(statuses[o.status] || o.status)} · ${e(money(o.amount || o.original_amount || "0.00", o.currency))}</small>${o.kind === "payment" ? link("Открыть платёж", "payment/" + o.id) : ""}</div>`,
         )
         .join(
           "",
@@ -816,7 +823,7 @@ function inventory() {
       `<h2>Места хранения</h2>${v.locations.map((l) => `<div class="list-row">${e(l.name)}</div>`).join("") || "<p>Не настроены. Приход заблокирован до конфигурации места хранения.</p>"}`,
     ) +
     panel(
-      `<h2>История</h2>${v.events.map((ev) => link(`<strong>${e(ev.kind)} · ${e(displayDate(ev.event_date))}</strong><small>${e(statuses[ev.status] || ev.status)} · ${(ev.payload.lines || []).map((l) => e(l.original_product_name) + " " + e(l.quantity) + " " + e(l.unit)).join("; ")}</small>`, `receipt/${ev.id}`, "list-row")).join("")}`,
+      `<h2>История</h2>${v.events.map((ev) => link(`<strong>${e(operationLabels[ev.kind] || ev.kind)} · ${e(displayDate(ev.event_date))}</strong><small>${e(statuses[ev.status] || ev.status)} · ${(ev.payload.lines || []).map((l) => e(l.original_product_name) + " " + e(l.quantity) + " " + e(l.unit)).join("; ")}</small>`, `receipt/${ev.id}`, "list-row")).join("")}`,
     )
   );
 }
@@ -1065,6 +1072,12 @@ async function render() {
   sheetRoot.innerHTML = "";
   current = null;
   draft = null;
+  // Navigation can arrive while authenticated identity is still loading.
+  // Never open a draft under an unverified/null owner scope.
+  if (!ready) {
+    shell(Header("Загружаем", "Проверяем TEST-сессию"), true);
+    return;
+  }
   const [page, arg, arg2, arg3] = route.split("/");
   shell(
     Header("Загружаем", "CONNECTED TEST") +
@@ -1847,7 +1860,10 @@ document.addEventListener("click", (event) => {
         config = await api.get("/preview/config");
         api.configure(config);
       }
+      const generation = api.generation;
       await refreshData();
+      if (generation !== api.generation) return;
+      ready = true;
       return render();
     }
     if (name === "logout") {
@@ -1970,7 +1986,10 @@ window.addEventListener("keydown", (event) => {
   try {
     config = await api.get("/preview/config");
     api.configure(config);
+    const generation = api.generation;
     await refreshData();
+    if (generation !== api.generation) return;
+    ready = true;
     await render();
   } catch (error) {
     shell(errorBox(error));

@@ -408,16 +408,27 @@ export class ConnectedAPI {
     return this.mutate(this.root + path, body, intent);
   }
   async draft(id, value) {
+    if (!this.scope) throw Error("Сначала подтвердите TEST-сессию.");
+    const scope = this.scope,
+      generation = this.generation;
     await this.store.put({
-      key: `${this.scope}:draft:${id}`,
-      scope: this.scope,
+      key: `${scope}:draft:${id}`,
+      scope,
       type: "draft",
       id,
-      value,
+      value: structuredClone(value),
     });
+    if (scope !== this.scope || generation !== this.generation)
+      throw Error("Сессия изменилась. Копия сохранена для прежнего владельца.");
   }
   async readDraft(id) {
-    return (await this.store.get(`${this.scope}:draft:${id}`))?.value;
+    if (!this.scope) throw Error("Сначала подтвердите TEST-сессию.");
+    const scope = this.scope,
+      generation = this.generation;
+    const record = await this.store.get(`${scope}:draft:${id}`);
+    if (scope !== this.scope || generation !== this.generation)
+      throw Error("Сессия изменилась. Повторите после входа.");
+    return record?.value;
   }
   async records() {
     return (await this.store.all()).filter((x) => x.scope === this.scope);

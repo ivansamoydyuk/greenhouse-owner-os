@@ -51,6 +51,7 @@ const result = {
   errors: [],
   screenshots: [],
   homeMetrics: [],
+  draftRecovery: [],
   applicationFailures: [],
 };
 const read = async (ctx, url) => {
@@ -92,6 +93,34 @@ async function waitRenderedRoute(page, prefix) {
       document.querySelector("#main")?.dataset.renderedRoute === hash
     );
   }, prefix);
+}
+async function readStoredDraft(page, scope) {
+  // Read-only observation of durable state, never an injected UI/API fixture.
+  return page.evaluate(async (scope) => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("r3-connected-test-v1", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("records", "readonly");
+      const request = tx
+        .objectStore("records")
+        .get(`${scope}:draft:capture/text`);
+      let record;
+      request.onsuccess = () => {
+        record = request.result;
+      };
+      tx.oncomplete = () => {
+        db.close();
+        resolve(record);
+      };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error);
+      };
+    });
+  }, scope);
 }
 async function waitHash(page, starts) {
   await waitRenderedRoute(page, starts);
@@ -980,21 +1009,62 @@ try {
     );
     await context.setOffline(false);
     await page.reload();
+    await waitRenderedRoute(page, "capture/text");
     assert.equal(
       await page.locator("[name=text]").inputValue(),
       offlineOriginal,
     );
+    const ownerScope = `${config.entity_id}:${config.owner_id}`;
+    const beforeExpiry = await readStoredDraft(page, ownerScope);
+    assert.equal(beforeExpiry.value.text, offlineOriginal);
     await context.clearCookies();
     await click(page, "Сохранить оригинал");
     await page.waitForURL("**/r3/?return=*");
+    const afterExpiry = await readStoredDraft(page, ownerScope);
+    assert.deepEqual(afterExpiry, beforeExpiry);
+    let releaseConfig, observeConfig;
+    const configHeld = new Promise((resolve) => {
+      releaseConfig = resolve;
+    });
+    const configRequested = new Promise((resolve) => {
+      observeConfig = resolve;
+    });
+    await page.route("**/preview/config", async (interception) => {
+      observeConfig();
+      await configHeld;
+      await interception.continue();
+    });
     await page.locator("#secret").fill(process.env.PREVIEW_SECRET);
     await click(page, "Войти");
     await page.waitForURL("**/connected.html");
-    await route(page, "capture/text");
+    await configRequested;
+    await page.goto(base + "/r3/connected.html#capture/text");
+    await page.getByText("Проверяем TEST-сессию", { exact: true }).waitFor();
+    assert.equal(
+      await page.locator("[data-form=capture]").count(),
+      0,
+      "an editable draft must not render before authenticated identity",
+    );
+    const duringBootstrap = await readStoredDraft(page, ownerScope);
+    assert.deepEqual(duringBootstrap, beforeExpiry);
+    releaseConfig();
+    await waitRenderedRoute(page, "capture/text");
+    await page.unroute("**/preview/config");
     assert.equal(
       await page.locator("[name=text]").inputValue(),
       offlineOriginal,
     );
+    const afterLogin = await readStoredDraft(page, ownerScope);
+    assert.deepEqual(afterLogin, beforeExpiry);
+    result.draftRecovery.push({
+      engine,
+      scope: ownerScope,
+      beforeExpiry,
+      afterExpiry,
+      duringBootstrap,
+      afterLogin,
+      pass: true,
+    });
     await click(page, "Сохранить оригинал");
     await waitHash(page, "source/");
     assert.equal(

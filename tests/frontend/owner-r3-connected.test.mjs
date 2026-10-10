@@ -555,7 +555,10 @@ test("partial Home data includes a real explicit reload action without demo fall
     source,
     /btn\("Повторить загрузку разделов", "refresh", "secondary"\)/,
   );
-  assert.match(source, /await refreshData\(\);\s*return render\(\);/);
+  assert.match(
+    source,
+    /await refreshData\(\);\s*if \(generation !== api.generation\) return;\s*ready = true;\s*return render\(\);/,
+  );
 });
 
 test("exact display expansion preserves exponent decimals without binary arithmetic", () => {
@@ -603,4 +606,68 @@ test("exact display expansion preserves exponent decimals without binary arithme
   );
   assert.match(source, /legacyDisplayMetric\(exactDecimalString\(value\)\)/);
   assert.match(source, /legacyDisplayQuantity\(exactDecimalString\(value\)\)/);
+});
+
+test("drafts reject unverified identity and never create a null-scoped record", async () => {
+  const store = new Store();
+  const api = new ConnectedAPI({ store });
+  await assert.rejects(api.readDraft("capture/text"), /TEST-сессию/);
+  await assert.rejects(
+    api.draft("capture/text", { text: "private" }),
+    /TEST-сессию/,
+  );
+  assert.equal(store.m.size, 0);
+  const source = fs.readFileSync("prototype/owner-r3/connected.js", "utf8");
+  assert.match(source, /if \(!ready\) \{[\s\S]*?shell\([\s\S]*?return;\s*\}/);
+  assert.match(source, /onAuth: \(\) => \{\s*ready = false;/);
+  assert.match(
+    source,
+    /if \(generation !== api.generation\) return;\s*ready = true;/,
+  );
+});
+
+test("delayed draft read cannot expose former owner facts after identity changes", async () => {
+  const store = new Store();
+  const api = create(async () => response({}), store);
+  await api.draft("capture/text", { text: "owner original" });
+  const get = store.get.bind(store);
+  let release;
+  store.get = async (key) => {
+    const value = await get(key);
+    await new Promise((r) => (release = r));
+    return value;
+  };
+  const read = api.readDraft("capture/text");
+  await new Promise((r) => setImmediate(r));
+  api.configure({ ...config, owner_id: "other-owner" });
+  release();
+  await assert.rejects(read, /Сессия изменилась/);
+  store.get = get;
+  assert.equal(await api.readDraft("capture/text"), undefined);
+  api.configure(config);
+  assert.deepEqual(await api.readDraft("capture/text"), {
+    text: "owner original",
+  });
+});
+
+test("delayed draft save retains clicked facts and former scope without leaking to new identity", async () => {
+  const store = new Store();
+  const api = create(async () => response({}), store);
+  const put = store.put.bind(store);
+  let release;
+  store.put = async (record) => {
+    await new Promise((r) => (release = r));
+    return put(record);
+  };
+  const value = { text: "clicked original" };
+  const save = api.draft("capture/text", value);
+  value.text = "later edit";
+  api.configure({ ...config, entity_id: "other-entity" });
+  release();
+  await assert.rejects(save, /прежнего владельца/);
+  assert.equal(await api.readDraft("capture/text"), undefined);
+  api.configure(config);
+  assert.deepEqual(await api.readDraft("capture/text"), {
+    text: "clicked original",
+  });
 });
