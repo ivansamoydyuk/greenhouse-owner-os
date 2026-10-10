@@ -21,6 +21,7 @@ import {
   CAPABILITIES,
   canRecoverSourceExpense,
   submissionSnapshot,
+  estimateConfirmation,
   exactDecimalString,
   ownerFormSource,
 } from "./connected-adapter.js";
@@ -44,6 +45,7 @@ const displayMetric = (value) => legacyDisplayMetric(exactDecimalString(value));
 const btn = (...args) =>
   visualButton(...args).replace("<button ", '<button type="button" ');
 let activeActionRoute = null;
+let estimateReview = null;
 let lastHarvestRoute = "harvest";
 const harvestScroll = new Map();
 let config = null,
@@ -1108,6 +1110,7 @@ function more() {
 async function render() {
   const token = ++epoch;
   clearTimeout(readTimer);
+  estimateReview=null;
   sheetRoot.innerHTML = "";
   current = null;
   draft = null;
@@ -1555,11 +1558,14 @@ async function submitForm(formEl, snapshot) {
       body.basis=Object.entries(draft).filter(([k,x])=>k.startsWith('basis_') && k!=='basis_description' && x).map(([k,x])=>({work_area_id:k.slice(6),basis_count:quantity(x)}));
       body.total_basis_count=quantity(draft.total_basis_count);body.basis_description=requireText(draft.basis_description,'основание пропорций');
       const previewBody={...body};delete previewBody.confirmed;
+      const previewGeneration=api.generation;
       const preview=await api.harvestEstimatePreview(current.id,previewBody);
       if(savedRoute!==location.hash.slice(1)) return;
       draft.estimate_body=body;draft.estimate_preview=preview;await api.draft(savedRoute,draft);
+      if(savedRoute!==location.hash.slice(1) || previewGeneration!==api.generation) return;
       const rows=preview.lines || [];
-      openSheet('Проверить оценку',`<p>Итог документа: ${e(preview.total_weight_kg)} кг · ${e(preview.total_amount)} ${e(current.currency)}. Следующие доли — ESTIMATED.</p><p>Комментарий к основанию: ${e(body.basis_description)}</p><div class="estimate-basis"><strong>Подтверждаемые пропорции</strong>${body.basis.map(x=>'<p>'+e(areas().find(a=>a.id===x.work_area_id)?.name || 'Неизвестное место')+': '+e(x.basis_count)+' веток</p>').join('')}<p>Всего: ${e(body.total_basis_count)} веток. Неизвестная доля: ${e(preview.unknown_basis_count)}.</p></div>${rows.map(x=>'<p><strong>'+e(x.original_quality_name || 'Строка качества')+'</strong> · '+e(x.work_area_id?(areas().find(a=>a.id===x.work_area_id)?.name || 'Неизвестное место'):'Нераспределено')+' · '+e(x.net_weight_kg)+' кг · '+e(x.amount)+' '+e(current.currency)+'</p>').join('')}<p class="note">Отдельный расчёт каждой строки качества. Деньги не поступают; финансовый период не меняется.</p><div id="action-error" class="form-error"></div>${btn('Подтвердить оценку','confirm-estimate','primary full')}`);return;
+      estimateReview={body:structuredClone(body),draftId:draft.id,settlementId:current.id,route:savedRoute,generation:previewGeneration};
+      openSheet('Проверить оценку',`<p>Итог документа: ${e(preview.total_weight_kg)} кг · ${e(preview.total_amount)} ${e(current.currency)}. Следующие доли — ESTIMATED.</p><p>Комментарий к основанию: ${e(body.basis_description)}</p><div class="estimate-basis"><strong>Подтверждаемые пропорции</strong>${body.basis.map(x=>'<p>'+e(areas().find(a=>a.id===x.work_area_id)?.name || 'Неизвестное место')+': '+e(x.basis_count)+' веток</p>').join('')}<p>Всего: ${e(body.total_basis_count)} веток. Неизвестная доля: ${e(preview.unknown_basis_count)}.</p></div>${rows.map(x=>'<p><strong>'+e(x.original_quality_name || 'Строка качества')+'</strong> · '+e(x.work_area_id?(areas().find(a=>a.id===x.work_area_id)?.name || 'Неизвестное место'):'Нераспределено')+' · '+e(x.net_weight_kg)+' кг · '+e(x.amount)+' '+e(current.currency)+'</p>').join('')}<p class="note">Отдельный расчёт каждой строки качества. Деньги не поступают; финансовый период не меняется.</p><div id="action-error" class="form-error"></div>${btn('Подтвердить оценку','confirm-estimate','primary full')}`);sheetRoot.querySelector('[data-action=close-sheet]')?.focus();return;
     }
     await api.entityPost('/harvest/settlements/'+current.id+'/'+(kind==='links'?'links':'attachments'),body,draft.id+':'+kind);
     await clearDraft(savedRoute);await finish('depot/'+current.id,'Новая версия сохранена. Учётный эффект не повторялся.');
@@ -1945,6 +1951,7 @@ document.addEventListener("click", (event) => {
   if (name === "radial-close") return setRadial(false);
   if (name === "back") return history.length > 1 ? history.back() : go("home");
   if (name === "close-sheet") {
+    estimateReview=null;
     sheetRoot.innerHTML = "";
     return;
   }
@@ -2036,9 +2043,9 @@ document.addEventListener("click", (event) => {
       return render();
     }
     if(name==='confirm-estimate') {
-      if(!draft.estimate_body) throw Error('Сначала рассчитайте оценку.');
-      await api.entityPost('/harvest/settlements/'+current.id+'/estimates',draft.estimate_body,draft.id+':estimate');
-      sheetRoot.innerHTML='';await clearDraft(route);return finish('depot/'+current.id,'Оценка подтверждена отдельной версией. Итог продажи не изменился.');
+      const checked=estimateConfirmation(estimateReview,{route,settlementId:current.id,generation:api.generation});
+      await api.entityPost('/harvest/settlements/'+current.id+'/estimates',checked.body,checked.intent);
+      estimateReview=null;sheetRoot.innerHTML='';await clearDraft(route);return finish('depot/'+current.id,'Оценка подтверждена отдельной версией. Итог продажи не изменился.');
     }
     if (name === "confirm-proposal") {
       const confirmed = await api.entityPost(
@@ -2129,6 +2136,7 @@ window.addEventListener("hashchange", () => {
 });
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    estimateReview=null;
     sheetRoot.innerHTML = "";
     setRadial(false);
   }

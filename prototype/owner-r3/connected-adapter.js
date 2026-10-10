@@ -482,3 +482,8 @@ export function ownerFormSource(formKind, draft, fields) {
     fields: Object.fromEntries(expected.map(key => [key, String(fields[key] ?? '')])),
   };
 }
+
+export function estimateConfirmation(review, context) {
+  if (!review || review.route !== context.route || review.settlementId !== context.settlementId || review.generation !== context.generation) throw Error("Сначала рассчитайте и проверьте текущую оценку.");
+  return { body: structuredClone(review.body), intent: review.draftId + ":estimate" };
+}

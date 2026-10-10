@@ -384,9 +384,9 @@
       "path": "prototype/owner-r3/connected-adapter.js",
       "origin": "HARVEST_OWNER_JOURNEY",
       "remote_ref": null,
-      "git_blob": "044984e11d748f1ba33e4e85d24f8895bf1ca10a",
-      "sha256": "fef65082e7e9d31599d8d74278e9d23429ec497dd9888649c94de6417ec3d643",
-      "size": 17205
+      "git_blob": "e72c1665c7918f6ef90e12d7a5b01b80efe631ef",
+      "sha256": "2ebbc519ca63b80271c0d16bc826e07a2a5c591a622b0913204617b577db1516",
+      "size": 17597
     },
     {
       "path": "prototype/owner-r3/connected.css",
@@ -408,9 +408,9 @@
       "path": "prototype/owner-r3/connected.js",
       "origin": "HARVEST_OWNER_JOURNEY",
       "remote_ref": null,
-      "git_blob": "85c492556c2241632577cc24917f9d8c66a0264d",
-      "sha256": "c36cd7879d0e4be01758340ed4806cb2afe67e62055d80c19224d73ea094466e",
-      "size": 128326
+      "git_blob": "13161b602693a0aa81099bae3ca7b147c7988544",
+      "sha256": "66e09441970a5b897d5db903f501270629c62834020da60ca0f0500d18ea002e",
+      "size": 128812
     },
     {
       "path": "prototype/owner-r3/daily-demo.js",
@@ -1464,9 +1464,9 @@
       "path": "tests/e2e/harvest-owner-journey.mjs",
       "origin": "HARVEST_OWNER_JOURNEY",
       "remote_ref": null,
-      "git_blob": "90d000ca15260cf4e6d9dd8046c31ed565c568b8",
-      "sha256": "6855c5e9defea3b30f08cfb4c49bc4f50910d6f70fc4051aa2426233d02f3891",
-      "size": 13225
+      "git_blob": "677dafeefa4507508c9eec48d81e0c875b57cc44",
+      "sha256": "3e341d21e2599d30cd8a130590ca06c0156eda85ae15f43d00b0eeff15d48491",
+      "size": 13469
     },
     {
       "path": "tests/e2e/harvest.mjs",
@@ -1872,9 +1872,9 @@
       "path": "tests/frontend/owner-r3-connected.test.mjs",
       "origin": "HARVEST_OWNER_JOURNEY",
       "remote_ref": null,
-      "git_blob": "7dbdd3442e7c594a56686a46d92c3fb6f7178d22",
-      "sha256": "117d4d125928efb2e32460f2371dc84669079a5c1ca24c2eb56964c5427f147e",
-      "size": 22089
+      "git_blob": "438c80a1bedb49334ca3b6a5cdc042a0137adf54",
+      "sha256": "648cc1bb72a11cbe1fa76b1ee406f82fb141acd272c02a6966f97bf33931e8c3",
+      "size": 23155
     },
     {
       "path": "tests/frontend/owner-r3-daily-demo.test.mjs",
