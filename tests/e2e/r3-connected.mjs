@@ -52,6 +52,7 @@ const result = {
   screenshots: [],
   homeMetrics: [],
   draftRecovery: [],
+  captionChecks: [],
   applicationFailures: [],
 };
 const read = async (ctx, url) => {
@@ -80,7 +81,17 @@ async function click(page, text) {
   await page.getByRole("button", { name: text, exact: true }).click();
 }
 async function fill(page, name, value) {
-  await page.locator(`[name="${name}"]`).fill(String(value));
+  const input = page.locator(`[name="${name}"]`);
+  await page.waitForFunction((name) => {
+    const el = document.querySelector(`[name="${name}"]`);
+    return el && !el.closest("[inert]");
+  }, name);
+  await input.fill(String(value));
+  assert.equal(
+    await input.inputValue(),
+    String(value),
+    "entered owner fact: " + name,
+  );
 }
 async function select(page, name, value) {
   await page.locator(`select[name="${name}"]`).selectOption(String(value));
@@ -94,33 +105,34 @@ async function waitRenderedRoute(page, prefix) {
     );
   }, prefix);
 }
-async function readStoredDraft(page, scope) {
+async function readStoredDraft(page, scope, id = "capture/text") {
   // Read-only observation of durable state, never an injected UI/API fixture.
-  return page.evaluate(async (scope) => {
-    const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open("r3-connected-test-v1", 1);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction("records", "readonly");
-      const request = tx
-        .objectStore("records")
-        .get(`${scope}:draft:capture/text`);
-      let record;
-      request.onsuccess = () => {
-        record = request.result;
-      };
-      tx.oncomplete = () => {
-        db.close();
-        resolve(record);
-      };
-      tx.onerror = () => {
-        db.close();
-        reject(tx.error);
-      };
-    });
-  }, scope);
+  return page.evaluate(
+    async ({ scope, id }) => {
+      const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open("r3-connected-test-v1", 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction("records", "readonly");
+        const request = tx.objectStore("records").get(`${scope}:draft:${id}`);
+        let record;
+        request.onsuccess = () => {
+          record = request.result;
+        };
+        tx.oncomplete = () => {
+          db.close();
+          resolve(record);
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error);
+        };
+      });
+    },
+    { scope, id },
+  );
 }
 async function waitHash(page, starts) {
   await waitRenderedRoute(page, starts);
@@ -615,6 +627,19 @@ try {
       mimeType: engine === "webkit" ? "application/pdf" : "image/png",
       buffer: originalBytes,
     });
+    const captionCheck = {
+      engine,
+      formInertAfterFile: await page
+        .locator("[data-form=depot]")
+        .evaluate((el) => el.inert),
+    };
+    result.captionChecks.push(captionCheck);
+    await page.waitForFunction(() => {
+      const form = document.querySelector("[data-form=depot]");
+      return (
+        form && !form.inert && !form.querySelector("[type=submit]").disabled
+      );
+    });
     await fill(page, "caption", `TEST ${engine} separate owner caption`);
     await select(page, "depot", fixture.counterparties.depot.id);
     await fill(
@@ -631,7 +656,29 @@ try {
       "source_line",
       `Grand 60 kg x ${receiptPrice} TRY, ADET 6`,
     );
+    captionCheck.domCaption = await page.locator("[name=caption]").inputValue();
+    captionCheck.storedCaption = (
+      await readStoredDraft(
+        page,
+        `${config.entity_id}:${config.owner_id}`,
+        "attach-depot/" + reportId,
+      )
+    ).value.caption;
+    assert.equal(
+      captionCheck.domCaption,
+      `TEST ${engine} separate owner caption`,
+    );
+    assert.equal(captionCheck.storedCaption, captionCheck.domCaption);
+    const settlementRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        request.url() === base + root + "/harvest/settlements",
+    );
     await click(page, "Сохранить черновик чека");
+    captionCheck.requestCaption = (
+      await settlementRequest
+    ).postDataJSON().evidence.raw_text;
+    assert.equal(captionCheck.requestCaption, captionCheck.domCaption);
     await waitHash(page, "depot/");
     const settlementId = page.url().split("#depot/")[1];
     const settlement = await read(

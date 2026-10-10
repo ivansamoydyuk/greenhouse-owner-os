@@ -1536,9 +1536,9 @@
       "path": "tests/e2e/r3-connected.mjs",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "d74a0454e6a4f76054d67428b57f99b08f6eabe1",
-      "sha256": "87fa907f9cbf24fed353b41e60942b5224e227cc274d1441947d9e106574e6ed",
-      "size": 41925
+      "git_blob": "ecb44cf800fa143a9a04b16b6d55b24e46aff16f",
+      "sha256": "03bb0d4a3e63a41a78cd68cf72ca5fe6387bba04c07fb6748697e874d4d0d473",
+      "size": 43519
     },
     {
       "path": "tests/e2e/task-review-fixture.mjs",
