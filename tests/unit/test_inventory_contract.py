@@ -8,9 +8,10 @@ import pytest,yaml
 
 def test_inventory_linear_exact_head_and_recovery():
  scripts=ScriptDirectory.from_config(Config('alembic.ini'));chain=list(scripts.walk_revisions())
- assert scripts.get_heads()==['20261010_0025'] and len(chain)==25
- assert chain[0].down_revision=='20261008_0024'
- chain=chain[1:]
+ assert scripts.get_heads()==['20261010_0026'] and len(chain)==26
+ assert chain[0].down_revision=='20261010_0025'
+ assert chain[1].down_revision=='20261008_0024'
+ chain=chain[2:]
  assert chain[0].down_revision=='20261008_0023'
  assert chain[1].down_revision=='20261006_0022'
  chain=chain[2:]

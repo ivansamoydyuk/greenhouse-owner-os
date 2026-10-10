@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import date,datetime
-from fastapi import Depends,Header,Response
+from fastapi import Depends,Header,Response,Query
 from pydantic import BaseModel,ConfigDict,Field
 from sqlalchemy import select
 from greenhouse_owner_os.domain.owner_form_source import OwnerFormSource,original_readback
@@ -32,6 +32,30 @@ class HarvestEvidenceMetadata(BaseModel):
 
 def mount_harvest(app,finance,actor_provider):
     service=HarvestService(finance.uow_factory) if finance else None
+    from greenhouse_owner_os.services.harvest_journey import HarvestJourneyService
+    from greenhouse_owner_os.domain.harvest_journey import JourneyLinks,JourneyEstimate,JourneyAttachment,EstimatePreview
+    journey=HarvestJourneyService(finance.uow_factory) if finance else None
+    @app.get('/v1/entities/{entity_id}/harvest/monthly')
+    def monthly(entity_id:UUID,season_start_year:int=Query(ge=1900,le=9998),greenhouse_id:UUID|None=None,metric:str='branches',currency:str='TRY',allocation:str='all',actor:UUID=Depends(actor_provider)):
+        return journey.monthly(entity_id,actor,season_start_year,greenhouse_id,metric,currency,allocation)
+    @app.get('/v1/entities/{entity_id}/harvest/reports/{report_id}')
+    def get_report(entity_id:UUID,report_id:UUID,actor:UUID=Depends(actor_provider)):
+        return journey.report(entity_id,actor,report_id)
+    @app.get('/v1/entities/{entity_id}/harvest/settlements/{settlement_id}/journey')
+    def get_journey(entity_id:UUID,settlement_id:UUID,actor:UUID=Depends(actor_provider)):
+        return journey.get(entity_id,actor,settlement_id)
+    @app.post('/v1/entities/{entity_id}/harvest/settlements/{settlement_id}/links')
+    def links(entity_id:UUID,settlement_id:UUID,body:JourneyLinks,key:str=Header(alias='Idempotency-Key'),actor:UUID=Depends(actor_provider)):
+        return journey.links(entity_id,actor,settlement_id,key,body)
+    @app.post('/v1/entities/{entity_id}/harvest/settlements/{settlement_id}/estimates/preview')
+    def estimate_preview(entity_id:UUID,settlement_id:UUID,body:EstimatePreview,actor:UUID=Depends(actor_provider)):
+        return journey.estimate_preview(entity_id,actor,settlement_id,body)
+    @app.post('/v1/entities/{entity_id}/harvest/settlements/{settlement_id}/estimates')
+    def estimate(entity_id:UUID,settlement_id:UUID,body:JourneyEstimate,key:str=Header(alias='Idempotency-Key'),actor:UUID=Depends(actor_provider)):
+        return journey.estimate(entity_id,actor,settlement_id,key,body)
+    @app.post('/v1/entities/{entity_id}/harvest/settlements/{settlement_id}/attachments')
+    def attach(entity_id:UUID,settlement_id:UUID,body:JourneyAttachment,key:str=Header(alias='Idempotency-Key'),actor:UUID=Depends(actor_provider)):
+        return journey.attachment(entity_id,actor,settlement_id,key,body)
     @app.get('/v1/entities/{entity_id}/harvest')
     def overview(entity_id:UUID,date_from:date|None=None,date_to:date|None=None,actor:UUID=Depends(actor_provider)):
         return service.overview(entity_id,date_from,date_to)

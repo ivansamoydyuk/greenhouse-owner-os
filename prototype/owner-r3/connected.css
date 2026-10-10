@@ -267,3 +267,134 @@
 
 /* A review action must never float over an unresolved fact or error. */
 .connected .capture-confirmation { position: static; bottom: auto; }
+
+/* Connected Harvest: same filters for chart, total and original-source drilldown. */
+.connected .harvest-metric-tabs {display:flex;gap:4px;background:#eef3ee;border-radius:12px;padding:4px;margin:12px 0;}
+.connected .harvest-metric {flex:1;min-width:0;min-height:44px;padding:12px 5px;text-align:center;border-radius:9px;color:#41544a;font-size:13px;}
+.connected .harvest-metric.active {background:#07543c;color:white;font-weight:650;}
+.connected .harvest-filters {display:flex;flex-wrap:wrap;align-items:end;gap:8px;margin-bottom:14px;}
+.connected .harvest-filters label {flex:1;min-width:100px;font-size:12px;color:#54685b;}
+.connected .harvest-filters select {width:100%;min-height:44px;margin-top:4px;}
+.connected .harvest-filters .btn {min-height:44px;padding:8px 12px;}
+.connected .harvest-month-chart {display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:5px;height:180px;align-items:end;margin:18px 0 8px;}
+.connected .harvest-month {height:100%;min-width:0;display:flex;flex-direction:column;justify-content:end;text-align:center;font-size:11px;color:#587065;border-radius:5px;padding:3px 0;}
+.connected .harvest-bar-track {height:145px;display:flex;align-items:end;justify-content:center;position:relative;margin-bottom:7px;background:linear-gradient(to top,transparent 32%,#edf1eb 33%,transparent 34%,transparent 65%,#edf1eb 66%,transparent 67%);}
+.connected .harvest-bar {display:block;width:80%;height:var(--bar-height);background:#9bd0ae;border-radius:4px 4px 0 0;min-height:0;}
+.connected .harvest-month.selected {background:#e1f0e5;color:#064f38;font-weight:700;}
+.connected .harvest-month.selected .harvest-bar {background:#167449;}
+.connected .harvest-no-data {position:absolute;bottom:2px;color:#9ba99f;}
+.connected .harvest-total {display:block;font-size:32px;line-height:1.2;overflow-wrap:normal;word-break:normal;font-variant-numeric:tabular-nums;}
+.connected .harvest-event {display:flex;gap:12px;align-items:center;justify-content:space-between;}
+.connected .harvest-event-value {text-align:right;max-width:48%;font-weight:600;font-variant-numeric:tabular-nums;}
+.connected .harvest-estimated {font-size:13px;color:#775719;}
+@media(max-width:900px){.connected .harvest-month-chart{grid-template-columns:repeat(6,minmax(0,1fr));height:auto;row-gap:12px;}.connected .harvest-month{min-height:125px;}.connected .harvest-bar-track{height:95px;}.connected .harvest-total{font-size:28px;}}
+.connected .depot-line {border:1px solid #dce6da;border-radius:12px;padding:14px;margin:12px 0;min-width:0;}
+.connected .depot-line legend {font-weight:650;color:#17563e;padding:0 5px;}
+.connected .depot-line details summary {min-height:44px;display:flex;align-items:center;font-size:13px;}
+.connected .depot-review-line {padding:12px 0;border-bottom:1px solid #e7eee4;}
+.connected .depot-review-line p {margin:5px 0;}
+.connected .harvest-bar.bar-h-0{height:0%;}
+.connected .harvest-bar.bar-h-1{height:1%;}
+.connected .harvest-bar.bar-h-2{height:2%;}
+.connected .harvest-bar.bar-h-3{height:3%;}
+.connected .harvest-bar.bar-h-4{height:4%;}
+.connected .harvest-bar.bar-h-5{height:5%;}
+.connected .harvest-bar.bar-h-6{height:6%;}
+.connected .harvest-bar.bar-h-7{height:7%;}
+.connected .harvest-bar.bar-h-8{height:8%;}
+.connected .harvest-bar.bar-h-9{height:9%;}
+.connected .harvest-bar.bar-h-10{height:10%;}
+.connected .harvest-bar.bar-h-11{height:11%;}
+.connected .harvest-bar.bar-h-12{height:12%;}
+.connected .harvest-bar.bar-h-13{height:13%;}
+.connected .harvest-bar.bar-h-14{height:14%;}
+.connected .harvest-bar.bar-h-15{height:15%;}
+.connected .harvest-bar.bar-h-16{height:16%;}
+.connected .harvest-bar.bar-h-17{height:17%;}
+.connected .harvest-bar.bar-h-18{height:18%;}
+.connected .harvest-bar.bar-h-19{height:19%;}
+.connected .harvest-bar.bar-h-20{height:20%;}
+.connected .harvest-bar.bar-h-21{height:21%;}
+.connected .harvest-bar.bar-h-22{height:22%;}
+.connected .harvest-bar.bar-h-23{height:23%;}
+.connected .harvest-bar.bar-h-24{height:24%;}
+.connected .harvest-bar.bar-h-25{height:25%;}
+.connected .harvest-bar.bar-h-26{height:26%;}
+.connected .harvest-bar.bar-h-27{height:27%;}
+.connected .harvest-bar.bar-h-28{height:28%;}
+.connected .harvest-bar.bar-h-29{height:29%;}
+.connected .harvest-bar.bar-h-30{height:30%;}
+.connected .harvest-bar.bar-h-31{height:31%;}
+.connected .harvest-bar.bar-h-32{height:32%;}
+.connected .harvest-bar.bar-h-33{height:33%;}
+.connected .harvest-bar.bar-h-34{height:34%;}
+.connected .harvest-bar.bar-h-35{height:35%;}
+.connected .harvest-bar.bar-h-36{height:36%;}
+.connected .harvest-bar.bar-h-37{height:37%;}
+.connected .harvest-bar.bar-h-38{height:38%;}
+.connected .harvest-bar.bar-h-39{height:39%;}
+.connected .harvest-bar.bar-h-40{height:40%;}
+.connected .harvest-bar.bar-h-41{height:41%;}
+.connected .harvest-bar.bar-h-42{height:42%;}
+.connected .harvest-bar.bar-h-43{height:43%;}
+.connected .harvest-bar.bar-h-44{height:44%;}
+.connected .harvest-bar.bar-h-45{height:45%;}
+.connected .harvest-bar.bar-h-46{height:46%;}
+.connected .harvest-bar.bar-h-47{height:47%;}
+.connected .harvest-bar.bar-h-48{height:48%;}
+.connected .harvest-bar.bar-h-49{height:49%;}
+.connected .harvest-bar.bar-h-50{height:50%;}
+.connected .harvest-bar.bar-h-51{height:51%;}
+.connected .harvest-bar.bar-h-52{height:52%;}
+.connected .harvest-bar.bar-h-53{height:53%;}
+.connected .harvest-bar.bar-h-54{height:54%;}
+.connected .harvest-bar.bar-h-55{height:55%;}
+.connected .harvest-bar.bar-h-56{height:56%;}
+.connected .harvest-bar.bar-h-57{height:57%;}
+.connected .harvest-bar.bar-h-58{height:58%;}
+.connected .harvest-bar.bar-h-59{height:59%;}
+.connected .harvest-bar.bar-h-60{height:60%;}
+.connected .harvest-bar.bar-h-61{height:61%;}
+.connected .harvest-bar.bar-h-62{height:62%;}
+.connected .harvest-bar.bar-h-63{height:63%;}
+.connected .harvest-bar.bar-h-64{height:64%;}
+.connected .harvest-bar.bar-h-65{height:65%;}
+.connected .harvest-bar.bar-h-66{height:66%;}
+.connected .harvest-bar.bar-h-67{height:67%;}
+.connected .harvest-bar.bar-h-68{height:68%;}
+.connected .harvest-bar.bar-h-69{height:69%;}
+.connected .harvest-bar.bar-h-70{height:70%;}
+.connected .harvest-bar.bar-h-71{height:71%;}
+.connected .harvest-bar.bar-h-72{height:72%;}
+.connected .harvest-bar.bar-h-73{height:73%;}
+.connected .harvest-bar.bar-h-74{height:74%;}
+.connected .harvest-bar.bar-h-75{height:75%;}
+.connected .harvest-bar.bar-h-76{height:76%;}
+.connected .harvest-bar.bar-h-77{height:77%;}
+.connected .harvest-bar.bar-h-78{height:78%;}
+.connected .harvest-bar.bar-h-79{height:79%;}
+.connected .harvest-bar.bar-h-80{height:80%;}
+.connected .harvest-bar.bar-h-81{height:81%;}
+.connected .harvest-bar.bar-h-82{height:82%;}
+.connected .harvest-bar.bar-h-83{height:83%;}
+.connected .harvest-bar.bar-h-84{height:84%;}
+.connected .harvest-bar.bar-h-85{height:85%;}
+.connected .harvest-bar.bar-h-86{height:86%;}
+.connected .harvest-bar.bar-h-87{height:87%;}
+.connected .harvest-bar.bar-h-88{height:88%;}
+.connected .harvest-bar.bar-h-89{height:89%;}
+.connected .harvest-bar.bar-h-90{height:90%;}
+.connected .harvest-bar.bar-h-91{height:91%;}
+.connected .harvest-bar.bar-h-92{height:92%;}
+.connected .harvest-bar.bar-h-93{height:93%;}
+.connected .harvest-bar.bar-h-94{height:94%;}
+.connected .harvest-bar.bar-h-95{height:95%;}
+.connected .harvest-bar.bar-h-96{height:96%;}
+.connected .harvest-bar.bar-h-97{height:97%;}
+.connected .harvest-bar.bar-h-98{height:98%;}
+.connected .harvest-bar.bar-h-99{height:99%;}
+.connected .harvest-bar.bar-h-100{height:100%;}
+@media(max-width:359px){.connected .harvest-month-chart{grid-template-columns:repeat(4,minmax(0,1fr));}.connected .harvest-bar-track{height:75px;}.connected .harvest-month{min-height:105px;}}
+
+/* Source facts remain readable even for long original labels and exact values. */
+.connected #main[data-rendered-route^="depot/"] .fact-row > * { min-width: 0; overflow-wrap: anywhere; }

@@ -9,7 +9,7 @@ export const CAPABILITIES = Object.freeze({
   workersR1: "CONNECTED_TEST",
   fertilizer: "DEMO_ONLY",
   realDispatch: "NOT_AVAILABLE",
-  latePostedReceiptLink: "NOT_AVAILABLE",
+  latePostedReceiptLink: "CONNECTED_TEST",
 });
 export const canRecoverSourceExpense = (source) =>
   !source.proposals?.length &&
@@ -324,6 +324,15 @@ export class ConnectedAPI {
   entityGet(path) {
     return this.get(this.root + path);
   }
+  async harvestEstimatePreview(settlementId, body) {
+    if (!this.scope) throw Error('Сначала войдите.');
+    const scope=this.scope, generation=this.generation;
+    const result=await this.request(this.root+'/harvest/settlements/'+encodeURIComponent(settlementId)+'/estimates/preview',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:canonical(body),
+    });
+    if(scope!==this.scope || generation!==this.generation) throw Error('Сессия изменилась; расчёт не применяется.');
+    return result;
+  }
   async mutate(path, body, intent) {
     if (!this.scope) throw Error("Сначала войдите.");
     if (!intent) throw Error("Нужен стабильный идентификатор действия.");
@@ -472,4 +481,9 @@ export function ownerFormSource(formKind, draft, fields) {
     captured_at: draft.captured_at, timezone: 'Europe/Istanbul',
     fields: Object.fromEntries(expected.map(key => [key, String(fields[key] ?? '')])),
   };
+}
+
+export function estimateConfirmation(review, context) {
+  if (!review || review.route !== context.route || review.settlementId !== context.settlementId || review.generation !== context.generation) throw Error("Сначала рассчитайте и проверьте текущую оценку.");
+  return { body: structuredClone(review.body), intent: review.draftId + ":estimate" };
 }

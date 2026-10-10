@@ -17,6 +17,7 @@ import {
   CAPABILITIES,
   canRecoverSourceExpense,
   submissionSnapshot,
+  estimateConfirmation,
   exactDecimalString,
 } from "../../prototype/owner-r3/connected-adapter.js";
 class Store {
@@ -670,4 +671,30 @@ test("delayed draft save retains clicked facts and former scope without leaking 
   assert.deepEqual(await api.readDraft("capture/text"), {
     text: "clicked original",
   });
+});
+test('readonly Harvest estimate previews accept changed basis without claiming effect identity', async()=>{
+ const calls=[],store=new Store(),a=create(async(path,options)=>{calls.push({path,options});return response({version:0,lines:[]});},store);
+ await a.harvestEstimatePreview('receipt',{expected_version:0,total_basis_count:'100'});
+ await a.harvestEstimatePreview('receipt',{expected_version:0,total_basis_count:'150'});
+ assert.equal(calls.length,2);assert.equal(store.m.size,0);assert.equal(calls[0].options.headers['Idempotency-Key'],undefined);
+ assert.notEqual(calls[0].options.body,calls[1].options.body);
+});
+test('readonly Harvest estimate rejects response from previous session', async()=>{
+ let resolve;const a=create(()=>new Promise(r=>{resolve=r;}));
+ const pending=a.harvestEstimatePreview('receipt',{expected_version:0});
+ a.generation++;resolve(response({lines:[]}));await assert.rejects(pending,/Сессия изменилась/);
+});
+
+test("estimate confirmation uses the displayed immutable review, not the form draft", () => {
+  const context={route:"depot-estimate/one",settlementId:"one",generation:3};
+  const review={...context,draftId:"logical",body:{expected_version:0,basis:[{basis_count:"100"}]}};
+  const result=estimateConfirmation(review,context);
+  assert.equal(result.intent,"logical:estimate");assert.deepEqual(result.body,review.body);
+  result.body.basis[0].basis_count="90";assert.equal(review.body.basis[0].basis_count,"100");
+});
+test("estimate confirmation rejects dismissed, different route, record or session reviews", () => {
+  const context={route:"depot-estimate/one",settlementId:"one",generation:3};
+  const review={...context,draftId:"logical",body:{expected_version:0}};
+  for(const changed of [{route:"other"},{settlementId:"other"},{generation:4}]) assert.throws(()=>estimateConfirmation(review,{...context,...changed}),/текущую оценку/);
+  assert.throws(()=>estimateConfirmation(null,context),/текущую оценку/);
 });

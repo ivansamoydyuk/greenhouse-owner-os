@@ -2105,9 +2105,9 @@ paths:
   /entities/{entity_id}/harvest/evidence/{evidence_id}/metadata:
     get:
       summary: Read immutable Harvest original metadata
-      description: Authenticated, entity-scoped read of original source text and provenance. Does not infer
-        source text from prepared fields or return file bytes. The existing binary evidence endpoint remains
-        unchanged.
+      description: Authenticated, entity-scoped read of original source text and provenance.
+        Does not infer source text from prepared fields or return file bytes. The
+        existing binary evidence endpoint remains unchanged.
       operationId: evidence_metadata_v1_entities__entity_id__harvest_evidence__evidence_id__metadata_get
       parameters:
       - name: entity_id
@@ -2126,7 +2126,8 @@ paths:
           title: Evidence Id
       responses:
         '200':
-          description: Immutable original metadata, including exact nullable raw text and binary availability.
+          description: Immutable original metadata, including exact nullable raw text
+            and binary availability.
           content:
             application/json:
               schema:
@@ -2139,7 +2140,8 @@ paths:
         '401':
           description: Authenticated owner required.
         '403':
-          description: The authenticated owner cannot access the requested managed entity.
+          description: The authenticated owner cannot access the requested managed
+            entity.
         '404':
           description: Evidence is missing or does not belong to the requested entity.
         '422':
@@ -4027,6 +4029,296 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/monthly:
+    get:
+      summary: Monthly
+      operationId: monthly_v1_entities__entity_id__harvest_monthly_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: season_start_year
+        in: query
+        required: true
+        schema:
+          type: integer
+          maximum: 9998
+          minimum: 1900
+          title: Season Start Year
+      - name: greenhouse_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+      - name: metric
+        in: query
+        required: false
+        schema:
+          type: string
+          default: branches
+          title: Metric
+      - name: currency
+        in: query
+        required: false
+        schema:
+          type: string
+          default: TRY
+          title: Currency
+      - name: allocation
+        in: query
+        required: false
+        schema:
+          type: string
+          default: all
+          title: Allocation
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/reports/{report_id}:
+    get:
+      summary: Get Report
+      operationId: get_report_v1_entities__entity_id__harvest_reports__report_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: report_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Report Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/journey:
+    get:
+      summary: Get Journey
+      operationId: get_journey_v1_entities__entity_id__harvest_settlements__settlement_id__journey_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/links:
+    post:
+      summary: Links
+      operationId: links_v1_entities__entity_id__harvest_settlements__settlement_id__links_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JourneyLinks'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/estimates/preview:
+    post:
+      summary: Estimate Preview
+      operationId: estimate_preview_v1_entities__entity_id__harvest_settlements__settlement_id__estimates_preview_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstimatePreview'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/estimates:
+    post:
+      summary: Estimate
+      operationId: estimate_v1_entities__entity_id__harvest_settlements__settlement_id__estimates_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JourneyEstimate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/attachments:
+    post:
+      summary: Attach
+      operationId: attach_v1_entities__entity_id__harvest_settlements__settlement_id__attachments_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JourneyAttachment'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -4049,8 +4341,8 @@ components:
       type: object
       description: Additive direct-expense read projection. Existing Finance balances,
         operation families, offset/limit/has_more pagination and other response fields
-        remain unchanged. The direct-expense list is independently bounded and is not
-        used to recompute balances.
+        remain unchanged. The direct-expense list is independently bounded and is
+        not used to recompute balances.
       additionalProperties: true
       required:
       - direct_expenses
@@ -4065,8 +4357,8 @@ components:
           maxItems: 50
           items:
             $ref: '#/components/schemas/DirectExpenseRead'
-          description: Most recent posted or reversed direct-expense records across all
-            dates and currencies, ordered by created_at descending then id descending.
+          description: Most recent posted or reversed direct-expense records across
+            all dates and currencies, ordered by created_at descending then id descending.
             Never a period total or full history.
         direct_expenses_total:
           type: integer
@@ -4202,8 +4494,8 @@ components:
           - type: string
           - type: 'null'
           title: Raw Text
-          description: Exact immutable original text or source-associated caption; never
-            synthesized from prepared report fields.
+          description: Exact immutable original text or source-associated caption;
+            never synthesized from prepared report fields.
         filename:
           anyOf:
           - type: string
@@ -6773,7 +7065,9 @@ components:
         capture_context:
           anyOf:
           - type: string
-            const: quick_expense
+            enum:
+            - quick_expense
+            - depot_receipt
           - type: 'null'
           title: Capture Context
         client_capture_id:
@@ -6987,6 +7281,160 @@ components:
       - timezone
       - fields
       title: OwnerFormSource
+    JourneyLinks:
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Version
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+        batch_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 100
+          title: Batch Ids
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - confirmed
+      - reason
+      - batch_ids
+      title: JourneyLinks
+    JourneyEstimate:
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Version
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+        basis:
+          items:
+            $ref: '#/components/schemas/EstimateBasis'
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Basis
+        total_basis_count:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+          title: Total Basis Count
+        basis_description:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Basis Description
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - reason
+      - basis
+      - total_basis_count
+      - basis_description
+      - confirmed
+      title: JourneyEstimate
+    JourneyAttachment:
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Version
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+        evidence:
+          $ref: '#/components/schemas/EvidenceInput'
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - confirmed
+      - reason
+      - evidence
+      title: JourneyAttachment
+    EstimatePreview:
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Version
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+        basis:
+          items:
+            $ref: '#/components/schemas/EstimateBasis'
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Basis
+        total_basis_count:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+          title: Total Basis Count
+        basis_description:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Basis Description
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - reason
+      - basis
+      - total_basis_count
+      - basis_description
+      title: EstimatePreview
+    EstimateBasis:
+      properties:
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        basis_count:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+          title: Basis Count
+      additionalProperties: false
+      type: object
+      required:
+      - work_area_id
+      - basis_count
+      title: EstimateBasis
   responses:
     Conflict:
       description: Version or idempotency conflict
