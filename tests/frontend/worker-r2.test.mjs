@@ -12,7 +12,7 @@ test('worker button is exact typed original and comment remains unchanged',()=>{
 test('problem requires no fabricated receipt, DONE requires receipt and current assignment',()=>{
  assert.equal(make().response,'PROBLEM');assert.throws(()=>make('DONE'),/Сначала/);assert.equal(make('DONE',{...assignment,acknowledged_at:'now'}).response,'DONE');assert.throws(()=>make('PROBLEM',{...assignment,cycle:1}),/Назначение/);
 });
-test('old R1 contract is not silently converted to new response flow',()=>assert.throws(()=>responseSnapshot({...task,execution_contract:'R1_STARTED_REPORT'},assignment,'PROBLEM','ru'),/Назначение/));
+test('old R1 contract is not silently converted to new response flow',()=>assert.throws(()=>responseSnapshot({...task,execution_contract:'R1'},assignment,'PROBLEM','ru'),/Назначение/));
 test('pending identity separates worker entity task assignment and cycle',()=>{
  const key=responseKey(worker,task,assignment);for(const [w,t,a] of [[{...worker,id:'other'},task,assignment],[{...worker,entity_id:'other'},task,assignment],[worker,{...task,cycle:3},assignment],[worker,task,{...assignment,id:'other'}]])assert.notEqual(responseKey(w,t,a),key);
 });
