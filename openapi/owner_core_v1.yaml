@@ -3421,6 +3421,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/captures/{item_id}/direct-expense-recovery:
+    post:
+      summary: Recover Expense
+      operationId: recover_expense_v1_entities__entity_id__owner_captures__item_id__direct_expense_recovery_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpenseRecoveryAction'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /entities/{entity_id}/owner/confirmations:
     get:
       summary: Queue
@@ -6617,6 +6660,23 @@ components:
       - expected_version
       - state
       title: TaskStateAction
+    ExpenseRecoveryAction:
+      properties:
+        origin_proposal_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Origin Proposal Id
+        expected_version:
+          anyOf:
+          - type: integer
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Expected Version
+      additionalProperties: false
+      type: object
+      title: ExpenseRecoveryAction
   responses:
     Conflict:
       description: Version or idempotency conflict

@@ -4,7 +4,7 @@ from fastapi import Depends,Header,Query,Response,BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from greenhouse_owner_os.services.owner_capture import OwnerCaptureService
-from greenhouse_owner_os.domain.owner_capture import CaptureSource,ReviewAction,ReviseAction,ConfirmAction,TaskStateAction,NameOnlyParty
+from greenhouse_owner_os.domain.owner_capture import CaptureSource,ReviewAction,ReviseAction,ConfirmAction,TaskStateAction,NameOnlyParty,ExpenseRecoveryAction
 from greenhouse_owner_os.domain.commands import ReverseCommand
 
 def mount_owner_capture(app,finance,actor_provider):
@@ -30,7 +30,10 @@ def mount_owner_capture(app,finance,actor_provider):
         return Response(data,media_type=mime,headers={'Content-Disposition':'attachment; filename="original"','X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'})
     @app.post(root+'/captures/{item_id}/retry-preparation')
     def retry(entity_id:UUID,item_id:UUID,background:BackgroundTasks,actor:UUID=Depends(actor_provider)):
-        result=service.source(entity_id,actor,item_id);background.add_task(service.process,item_id);return result
+        result=service.retry_preparation(entity_id,actor,item_id);background.add_task(service.process,item_id);return result
+    @app.post(root+'/captures/{item_id}/direct-expense-recovery')
+    def recover_expense(entity_id:UUID,item_id:UUID,body:ExpenseRecoveryAction,key:str=Header(alias='Idempotency-Key'),actor:UUID=Depends(actor_provider)):
+        return service.recover_expense(entity_id,actor,item_id,key,body)
     @app.get(root+'/confirmations')
     def queue(entity_id:UUID,offset:int=Query(0,ge=0,le=10000),limit:int=Query(50,ge=1,le=100),actor:UUID=Depends(actor_provider)):
         return service.queue(entity_id,actor,offset,limit)

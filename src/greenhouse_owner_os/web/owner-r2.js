@@ -1,6 +1,7 @@
 import {escape as e,money,displayDate} from './core.js';
 import {lineAmount} from './harvest.js';
 import {categoryNames,taskWhenLabel} from './tasks.js';
+import {loadExpenseRecovery,expenseIsReadOnly,expenseEffectText,expenseContext} from './owner-expense-recovery.js';
 
 export function receiptTotal(lines){const cents=lines.reduce((sum,l)=>sum+BigInt(lineAmount(l.net_weight_kg,l.unit_price).replace('.','')),0n);return `${cents/100n}.${String(cents%100n).padStart(2,'0')}`;}
 
@@ -115,7 +116,7 @@ export function proposalSummary(p,data={},withOpen=true){
       facts+=(f.attributions||[]).map(a=>fact('Теплица / участок',`${area(a.work_area_id)} · ${exactMoney(a.amount,f.currency)}`)).join('');
       if(!f.attributions?.length)facts+=fact('Распределение','GENERAL · без указанной теплицы');
       else facts+='<small>Указаны только точные суммы. Нераспределённый остаток остаётся GENERAL.</small>';
-      if(kind==='DIRECT_EXPENSE')facts+='<small>Распределение прямого расхода по теплицам в этой карточке не поддерживается.</small>';
+      if(kind==='DIRECT_EXPENSE')facts+=fact('Сумма',exactMoney(f.amount,f.currency))+fact('За что',f.description||'Не установлено')+'<small>Распределение прямого расхода по теплицам в этой карточке не поддерживается.</small>';
       if(f.due_date)facts+=fact('Ожидаемая дата оплаты',displayDate(f.due_date));
     }
   }else if(kind.startsWith('STOCK_')){
@@ -145,7 +146,8 @@ export function proposalSummary(p,data={},withOpen=true){
     facts+=fact('Существующий приход',receipt?`${displayDate(receipt.event_date)} · ${(receipt.payload?.lines||[]).map(l=>`${l.original_product_name} ${l.quantity} ${l.unit}`).join('; ')}`:f.receipt_id||'Не выбран');
     if(f.finance_obligation_id)facts+=fact('Связанный долг',f.finance_obligation_id);
   }else if(f.note)facts+=fact('Сохранённое событие',f.note);
-  return `<article class="card owner-proposal ${p.reminder_eligible?'overdue':''}" data-proposal="${e(p.id)}"><small>${e(titles[kind]||kind)} · ${e(statuses[p.state]||p.state)}</small><h2>${e(conciseProposalText((kind==='WORKER_TASK'?f.original_instruction:null)||f.title||f.description||titles[kind]||'Событие'))}</h2>${f.amount!=null?`<strong class="amount">${e(exactMoney(f.amount,f.currency))}</strong>`:''}<div class="owner-review-facts">${['PERSONAL_TASK','WORKER_TASK'].includes(kind)?fact('Когда',taskWhenLabel(f,'Пока не выбрана')):fact('Дата',displayDate(f.event_date||f.planned_date,'Пока не выбрана'))}${facts}</div><p class="note owner-review-effect" data-effect="${e(kind)}">После подтверждения: ${e(effects[kind]||'Нужна ручная проверка')}</p>${(p.revision.missing||[]).map(m=>`<p class="bad">${e(m)}</p>`).join('')}${withOpen?`<button data-r2-open="${e(p.id)}">Проверить карточку</button>`:''}</article>`;
+  const currentStatus=kind==='DIRECT_EXPENSE'&&p.current_effect?.status==='reversed'?'Отменён':statuses[p.state]||p.state;
+  return `<article class="card owner-proposal ${p.reminder_eligible?'overdue':''}" data-proposal="${e(p.id)}"><small>${e(titles[kind]||kind)} · ${e(currentStatus)}</small><h2>${e(conciseProposalText((kind==='WORKER_TASK'?f.original_instruction:null)||f.title||f.description||titles[kind]||'Событие'))}</h2>${f.amount!=null?`<strong class="amount">${e(exactMoney(f.amount,f.currency))}</strong>`:''}<div class="owner-review-facts">${['PERSONAL_TASK','WORKER_TASK'].includes(kind)?fact('Когда',taskWhenLabel(f,'Пока не выбрана')):fact('Дата',displayDate(f.event_date||f.planned_date,'Пока не выбрана'))}${facts}</div><p class="note owner-review-effect" data-effect="${e(kind)}">${e((kind==='DIRECT_EXPENSE'&&expenseEffectText(p))||'После подтверждения: '+(effects[kind]||'Нужна ручная проверка'))}</p>${expenseContext(p)}${(p.revision.missing||[]).map(m=>`<p class="bad">${e(m)}</p>`).join('')}${withOpen?`<button data-r2-open="${e(p.id)}">Проверить карточку</button>`:''}</article>`;
 }
 
 
@@ -223,7 +225,7 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
       ${getData().preview?.r2_fixtures?'<a class="owner-fixture-link" href="/preview/fixtures/gorgun.png" target="_blank" rel="noopener">Скачать ТЕСТОВЫЙ чек Görgün для фото-проверки</a>':''}<button id="owner-advanced" class="secondary owner-manual">Финансы — вручную</button></div>`;
   }
   function bind(){
-    mount();$('#owner-queue')?.addEventListener('click',guard(()=>navigate?navigate('review'):queue()));$('#owner-advanced')?.addEventListener('click',()=>advanced());$('#owner-sync')?.addEventListener('click',guard(sync));$('#owner-sources')?.addEventListener('click',guard(sources));
+    mount();$('#owner-queue')?.addEventListener('click',guard(()=>navigate?navigate('review'):queue()));$('#owner-advanced')?.addEventListener('click',()=>advanced());$('#owner-sync')?.addEventListener('click',guard(sync));$('#owner-sources')?.addEventListener('click',guard(()=>sources()));
     document.querySelectorAll('[data-owner-done]').forEach(b=>b.onclick=guard(async()=>{const t=session();if(!t.scope)return;b.disabled=true;try{await api(t.root+`/tasks/${b.dataset.ownerDone}/state`,{expected_version:Number(b.dataset.version),state:'DONE'});if(sameSession(t))await reload();}finally{b.disabled=false;}}));
     const badgeSession=session(),badgeNode=$('#owner-pending-state');pendingBadge().catch(()=>{if(sameSession(badgeSession)&&badgeNode&&badgeNode===$('#owner-pending-state'))badgeNode.textContent='Локальная очередь недоступна; проверьте сохранение каждого источника.';});
     sync().catch(()=>{});
@@ -239,9 +241,9 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
   }
   async function sources(offset=0){
     const t=begin();if(!t.scope)return;const r=await api(t.root+`/captures?offset=${offset}`);
-    if(!show(t,'Сохранённые источники',r.items.map(s=>`<article class="card"><h3>${e(s.text||s.original_name||'Фото / файл')}</h3><p>Сохранено в системе · ${e(displayDate(s.captured_at))}</p><p>${e(({SERVER_SAVED:'Ожидает подготовки',PROCESSING:'Готовим',FAILED:'Подготовка не удалась; оригинал сохранён',NEEDS_REVIEW:'Нужна проверка',READY:'Готово к проверке',CONFIRMED:'Подтверждено',REJECTED:'Отклонено'})[s.state]||s.state)}</p><a href="${t.root}/captures/${e(s.id)}/original" target="_blank" rel="noopener">Открыть оригинал</a>${(s.state==='FAILED'||s.state==='SERVER_SAVED')&&s.retryable!==false?`<button data-source-retry="${e(s.id)}">Повторить подготовку</button>`:s.state==='FAILED'&&s.retryable===false?'<p class="bad">Автоматическая подготовка исчерпала попытки. Оригинал сохранён; проверьте его и восстановите действие вручную.</p><button data-source-manual>Ввести вручную по оригиналу</button>':''}${s.proposals.map(p=>`<button data-source-proposal="${e(p.id)}">Открыть действие · ${e(statuses[p.state])}</button>`).join('')}</article>`).join('')+(r.next_offset!=null?'<button id="r2-sources-next">Следующие источники →</button>':'')||'<p>Источников пока нет</p>'))return;
+    if(!show(t,'Сохранённые источники',r.items.map(s=>`<article class="card"><h3>${e(s.text||s.original_name||'Фото / файл')}</h3><p>Сохранено в системе · ${e(displayDate(s.captured_at))}</p><p>${e(({SERVER_SAVED:'Ожидает подготовки',PROCESSING:'Готовим',FAILED:'Подготовка не удалась; оригинал сохранён',NEEDS_REVIEW:'Нужна проверка',READY:'Готово к проверке',CONFIRMED:'Подтверждено',REJECTED:'Отклонено'})[s.state]||s.state)}</p><a href="${t.root}/captures/${e(s.id)}/original" target="_blank" rel="noopener">Открыть оригинал</a>${(s.state==='FAILED'||s.state==='SERVER_SAVED')&&s.retryable!==false?`<button data-source-retry="${e(s.id)}">Повторить подготовку</button>`:s.state==='FAILED'&&s.retryable===false&&!s.proposals.length?`<p class="bad">Автоматическая подготовка исчерпала попытки. Оригинал сохранён. Для оплаченного расхода можно отдельно уточнить факты.</p><button data-source-manual="${e(s.id)}">Прямой расход по этому источнику</button>`:''}${s.proposals.map(p=>`<button data-source-proposal="${e(p.recovery_proposal_id||p.id)}">${p.recovery_proposal_id?'Открыть связанный расход':'Открыть действие · '+e(statuses[p.state])}</button>`).join('')}</article>`).join('')+(r.next_offset!=null?'<button id="r2-sources-next">Следующие источники →</button>':'')||'<p>Источников пока нет</p>'))return;
     $('#r2-sources-next')?.addEventListener('click',guard(()=>{if(active(t))return sources(r.next_offset);}));
-    document.querySelectorAll('[data-source-manual]').forEach(b=>b.onclick=()=>{if(active(t)){$('#sheet').close();invalidate();advanced('UNRESOLVED');}});
+    document.querySelectorAll('[data-source-manual]').forEach(b=>b.onclick=guard(async()=>{if(!active(t)||b.disabled)return;b.disabled=true;try{await recoverExpense(b.dataset.sourceManual);}finally{if(active(t))b.disabled=false;}}));
     document.querySelectorAll('[data-source-proposal]').forEach(b=>b.onclick=guard(()=>{if(active(t))return review(b.dataset.sourceProposal);}));
     document.querySelectorAll('[data-source-retry]').forEach(b=>b.onclick=guard(async()=>{if(!active(t))return;b.disabled=true;try{await api(t.root+`/captures/${b.dataset.sourceRetry}/retry-preparation`,{});if(!active(t))return;notice('Оригинал сохранён. Запрошена отдельная подготовка.');await sources(offset);}finally{if(active(t))b.disabled=false;}}));
   }
@@ -395,22 +397,37 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
     }));
     if(r.preparing&&remaining>0)queueTimer=setTimeout(()=>{if(active(t)&&navigator.onLine)queue(offset,refresh,remaining-1).catch(()=>{});},2000);
   }
+  async function recoverExpense(sourceId,proposal=null){
+    const t=begin();if(!t.scope)return;
+    if(!show(t,'Прямой расход по источнику','<p>Оригинал сохранён. Открываем связанную карточку без списания денег…</p><p id="r2-recovery-status" role="status"></p><button id="r2-recovery-retry" hidden>Повторить переход</button>'))return;
+    let pending=false;
+    const load=async()=>{
+      if(!active(t)||pending)return;pending=true;$('#r2-recovery-retry').hidden=true;
+      try{const p=await loadExpenseRecovery(api,t.root,sourceId,proposal,()=>active(t));if(!p)return;if(expenseIsReadOnly(p))await review(p.id);else edit(p);}
+      catch(err){if(active(t)){$('#r2-recovery-status').textContent=err.message;$('#r2-recovery-retry').hidden=false;}}
+      finally{pending=false;}
+    };
+    $('#r2-recovery-retry').onclick=load;
+    await load();
+  }
   async function review(id,editFirst=false){
     const t=begin();if(!t.scope)return;const p=await api(t.root+`/confirmations/${id}/preview`);
     if(!active(t))return;
-    if(editFirst){edit(p);return;}
-    const cannotConfirm=()=>!!p.revision.missing.length||!navigator.onLine||['POSTED','CONFIRMED_NONPOSTING','REJECTED','FAILED'].includes(p.state)||(p.action_type==='WORKER_TASK'&&!!workerTranslationIssue(p.revision.payload));
-    if(!show(t,'Проверить действие',proposalSummary(p,getData(),false)+`<details><summary>Оригинальный источник</summary><p class="source-text">${e(p.source.text||p.source.filename||'Фото / файл')}</p>${p.source.has_file?`<a href="${t.root}/captures/${e(p.source.id)}/original" target="_blank" rel="noopener">Открыть оригинал</a>`:''}</details><div class="actions owner-review-actions"><button id="r2-confirm" class="primary" ${cannotConfirm()?'disabled':''}>Подтвердить</button><button id="r2-edit">Исправить</button><button id="r2-defer">Позже</button><button id="r2-reject" class="danger">Отклонить</button></div>${p.state==='REJECTED'?'<button id="r2-reopen">Восстановить новой проверкой</button>':''}<p id="r2-card-status" role="status"></p>`))return;
+    if(p.recovery?.recovery_proposal_id&&p.recovery.recovery_proposal_id!==p.id){await review(p.recovery.recovery_proposal_id,editFirst);return;}
+    const readOnly=p.action_type==='DIRECT_EXPENSE'&&expenseIsReadOnly(p);
+    if(editFirst&&!readOnly){edit(p);return;}
+    const cannotConfirm=()=>readOnly||!!p.revision.missing.length||!navigator.onLine||['POSTED','CONFIRMED_NONPOSTING','REJECTED','FAILED'].includes(p.state)||(p.action_type==='WORKER_TASK'&&!!workerTranslationIssue(p.revision.payload));
+    if(!show(t,'Проверить действие',proposalSummary(p,getData(),false)+`<details><summary>Оригинальный источник</summary><p class="source-text">${e(p.source.text||p.source.filename||'Фото / файл')}</p>${p.source.has_file?`<a href="${t.root}/captures/${e(p.source.id)}/original" target="_blank" rel="noopener">Открыть оригинал</a>`:''}</details><div class="actions owner-review-actions"><button id="r2-confirm" class="primary" ${cannotConfirm()?'disabled':''}>Подтвердить</button>${readOnly?'':'<button id="r2-edit">Исправить</button><button id="r2-defer">Позже</button><button id="r2-reject" class="danger">Отклонить</button>'}</div>${p.state==='REJECTED'?'<button id="r2-reopen">Восстановить новой проверкой</button>':''}<p id="r2-card-status" role="status"></p>`))return;
     let submitting=false;
     const action=fn=>async()=>{if(!active(t)||submitting)return;submitting=true;document.querySelectorAll('#sheet-content .actions button,#r2-reopen').forEach(b=>b.disabled=true);try{await fn();}catch(err){if(active(t))$('#r2-card-status').textContent=err.message;}finally{submitting=false;if(active(t)){document.querySelectorAll('#sheet-content .actions button,#r2-reopen').forEach(b=>b.disabled=false);$('#r2-confirm').disabled=cannotConfirm();}}};
-    $('#r2-confirm').onclick=action(async()=>{if(cannotConfirm())return;const r=await api(t.root+`/confirmations/${id}/confirm`,{expected_version:p.version,preview_digest:p.revision.preview_digest,confirmed:true});if(!active(t))return;if(r.stale){notice('Данные изменились. Нужна новая проверка.');await review(id);}else{$('#sheet').close();notice(r.state==='CONFIRMED_NONPOSTING'?'Подтверждено. Не отправлено работнику / стоимость не изменена.':'Действие подтверждено');await reload();}});
-    $('#r2-edit').onclick=()=>{if(active(t)&&!submitting)edit(p);};
-    for(const name of ['defer','reject'])$('#r2-'+name).onclick=action(async()=>{await api(t.root+`/confirmations/${id}/${name}`,{expected_version:p.version});if(!active(t))return;await reload();if(active(t))await queue();});
+    $('#r2-confirm').onclick=action(async()=>{if(cannotConfirm())return;const r=await api(t.root+`/confirmations/${id}/confirm`,{expected_version:p.version,preview_digest:p.revision.preview_digest,confirmed:true});if(!active(t))return;if(r.stale){notice('Данные изменились. Нужна новая проверка.');await review(id);}else if(p.action_type==='DIRECT_EXPENSE'){await reload();if(active(t))await review(id);}else{$('#sheet').close();notice(r.state==='CONFIRMED_NONPOSTING'?'Подтверждено. Не отправлено работнику / стоимость не изменена.':'Действие подтверждено');await reload();}});
+    $('#r2-edit')?.addEventListener('click',()=>{if(active(t)&&!submitting)edit(p);});
+    for(const name of ['defer','reject'])$('#r2-'+name)?.addEventListener('click',action(async()=>{await api(t.root+`/confirmations/${id}/${name}`,{expected_version:p.version});if(!active(t))return;await reload();if(active(t))await queue();}));
     $('#r2-reopen')?.addEventListener('click',action(async()=>{await api(t.root+`/confirmations/${id}/reopen`,{expected_version:p.version});if(!active(t))return;await reload();if(active(t))await review(id);}));
   }
-  function edit(p){
+  function edit(p,draftPayload=null){
     const t=begin();if(!t.scope)return;
-    const f=p.revision.payload,kind=p.action_type,workers=getData().tasks.workers||[],workerLanguage=id=>workers.find(w=>w.id===id)?.language||null,refs=home().finance.references,parties=refs.filter(r=>r.kind==='counterparty'),areas=home().finance.work_areas||[],greenhouses=areas.filter(a=>a.kind==='greenhouse'),inventory=getData().inventory;
+    const f=draftPayload||p.revision.payload,kind=p.action_type,workers=getData().tasks.workers||[],workerLanguage=id=>workers.find(w=>w.id===id)?.language||null,refs=home().finance.references,parties=refs.filter(r=>r.kind==='counterparty'),areas=home().finance.work_areas||[],greenhouses=areas.filter(a=>a.kind==='greenhouse'),inventory=getData().inventory;
     const accounts=currency=>refs.filter(r=>r.kind==='money_account'&&r.currency===currency);
     const debts=(party,currency)=>home().finance.obligations.filter(o=>o.counterparty_id===party&&o.currency===currency&&o.direction==='payable'&&o.remaining_amount!=='0.00').map(o=>({id:o.obligation_id,name:`${o.description||'Долг'} · ${o.remaining_amount} ${o.currency}`}));
     const currencies=()=>select('currency','Валюта',['TRY','USD','EUR','UAH'].map(id=>({id,name:id})),f.currency,'Уточнить');
@@ -418,7 +435,7 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
     if(['PAYABLE','PAYMENT','DIRECT_EXPENSE'].includes(kind)){
       fields=input('amount','Сумма',f.amount)+currencies()+input('event_date','Дата',f.event_date,'date')+select('counterparty_id','Контрагент',parties,f.counterparty_id,'Не выбран')+'<button type="button" id="r2-party-new">+ Новый</button>'+input('description','За что',f.description)+(kind!=='PAYABLE'?select('money_account_id','Наличные / Банк',accounts(f.currency),f.money_account_id):'')+(kind==='PAYMENT'?select('obligation_id','Погасить долг',debts(f.counterparty_id,f.currency),f.obligation_id):'');
       if(kind==='PAYABLE')fields+=`<fieldset><legend>Точное распределение расхода (необязательно)</legend><small>Пустые суммы оставляют GENERAL. Укажите только известные точные суммы; остаток не распределяется автоматически.</small>${areas.map(a=>input(`attribution_${a.id}`,a.name,(f.attributions||[]).find(x=>x.work_area_id===a.id)?.amount||'')).join('')}</fieldset>`;
-      if(kind==='DIRECT_EXPENSE')fields+='<p class="note">Прямой расход остаётся GENERAL. Распределение по теплицам здесь не поддерживается. Для другой структуры используйте существующий ручной режим.</p>';
+      if(kind==='DIRECT_EXPENSE')fields=expenseContext(p)+'<p class="note">Поля ниже — текущий ввод. Изменения станут фактами карточки после сохранения.</p>'+fields+'<p class="note">Контрагент необязателен. Прямой расход остаётся GENERAL; распределение по теплицам здесь не поддерживается.</p>'+`<details><summary>Оригинальный источник</summary><p class="source-text">${e(p.source?.text||p.source?.filename||'Фото / файл')}</p><a href="${t.root}/captures/${e(p.source?.id)}/original" target="_blank" rel="noopener">Открыть оригинал</a></details>`+(p.revision.missing||[]).map(m=>`<p class="bad">${e(m)}</p>`).join('');
     }else if(['PERSONAL_TASK','WORKER_TASK'].includes(kind)){
       const isWorker=kind==='WORKER_TASK',chosenWorker=workers.find(w=>w.id===f.worker_id),language=workerLanguage(f.worker_id),translation=language===f.language?f.rendered_text||'':'';
       const lookup=(list,id,empty)=>{const item=list.find(x=>x.id===id);return item?.original_name||item?.name||item?.display_name||(id?'Нужно уточнить':empty);};
@@ -440,8 +457,8 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
       fields+=f.lines.map((l,i)=>`<fieldset><legend>${e(l.original_quality_name)} · ${e(l.source_line)}</legend>${input(`kg_${i}`,'кг',l.net_weight_kg)}${input(`price_${i}`,'Цена за кг',l.unit_price)}${select(`quality_${i}`,'Качество именно этого депо',Object.entries(qualityNames).map(([id,name])=>({id,name})),f.qualities[i],'Уточнить')}</fieldset>`).join('');
       fields+='<label><input name="quality_reviewed" type="checkbox"> Подтверждаю качества строк именно этого депо</label><label><input name="remember_quality_mapping" type="checkbox"> Запомнить проверенные названия только для этого депо</label><label><input name="arithmetic_reviewed" type="checkbox"> Проверил строки и сумму; Alacak не означает оплату</label>';
     }else if(kind==='INVOICE_MATCH')fields=select('receipt_id','Уже подтверждённый физический приход',inventory.events?.filter(r=>r.kind==='receipt'&&r.status==='posted').map(r=>({id:r.id,name:displayDate(r.event_date)+' · '+r.payload.lines.map(l=>l.original_product_name).join(', ')}))||[],f.receipt_id);
-    else fields='<p>Автоматическая подготовка не определила событие. Оригинал сохранён; выберите «Ввести вручную».</p>';
-    if(!show(t,'Исправить карточку',`<form id="r2-edit-form" class="r2-fields">${fields}<button class="primary" type="submit">Сохранить исправления</button></form><button id="r2-advanced">Ввести вручную</button><p id="r2-edit-status" role="status"></p>`))return;
+    else fields='<p>Автоматическая подготовка не определила событие. Если это оплаченный расход, выберите «Прямой расход по этому источнику». Оригинал сохранён.</p>';
+    if(!show(t,'Исправить карточку',`<form id="r2-edit-form" class="r2-fields">${fields}<button class="primary" type="submit">Сохранить исправления</button></form><button id="r2-advanced">${kind==='UNRESOLVED'?'Прямой расход по этому источнику':kind==='DIRECT_EXPENSE'?'Вернуться к проверке':'Ввести вручную'}</button><p id="r2-edit-status" role="status"></p>`))return;
     const form=$('#r2-edit-form'),status=$('#r2-edit-status');
     const payloadFromForm=()=>{
       const values=Object.fromEntries(new FormData(form)),payload={...f};
@@ -478,11 +495,11 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
         form.elements.rendered_text.oninput=refreshTranslation;
       }
     }
-    $('#r2-advanced').onclick=()=>{if(active(t)){$('#sheet').close();invalidate();advanced(kind);}};
+    $('#r2-advanced').onclick=guard(async()=>{if(!active(t))return;if(kind==='UNRESOLVED'){await recoverExpense(p.source?.id,p);return;}if(kind==='DIRECT_EXPENSE'){await review(p.id);return;}$('#sheet').close();invalidate();advanced(kind);});
     $('#r2-party-new')?.addEventListener('click',()=>{
       if(!active(t))return;const draft=payloadFromForm(),partyView=begin();
       show(partyView,'Новый контрагент','<form id="r2-new-party"><label>Название<input name="name" required maxlength="250"></label><button class="primary">Готово</button></form><p id="r2-party-status" role="status"></p>');
-      $('#r2-new-party').onsubmit=async ev=>{ev.preventDefault();if(!active(partyView))return;const b=ev.target.querySelector('button');if(b.disabled)return;b.disabled=true;try{const r=await api(partyView.root+'/counterparties',{name:ev.target.elements.name.value,confirmed:true});if(!active(partyView))return;await reload();if(active(partyView))edit({...p,revision:{...p.revision,payload:{...draft,counterparty_id:r.id}}});}catch(err){if(active(partyView))$('#r2-party-status').textContent=err.message;}finally{b.disabled=false;}};
+      $('#r2-new-party').onsubmit=async ev=>{ev.preventDefault();if(!active(partyView))return;const b=ev.target.querySelector('button');if(b.disabled)return;b.disabled=true;try{const r=await api(partyView.root+'/counterparties',{name:ev.target.elements.name.value,confirmed:true});if(!active(partyView))return;await reload();if(active(partyView))edit(p,{...draft,counterparty_id:r.id});}catch(err){if(active(partyView))$('#r2-party-status').textContent=err.message;}finally{b.disabled=false;}};
     });
     form.onsubmit=async ev=>{ev.preventDefault();if(!active(t))return;const b=ev.target.querySelector('[type=submit]');if(b.disabled)return;b.disabled=true;try{const payload=payloadFromForm();await api(t.root+`/confirmations/${p.id}/revise`,{expected_version:p.version,payload});if(!active(t))return;await reload();if(active(t))await review(p.id);}catch(err){if(active(t))status.textContent=err.message;}finally{b.disabled=false;}};
   }
