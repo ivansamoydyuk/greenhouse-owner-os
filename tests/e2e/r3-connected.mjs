@@ -78,7 +78,7 @@ async function fill(page, name, value) {
   await page.locator(`[name="${name}"]`).fill(String(value));
 }
 async function select(page, name, value) {
-  await page.locator(`[name="${name}"]`).selectOption(String(value));
+  await page.locator(`select[name="${name}"]`).selectOption(String(value));
 }
 async function waitRenderedRoute(page, prefix) {
   await page.waitForFunction((expected) => {
