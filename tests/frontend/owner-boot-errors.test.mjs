@@ -9,17 +9,17 @@ const appSource=await readFile(new URL('../../src/greenhouse_owner_os/web/app.js
 const response=(status,body={},json=true)=>({ok:status>=200&&status<300,status,json:async()=>{if(!json)throw Error('Invalid JSON');return structuredClone(body);}});
 const tick=()=>new Promise(r=>setImmediate(r));
 function harness(handler){
- const nodes=new Map(),requests=[],storage=new Map();let logoutCount=0,localOpens=0,ownerScope;
+ const nodes=new Map(),requests=[],storage=new Map();let logoutCount=0,personalLogoutCount=0,personalInvalidations=0,localOpens=0,ownerScope;
  const node=id=>({id,innerHTML:'',textContent:'',dataset:{},style:{},hidden:false,inert:false,open:false,attributes:{},classList:{add(){},remove(){},toggle(){}},setAttribute(k,v){this.attributes[k]=v;},addEventListener(){},querySelector(){return null;},querySelectorAll(){return [];},close(){this.open=false;},getBoundingClientRect:()=>({height:0}),focus(){}});
  for(const id of ['app','sheet','confirmation','refresh','notice','nav','owner-dock','login','login-error','secret','load-retry','load-local'])nodes.set('#'+id,node(id));
  for(const id of ['.brand','.skip-link'])nodes.set(id,node(id));
  const module=options=>{if(options.getOwnerId)ownerScope=options.getOwnerId;return {render:()=>'<h1>TEST SNAPSHOT</h1>',mount(){},bind(){},localSources(){localOpens++;},getOffset:()=>0,invalidateView(){},logout(){logoutCount++;}};};
- const context=vm.createContext({...core,e:core.escape,...navigation,ownerR2:module,tasksUI:module,inventoryUI:module,harvestUI:module,globalCapture:module,inboxUI:module,containDialogTab(){},crypto:webcrypto,TextEncoder,Uint8Array,console,
-  document:{querySelector:s=>nodes.get(s)||null,querySelectorAll:()=>[],body:{classList:{add(){},remove(){}}},documentElement:{style:{setProperty(){}}}},window:{addEventListener(){}},location:{hash:'#home'},history:{replaceState(){}},ResizeObserver:class{observe(){}},setTimeout:()=>0,clearTimeout(){},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},fetch:async(path,options)=>{requests.push({path,options});return handler(path,options);}});
+ const context=vm.createContext({...core,e:core.escape,...navigation,ownerR2:module,personalTasksUI:()=>({render:()=>'<h1>PERSONAL TASKS</h1>',bind(){},invalidateView(){personalInvalidations++;},logout(){personalLogoutCount++;}}),tasksUI:module,inventoryUI:module,harvestUI:module,globalCapture:module,inboxUI:module,containDialogTab(){},crypto:webcrypto,TextEncoder,Uint8Array,console,
+  document:{querySelector:s=>nodes.get(s)||null,querySelectorAll:()=>[],body:{classList:{add(){},remove(){}}},documentElement:{style:{setProperty(){}}}},window:{addEventListener(){},scrollTo(){}},location:{hash:'#home'},history:{replaceState(){}},ResizeObserver:class{observe(){}},setTimeout:()=>0,clearTimeout(){},sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},fetch:async(path,options)=>{requests.push({path,options});return handler(path,options);}});
  // Execute the real boot/reload/API functions. Only imported view modules and DOM
  // are bounded fakes; real-browser and PostgreSQL evidence run separately.
- vm.runInContext(appSource.replace(/^import .*;\n/gm,'').replace(/boot\(\)\.catch\(/,'globalThis.started=boot().catch(')+'\nglobalThis.testing={api,reload,boot,login,getData:()=>data,getEntity:()=>entity};',context);
- return {context,nodes,requests,storage,ready:context.started,api:context.testing,logouts:()=>logoutCount,localOpens:()=>localOpens,ownerScope:()=>ownerScope?.()};
+ vm.runInContext(appSource.replace(/^import .*;\n/gm,'').replace(/boot\(\)\.catch\(/,'globalThis.started=boot().catch(')+'\nglobalThis.testing={api,reload,boot,login,navigate,getData:()=>data,getEntity:()=>entity};',context);
+ return {context,nodes,requests,storage,ready:context.started,api:context.testing,logouts:()=>logoutCount,personalLogouts:()=>personalLogoutCount,personalInvalidations:()=>personalInvalidations,localOpens:()=>localOpens,ownerScope:()=>ownerScope?.()};
 }
 const healthy=path=>path==='/preview/config'?response(200,{entity_id:'entity-a'}):path.includes('finance-overview')?response(200,{balances:{TRY:{cash:'123.45'}},references:[],entity_name:'TEST'}):path.endsWith('/owner/home')?response(200,{owner_id:'owner-a'}):response(200,{});
 test('AUD-005 cold valid session with Inventory503 shows retry and no login or invented balance',async()=>{
@@ -86,4 +86,12 @@ test('REVIEW: newer boot config failure must leave retry usable while stale relo
  hold=true;const older=h.api.reload();await tick();configFails=true;await h.api.boot();const stillInert=h.nodes.get('#app').inert;
  resolve(response(200,{balances:{TRY:{cash:'OLD'}}}));await older;
  assert.equal(stillInert,false,'A current unavailable/retry view must not remain inert because of an obsolete load');
+});
+
+
+test('personal-task host invalidates reads on unavailable view, navigation and logout',async()=>{
+ let outage=false;const h=harness(path=>outage&&path.endsWith('/inventory')?response(503):healthy(path));await h.ready;
+ await h.api.navigate('personal_tasks',{historyMode:'none',refresh:false});assert.match(h.nodes.get('#app').innerHTML,/PERSONAL TASKS/);assert.equal(h.personalInvalidations(),1);
+ outage=true;await assert.rejects(h.api.reload());assert.ok(h.personalInvalidations()>1);
+ h.api.login();assert.equal(h.personalLogouts(),1);assert.equal(h.logouts(),1);
 });

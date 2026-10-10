@@ -114,3 +114,9 @@ test('complete depot rows retain the exact reviewed amount as their full effect'
  assert.match(review,/<dt>Сумма продажи после подтверждения<\/dt><dd><strong>0,04 TRY<\/strong>/);
  assert.ok(!review.includes('UNKNOWN · нужно восстановить все строки чека'));
 });
+
+
+test('Home all-personal-tasks destination remains reachable with no active tasks',()=>{
+ const data=ownerData();data.owner.tasks=[];data.owner.task_count=0;
+ const h=harness({data});try{const html=h.ui.render();assert.match(html,/id="owner-all-tasks"[^>]*data-go="personal_tasks"/);assert.match(html,/Открытых личных задач нет/);assert.equal((html.match(/data-owner-done=/g)||[]).length,0);}finally{h.cleanup();}
+});

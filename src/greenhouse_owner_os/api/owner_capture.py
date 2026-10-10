@@ -1,4 +1,5 @@
 from uuid import UUID
+from typing import Literal
 from fastapi import Depends,Header,Query,Response,BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -55,6 +56,12 @@ def mount_owner_capture(app,finance,actor_provider):
     @app.post(root+'/tasks/{item_id}/state')
     def task_state(entity_id:UUID,item_id:UUID,body:TaskStateAction,key:str=Header(alias='Idempotency-Key'),actor:UUID=Depends(actor_provider)):
         return service.task_state(entity_id,actor,item_id,key,body)
+    @app.get(root+'/tasks')
+    def tasks(entity_id:UUID,state:Literal['TO_DO','DONE']='TO_DO',offset:int=Query(0,ge=0),limit:int=Query(50,ge=1,le=100),actor:UUID=Depends(actor_provider)):
+        return service.tasks(entity_id,actor,state,offset,limit)
+    @app.get(root+'/tasks/{item_id}')
+    def task(entity_id:UUID,item_id:UUID,actor:UUID=Depends(actor_provider)):
+        return service.task(entity_id,actor,item_id)
     @app.post(root+'/counterparties',status_code=201)
     def party(entity_id:UUID,body:NameOnlyParty,key:str=Header(alias='Idempotency-Key'),actor:UUID=Depends(actor_provider)):
         return service.counterparty(entity_id,actor,key,body)

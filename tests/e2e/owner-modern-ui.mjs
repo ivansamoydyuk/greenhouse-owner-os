@@ -174,7 +174,7 @@ try {
   await navigateOwner(page, 'home');
   await navigateOwner(page, 'overview');
   await navigateOwner(page, 'more');
-  assert.deepEqual(await page.locator('.destination-grid [data-go]').evaluateAll(nodes => nodes.map(n => n.dataset.go)), ['harvest', 'inventory', 'tasks', 'inbox', 'parties']);
+  assert.deepEqual(await page.locator('.destination-grid [data-go]').evaluateAll(nodes => nodes.map(n => n.dataset.go)), ['harvest', 'inventory', 'tasks', 'inbox', 'parties', 'personal_tasks']);
   await page.locator('#app [data-go=inventory]').click(); await waitOwnerRoute(page, 'inventory');
   await page.goBack(); await waitOwnerRoute(page, 'more');
   await page.goBack(); await waitOwnerRoute(page, 'overview');

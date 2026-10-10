@@ -12,11 +12,12 @@ export const routes=Object.freeze({
   inventory:{label:'Удобрения / Запасы',group:'more',description:'Остатки, приходы и внесения',icon:'box'},
   tasks:{label:'Работники / Задачи',group:'more',description:'Поручения, отчёты и исключения',icon:'people'},
   inbox:{label:'Входящие',group:'more',description:'Ранее сохранённые документы и черновики',icon:'inbox'},
-  parties:{label:'Контрагенты',group:'more',description:'Поставщики, клиенты и депо',icon:'people'}
+  parties:{label:'Контрагенты',group:'more',description:'Поставщики, клиенты и депо',icon:'people'},
+  personal_tasks:{label:'Личные задачи',group:'more',description:'Активные дела и история выполнения',icon:'check'}
 });
 export const primaryRoutes=Object.freeze(['home','review','overview','more']);
 export const financeRoutes=Object.freeze(['overview','debts','operations']);
-export const moreRoutes=Object.freeze(['harvest','inventory','tasks','inbox','parties']);
+export const moreRoutes=Object.freeze(['harvest','inventory','tasks','inbox','parties','personal_tasks']);
 const paths={
   home:'M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z',
   check:'M9 4H6a2 2 0 0 0-2 2v14h16V6a2 2 0 0 0-2-2h-3M9 3h6v4H9ZM8 13l3 3 5-6',

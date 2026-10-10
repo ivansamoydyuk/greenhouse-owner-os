@@ -29,6 +29,18 @@ def reminder_eligible(first_unresolved,current,state):return state not in TERMIN
 
 from .preparation_language import source_currency
 
+# Both personal-task reads use the exact approved immutable revision. A later
+# proposal revision is not authority to change confirmed task facts or context.
+PERSONAL_TASK_SELECT="""SELECT t.*,r.payload->>'category' category,
+    r.payload->>'relative_time_context' relative_time_context,
+    r.payload->>'original_instruction' original_instruction
+    FROM core.owner_tasks t
+    LEFT JOIN core.confirmation_effects c ON c.owner_task_id=t.id
+        AND c.proposal_id=t.proposal_id AND c.entity_id=t.entity_id AND c.actor_id=t.owner_id
+    LEFT JOIN core.proposal_revisions r ON r.proposal_id=c.proposal_id
+        AND r.version=c.version AND r.entity_id=c.entity_id
+    WHERE t.entity_id=:e AND t.owner_id=:a"""
+
 class OwnerCaptureService:
     def __init__(self,factory,recognizer=None):
         self.factory=factory;self.finance=FinanceService(factory);self.recognizer=recognizer or LocalOCR()
@@ -426,6 +438,33 @@ class OwnerCaptureService:
                         rows(u,'INSERT INTO harvest.depot_quality_mappings(entity_id,depot_id,original_label,version,quality,proposal_id,accepted_by) VALUES(:e,:d,:l,:v,:q,:p,:a) RETURNING version',e=e,d=f['depot_id'],l=label,v=prior[0]['version']+1 if prior else 1,q=q,p=p['id'],a=a)
             return r,dict(settlement_id=r['id']),False
         raise ValidationError('Для этого действия пока доступен ручной режим; источник сохранён')
+
+    def tasks(self,e,a,state='TO_DO',offset=0,limit=50):
+        if state not in ('TO_DO','DONE') or type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:
+            raise ValidationError('Недопустимый фильтр или страница личных задач')
+        with self.factory() as u:
+            u.session.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'))
+            self.owner(u,e,a)
+            counts=rows(u,"""SELECT count(*) FILTER(WHERE state='TO_DO') AS \"TO_DO\",
+                count(*) FILTER(WHERE state='DONE') AS \"DONE\"
+                FROM core.owner_tasks WHERE entity_id=:e AND owner_id=:a""",e=e,a=a)[0]
+            # Count first also handles arbitrarily distant empty pages without
+            # overflowing PostgreSQL's bounded OFFSET integer.
+            items=rows(u,PERSONAL_TASK_SELECT+""" AND t.state=:state
+                ORDER BY t.planned_date NULLS LAST,t.created_at,t.id
+                OFFSET :offset LIMIT :limit""",e=e,a=a,state=state,offset=offset,limit=limit+1) if offset<counts[state] else []
+            return dict(items=items[:limit],state=state,offset=offset,limit=limit,total=counts[state],counts=counts,
+                        next_offset=offset+limit if len(items)>limit else None)
+
+    def task(self,e,a,i):
+        with self.factory() as u:
+            u.session.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'))
+            self.owner(u,e,a)
+            found=rows(u,PERSONAL_TASK_SELECT+' AND t.id=:i',e=e,a=a,i=i)
+            if not found:raise NotFoundError('Задача не найдена')
+            task=found[0]
+            task['actions']=rows(u,'SELECT id,version,actor_id,state,created_at FROM core.owner_task_actions WHERE entity_id=:e AND task_id=:i ORDER BY version,id',e=e,i=i)
+            return task
 
     def task_state(self,e,a,i,key,b):
         def run(u):
