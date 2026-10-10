@@ -100,7 +100,7 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
 
     def _capture_view(self,u,s):
         job=rows(u,'SELECT id,state,attempts,error_code FROM core.processing_jobs WHERE inbox_id=:s ORDER BY created_at DESC LIMIT 1',s=s.id)[0]
-        actions=rows(u,'''SELECT p.id,p.state,l.recovery_proposal_id FROM core.proposed_actions p
+        actions=rows(u,'''SELECT p.id,p.action_type,p.state,l.recovery_proposal_id FROM core.proposed_actions p
             LEFT JOIN core.owner_recovery_links l ON l.origin_proposal_id=p.id
             WHERE p.inbox_id=:s ORDER BY p.priority,p.id''',s=s.id)
         recovery_links=rows(u,'SELECT * FROM core.owner_recovery_links WHERE inbox_id=:s ORDER BY recovery_proposal_id',s=s.id)

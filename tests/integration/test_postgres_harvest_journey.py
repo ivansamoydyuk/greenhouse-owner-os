@@ -80,6 +80,10 @@ def test_manual_pdf_original_survives_without_caption_or_ocr(preview,monkeypatch
     s=source(i,None,capture_context='depot_receipt',mode='file',filename='TEST.pdf',mime_type='application/pdf',file_base64=base64.b64encode(binary).decode())
     p=next(x for x in queue(i) if x['inbox_id']==s['id'])
     assert p['action_type']=='DEPOT_RECEIPT' and p['state']=='NEEDS_INPUT' and p['source']['text'] is None
+    readback=i['c'].get(f"/v1/entities/{i['e']}/owner/captures/{s['id']}")
+    assert readback.status_code==200,readback.text
+    proposal=next(x for x in readback.json()['proposals'] if x['id']==p['id'])
+    assert proposal['action_type']=='DEPOT_RECEIPT' and proposal['state']=='NEEDS_INPUT'
     assert i['c'].get(f"/v1/entities/{i['e']}/owner/captures/{s['id']}/original").content==binary
     assert balances(i['c'],i['e'])['receivable']=='0.00'
 
