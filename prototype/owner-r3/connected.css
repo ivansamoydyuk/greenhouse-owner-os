@@ -1,0 +1,248 @@
+.connected .demo-strip {
+  background: #d8ebdf;
+  color: #214c36;
+}
+.connected .connected-mode {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  font-weight: 750;
+}
+.connected label {
+  display: grid;
+  gap: 7px;
+  margin: 16px 0;
+  font-size: 14px;
+  color: #435649;
+}
+.connected input,
+.connected select,
+.connected textarea {
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #d9e1d7;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+  color: #173e2b;
+  min-height: 48px;
+}
+.connected textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+.connected input[type="checkbox"] {
+  width: 24px;
+  min-height: 24px;
+}
+.connected .check-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.connected .check-label input {
+  flex: 0 0 24px;
+}
+.connected .source-text,
+.connected .original-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.connected .owner-review-facts {
+  display: grid;
+  gap: 10px;
+}
+.connected .owner-fact {
+  margin: 0;
+  padding: 9px 0;
+  border-bottom: 1px solid #edf0e8;
+}
+.connected .owner-fact dt {
+  font-size: 12px;
+  color: #627169;
+}
+.connected .owner-fact dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+.connected .owner-review-effect {
+  background: #edf5ee;
+  border-radius: 12px;
+  padding: 14px;
+}
+.connected .owner-review-line {
+  border: 1px solid #dce5d8;
+  padding: 12px;
+  border-radius: 14px;
+}
+.connected .bad,
+.connected .form-error {
+  color: #95461f;
+  white-space: pre-wrap;
+}
+.connected .form-error:empty {
+  display: none;
+}
+.connected .form-error {
+  background: #fff0dc;
+  padding: 14px;
+  border-radius: 14px;
+  margin: 10px 0;
+}
+.connected .field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.connected .list-row {
+  display: block;
+  padding: 16px 0;
+  border-bottom: 1px solid #e8ede4;
+  color: inherit;
+  text-decoration: none;
+}
+.connected .list-row:last-child {
+  border-bottom: 0;
+}
+.connected .list-row strong,
+.connected .list-row small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.connected .list-row small {
+  color: #627169;
+  margin-top: 6px;
+}
+.connected .exact-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  max-width: 100%;
+  font-size: clamp(20px, 6vw, 32px);
+}
+.connected .value-wrap {
+  overflow-x: auto;
+}
+.connected .page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0;
+}
+.connected .card input[type="file"] {
+  padding: 10px;
+  max-width: 100%;
+}
+.connected .source-document {
+  max-width: 100%;
+  max-height: 340px;
+  object-fit: contain;
+}
+.connected .audit-list {
+  padding-left: 18px;
+  overflow-wrap: anywhere;
+}
+.connected .owner-proposal {
+  margin-bottom: 16px;
+}
+.connected .status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.connected .partial-banner {
+  padding: 12px;
+  background: #fff3df;
+  border-radius: 12px;
+  margin: 12px 0;
+}
+.connected .focus-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: #173e2b55;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.connected .focus-sheet article {
+  width: min(100%, 560px);
+  background: #fafbf7;
+  border-radius: 24px 24px 0 0;
+  padding: 22px 22px max(24px, env(safe-area-inset-bottom));
+  max-height: 92dvh;
+  overflow: auto;
+}
+.connected .focus-sheet h2 {
+  margin-top: 0;
+}
+.connected button:disabled {
+  opacity: 0.55;
+}
+.connected .capabilities {
+  display: grid;
+  gap: 8px;
+}
+.connected .capabilities span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.connected details {
+  margin: 14px 0;
+}
+.connected summary {
+  cursor: pointer;
+  color: #426047;
+}
+.connected .metric-value {
+  font-size: clamp(20px, 6.2vw, 34px);
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+.connected .metric-card {
+  min-width: 0;
+}
+.connected .financial-grid .very-long-money .metric-value {
+  font-size: clamp(15px, 5cqi, 24px);
+}
+.connected .metric-card .metric-detail {
+  white-space: normal;
+}
+.connected .muted-section {
+  background: #f0f1eb;
+}
+.connected .no-value {
+  font-size: 19px;
+}
+.connected .confirmation-bar {
+  position: sticky;
+  bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+  background: #fafbf7;
+  padding: 14px 0 max(14px, env(safe-area-inset-bottom));
+  z-index: 2;
+}
+.connected .stack {
+  display: grid;
+  gap: 14px;
+}
+.connected form .confirmation-bar {
+  position: static;
+  bottom: auto;
+}
+.connected .confirmation-bar .btn {
+  width: 100%;
+}
+@media (max-width: 359px) {
+  .connected .field-grid {
+    grid-template-columns: 1fr;
+  }
+  .connected .metric-value {
+    font-size: 23px;
+  }
+  .connected .focus-sheet article {
+    padding: 18px;
+  }
+}

@@ -2,7 +2,7 @@ name: PostgreSQL verification
 
 on:
   push:
-    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1, 04-fertilizers-inventory-r1, 08-workers-tasks-r1, 06-owner-ux-r2-capture-confirmation, 06-owner-ui-r2-modern-dashboard, 06-capture-aud001-002-semantic-fixes, 06-owner-source-queue-errors, 06-owner-personal-task-access, 06-owner-direct-expense-recovery]
+    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1, 04-fertilizers-inventory-r1, 08-workers-tasks-r1, 06-owner-ux-r2-capture-confirmation, 06-owner-ui-r2-modern-dashboard, 06-capture-aud001-002-semantic-fixes, 06-owner-source-queue-errors, 06-owner-personal-task-access, 06-owner-direct-expense-recovery, 06-harvest-coverage-unknown]
   workflow_dispatch:
 
 permissions:
@@ -193,6 +193,8 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Owner mobile critical E2E with synthetic reversal cleanup
         run: python scripts/run_owner_e2e.py
+      - name: Harvest coverage and UNKNOWN browser gate
+        run: python scripts/run_harvest_coverage_e2e.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
