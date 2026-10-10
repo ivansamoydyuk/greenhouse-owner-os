@@ -66,3 +66,8 @@ test('partial denominator and unknown zero-rounded basis remain visibly incomple
  const html=denominatorCoverage({classification:'PARTIAL',unallocated_kg:'0.000',basis_incomplete:true});
  assert.match(html,/Покрытие веса неполное/);assert.match(html,/неизвестная доля/);assert.match(html,/округлённый остаток 0 не делает покрытие полным/);
 });
+
+test('Finance exact values wrap inside their cards',async()=>{
+ const css=await (await import('node:fs/promises')).readFile(new URL('../../prototype/owner-r3/connected.css',import.meta.url),'utf8');
+ assert.match(css,/\.money-summary \.exact-value, \.connected \.money-card \.exact-value \{white-space:normal;overflow-wrap:anywhere;min-width:0;/);
+});
