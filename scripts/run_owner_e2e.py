@@ -64,6 +64,11 @@ def main():
     _reset_and_migrate(os.environ['TEST_DATABASE_URL'])
     env={**env,'PREVIEW_SECRET':secrets.token_urlsafe(32)}
     run_preview(env,['owner-friction'],'preview-friction.log')
+    # Queue/error fault injection gets its own known TEST state so retained
+    # invalid originals and unconfirmed sources cannot alter legacy journeys.
+    _reset_and_migrate(os.environ['TEST_DATABASE_URL'])
+    env={**env,'PREVIEW_SECRET':secrets.token_urlsafe(32)}
+    run_preview(env,['owner-source-queue-errors'],'preview-source-queue-errors.log')
 
 
 if __name__=='__main__':main()
