@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium, webkit } from "playwright";
@@ -41,6 +42,7 @@ const result = {
     payments: [],
     reports: [],
     settlements: [],
+    settlementEvidence: [],
     receipts: [],
     products: [],
     tasks: [],
@@ -48,6 +50,7 @@ const result = {
   },
   errors: [],
   screenshots: [],
+  homeMetrics: [],
   applicationFailures: [],
 };
 const read = async (ctx, url) => {
@@ -57,6 +60,7 @@ const read = async (ctx, url) => {
 };
 let activePage;
 async function snap(page, name) {
+  await page.locator("#toast.show").waitFor({ state: "hidden" });
   await page.screenshot({
     path: path.join(out, name + ".png"),
     fullPage: true,
@@ -503,6 +507,12 @@ try {
     await click(page, "Проверить приход");
     await waitHash(page, "receipt/");
     const existingReceiptId = page.url().split("#receipt/")[1];
+    if (engine === "webkit") {
+      // This second synthetic delivery intentionally has the same date/line as Chromium.
+      // Existing backend duplicate review must be exercised, never silently bypassed.
+      await page.locator("#duplicate-reviewed").waitFor();
+      await page.locator("#duplicate-reviewed").check();
+    } else assert.equal(await page.locator("#duplicate-reviewed").count(), 0);
     await click(page, "Подтвердить физический приход в TEST");
     await page
       .getByText(
@@ -610,11 +620,23 @@ try {
       base + root + "/harvest/evidence/" + settlement.evidence.id,
     );
     assert.deepEqual(await originalFile.body(), originalBytes);
+    await page.getByText("Долг ещё не создан", { exact: true }).waitFor();
+    await page.getByText("Полевой вес, кг", { exact: true }).waitFor();
+    await page.getByText("Вес депо, кг", { exact: true }).waitFor();
+    await page
+      .getByText("Средний вес по ADET, кг/ветку", { exact: true })
+      .waitFor();
     await snap(page, engine + "-390-depot-mismatch");
+    await page.setViewportSize({ width: 320, height: 844 });
+    await layout(page, "depot-detail-320");
+    await snap(page, engine + "-320-depot-mismatch");
+    await page.setViewportSize({ width: 390, height: 844 });
     for (const check of await page
       .locator("input[type=checkbox][name^=issue_]")
-      .all())
+      .all()) {
+      await check.scrollIntoViewIfNeeded();
       await check.check();
+    }
     await fill(
       page,
       "reason",
@@ -633,6 +655,17 @@ try {
       .waitFor();
     result.records.reports.push(reportId);
     result.records.settlements.push(settlementId);
+    result.records.settlementEvidence.push({
+      id: settlementId,
+      report_id: reportId,
+      original_sha256: createHash("sha256").update(originalBytes).digest("hex"),
+      original_bytes: originalBytes.length,
+      filename: `TEST-${engine}-receipt.${engine === "webkit" ? "pdf" : "png"}`,
+      mime_type: engine === "webkit" ? "application/pdf" : "image/png",
+      caption: `TEST ${engine} separate owner caption`,
+      field_original: `TEST ${engine} field original seven cuts`,
+      unit_price: receiptPrice,
+    });
     result.journeys.push({
       engine,
       name: "C field original file caption explicit depot link mismatch",
@@ -781,6 +814,10 @@ try {
     const held = new Promise((resolve) => {
       release = resolve;
     });
+    let completed;
+    const lateResponseCompleted = new Promise((resolve) => {
+      completed = resolve;
+    });
     let intercepted;
     const started = new Promise((resolve) => {
       intercepted = resolve;
@@ -792,6 +829,7 @@ try {
         intercepted();
         await held;
         await r.fulfill({ response });
+        completed();
       },
     );
     await page.locator(`a[href="#${choices[0]}"]`).click();
@@ -802,7 +840,7 @@ try {
       .getByRole("button", { name: "Отметить готовой", exact: true })
       .waitFor();
     release();
-    await page.waitForTimeout(100);
+    await lateResponseCompleted;
     await click(page, "Отметить готовой");
     await page
       .getByRole("button", { name: "Вернуть в активные", exact: true })
@@ -847,26 +885,65 @@ try {
         .waitFor();
     }
     result.records.workerTasks.push(fixture.worker_assignment_fixture.task_id);
-    // F: secondary module HTTP failure is partial data, never authentication loss.
-    await page.route("**/inventory", (r) =>
-      r.fulfill({
+    // F: a real cold read and explicit warm refresh see the injected secondary outage.
+    let outageReads = 0;
+    await page.route("**/inventory", (r) => {
+      outageReads++;
+      return r.fulfill({
         status: 503,
         contentType: "application/json",
         body: '{"error":{"message":"synthetic secondary outage"}}',
-      }),
-    );
+      });
+    });
     await route(page, "home");
+    await page.reload();
+    await waitRenderedRoute(page, "home");
     await page.getByText("Добрый день", { exact: true }).waitFor();
+    const actualHome = await read(context, root + "/owner/home");
+    assert.ok(actualHome.season[0].average_price != null);
+    const averagePriceCard = page
+      .locator(".harvest-stat-grid > div")
+      .filter({ has: page.getByText("Средняя цена", { exact: true }) });
+    const displayedAveragePrice = await averagePriceCard
+      .locator("strong")
+      .textContent();
+    result.homeMetrics.push({
+      engine,
+      season: actualHome.season,
+      displayedAveragePrice,
+    });
+    assert.ok(!displayedAveragePrice.includes("UNKNOWN"));
+    if (engine === "chromium")
+      assert.equal(displayedAveragePrice, "10,00 TRY/кг");
     await page.getByText(/Часть разделов не загрузилась/).waitFor();
+    assert.ok(
+      outageReads >= 1,
+      "cold reload must actually observe injected inventory503",
+    );
     assert.equal(await page.locator("#secret").count(), 0);
+    const warmFailure = page.waitForResponse(
+      (r) => r.url().endsWith("/inventory") && r.status() === 503,
+    );
+    await click(page, "Повторить загрузку разделов");
+    await warmFailure;
+    assert.ok(outageReads >= 2);
+    await page.getByText(/Часть разделов не загрузилась/).waitFor();
     await snap(page, engine + "-390-home-partial");
     await page.unroute("**/inventory");
+    const recoveredRead = page.waitForResponse(
+      (r) => r.url().endsWith("/inventory") && r.status() === 200,
+    );
+    await click(page, "Повторить загрузку разделов");
+    await recoveredRead;
+    await page
+      .getByText(/Часть разделов не загрузилась/)
+      .waitFor({ state: "hidden" });
     await route(page, "inventory");
     await page.getByRole("heading", { name: "Склад", exact: true }).waitFor();
     assert.equal(await page.getByText(/Раздел временно недоступен/).count(), 0);
     result.journeys.push({
       engine,
-      name: "F secondary outage keeps owner Home authenticated",
+      name: "F cold and warm secondary outage keeps Home authenticated and explicit retry recovers",
       pass: true,
     });
     // Both engines and all affected widths; actual clicks/navigation and actual API.

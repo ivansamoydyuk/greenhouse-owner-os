@@ -2,6 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
+  displayMetric as legacyDisplayMetric,
+  displayQuantity as legacyDisplayQuantity,
+} from "../../src/greenhouse_owner_os/web/owner-r2.js";
+import {
   ConnectedAPI,
   ApiError,
   cents,
@@ -13,6 +17,7 @@ import {
   CAPABILITIES,
   canRecoverSourceExpense,
   submissionSnapshot,
+  exactDecimalString,
 } from "../../prototype/owner-r3/connected-adapter.js";
 class Store {
   constructor() {
@@ -518,4 +523,84 @@ test("connected data-action helpers suppress implicit browser form submission", 
       'visualButton(...args).replace("<button ", \'<button type="button" \'',
     ),
   );
+});
+
+test("depot draft and reversal copy cannot claim a current confirmed debt; form submits stay in flow", () => {
+  const source = fs.readFileSync(
+    new URL("../../prototype/owner-r3/connected.js", import.meta.url),
+    "utf8",
+  );
+  const css = fs.readFileSync(
+    new URL("../../prototype/owner-r3/connected.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /Долг ещё не создан/);
+  assert.match(source, /Документ отменён обратным событием/);
+  assert.match(
+    source,
+    /s.status === "posted"[\s\S]*?Сервер подтвердил документ/,
+  );
+  assert.match(
+    css,
+    /\.connected form \.confirmation-bar \{\s*position: static/,
+  );
+});
+
+test("partial Home data includes a real explicit reload action without demo fallback", () => {
+  const source = fs.readFileSync(
+    new URL("../../prototype/owner-r3/connected.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /btn\("Повторить загрузку разделов", "refresh", "secondary"\)/,
+  );
+  assert.match(source, /await refreshData\(\);\s*return render\(\);/);
+});
+
+test("exact display expansion preserves exponent decimals without binary arithmetic", () => {
+  for (const [input, expected] of [
+    ["1E+1", "10"],
+    ["1e1", "10"],
+    ["10.25", "10.25"],
+    ["1.2345E-3", "0.0012345"],
+    ["0E+8", "0"],
+    ["-0E-8", "0"],
+    [
+      "123456789012345678901234567890.12E+2",
+      "12345678901234567890123456789012",
+    ],
+    ["1E-20", "0.00000000000000000001"],
+    ["-1.25E+2", "-125"],
+    ["001.20E+1", "12.0"],
+  ])
+    assert.equal(exactDecimalString(input), expected, input);
+  for (const input of [
+    null,
+    undefined,
+    "",
+    "UNKNOWN",
+    "bad",
+    "Infinity",
+    "NaN",
+    "1E999999999",
+    "1E1001",
+  ])
+    assert.equal(exactDecimalString(input), null);
+  assert.equal(legacyDisplayMetric(exactDecimalString("1E+1")), "10,00");
+  assert.equal(legacyDisplayMetric(exactDecimalString("1.2345E-3")), "0,00");
+  assert.equal(legacyDisplayMetric(exactDecimalString(null)), "UNKNOWN");
+  assert.equal(legacyDisplayMetric(exactDecimalString("bad")), "UNKNOWN");
+  assert.equal(
+    legacyDisplayQuantity(
+      exactDecimalString("123456789012345678901234567890.12E+2"),
+    ),
+    "12 345 678 901 234 567 890 123 456 789 012",
+  );
+  const source = fs.readFileSync(
+    new URL("../../prototype/owner-r3/connected.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /legacyDisplayMetric\(exactDecimalString\(value\)\)/);
+  assert.match(source, /legacyDisplayQuantity\(exactDecimalString\(value\)\)/);
 });

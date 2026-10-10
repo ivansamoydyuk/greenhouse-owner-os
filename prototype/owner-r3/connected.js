@@ -20,11 +20,12 @@ import {
   CAPABILITIES,
   canRecoverSourceExpense,
   submissionSnapshot,
+  exactDecimalString,
 } from "./connected-adapter.js";
 import {
   proposalSummary,
-  displayQuantity,
-  displayMetric,
+  displayQuantity as legacyDisplayQuantity,
+  displayMetric as legacyDisplayMetric,
 } from "/assets/owner-r2.js";
 import { money, displayDate, localDay } from "/assets/core.js";
 import {
@@ -35,6 +36,9 @@ const app = document.querySelector("#app"),
   sheetRoot = document.querySelector("#sheet-root");
 document.body.classList.add("connected");
 // Action controls are never implicit form submissions. submit() is explicit.
+const displayQuantity = (value) =>
+  legacyDisplayQuantity(exactDecimalString(value));
+const displayMetric = (value) => legacyDisplayMetric(exactDecimalString(value));
 const btn = (...args) =>
   visualButton(...args).replace("<button ", '<button type="button" ');
 let activeActionRoute = null;
@@ -216,7 +220,7 @@ function home() {
   if (!h) return unavailable("Главная");
   const f = h.finance,
     s = h.season || [];
-  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", "harvest", "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес ветки</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} веток</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Workers R1 · внешняя отправка недоступна.</p></div></div>`;
+  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") + btn("Повторить загрузку разделов", "refresh", "secondary") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", "harvest", "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес ветки</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} веток</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Workers R1 · внешняя отправка недоступна.</p></div></div>`;
 }
 function reviewList() {
   return (
@@ -722,16 +726,26 @@ function depotDetail(s) {
     panel(
       `${stateTag(s.status)}${facts([
         ["Дата", displayDate(s.event_date)],
-        ["Продажа", money(s.total_amount, s.currency)],
-        ["Остаток долга", money(s.remaining_amount, s.currency)],
+        [
+          s.status === "draft"
+            ? "Продажа после подтверждения · прогноз"
+            : "Продажа",
+          money(s.total_amount, s.currency),
+        ],
+        [
+          "Остаток долга",
+          s.status === "draft"
+            ? "Долг ещё не создан"
+            : money(s.remaining_amount, s.currency),
+        ],
       ])}<h2>Оригинал документа</h2>${s.evidence.filename ? `<a class="btn secondary" href="${entityPath("/harvest/evidence/" + s.evidence.id)}" target="_blank" rel="noopener">${e(s.evidence.filename)} · неизменённые байты</a>` : "<p>Файл не добавлен</p>"}<h3>Комментарий владельца · отдельно</h3><p class="original-text">${e(s.evidence.raw_text || "Не добавлен")}</p>`,
     ) +
     panel(
       `<h2>Срез и ADET</h2>${facts([
         ["Полевое количество", s.reconciliation.field_count ?? "UNKNOWN"],
         ["ADET документа", s.reconciliation.depot_count ?? "UNKNOWN"],
-        ["Полевой вес", s.reconciliation.field_weight_kg ?? "UNKNOWN"],
-        ["Вес депо", s.reconciliation.depot_weight_kg],
+        ["Полевой вес, кг", s.reconciliation.field_weight_kg ?? "UNKNOWN"],
+        ["Вес депо, кг", s.reconciliation.depot_weight_kg],
       ])}${s.reports.map((r) => link(e(r.original_greenhouse) + " · " + displayDate(r.event_date), "report/" + r.id, "list-row")).join("")}${notice("Расхождение не исправляет ни источник, ни второй показатель. Покрытие показывается только по известным данным.", "amber")}`,
     ) +
     panel(
@@ -747,7 +761,7 @@ function depotDetail(s) {
           ]),
         )
         .join("")}${facts([
-        ["Средний вес по покрытию", s.average_weight_kg ?? "UNKNOWN"],
+        ["Средний вес по ADET, кг/ветку", s.average_weight_kg ?? "UNKNOWN"],
         ["Известное количество", s.confirmed_count],
         ["Вес с количеством", s.confirmed_kg + " кг"],
         ["Покрытие", s.count_coverage_complete ? "Полное" : "Частичное"],
@@ -769,9 +783,11 @@ function depotDetail(s) {
             "Подтвердить чек в TEST",
           ),
         )
-      : notice(
-          "Сервер подтвердил документ. Продажа и долг созданы один раз.",
-        )) +
+      : s.status === "posted"
+        ? notice("Сервер подтвердил документ. Продажа и долг созданы один раз.")
+        : notice(
+            "Документ отменён обратным событием. Оригинал и история сохранены.",
+          )) +
     link("К урожаю", "harvest", "btn secondary")
   );
 }

@@ -228,8 +228,9 @@
   display: grid;
   gap: 14px;
 }
-.connected .focus-sheet .confirmation-bar {
-  bottom: 0;
+.connected form .confirmation-bar {
+  position: static;
+  bottom: auto;
 }
 .connected .confirmation-bar .btn {
   width: 100%;

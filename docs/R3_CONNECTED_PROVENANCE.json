@@ -368,17 +368,17 @@
       "path": "prototype/owner-r3/connected-adapter.js",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "54a7262ab97aa9a242004be80fb033dff76bde0e",
-      "sha256": "e702c5648fb568d5a332f55978580f5fa3038e59df3227c6a9c14d52ad986dbc",
-      "size": 13850
+      "git_blob": "8661b22c9e989267101369a27cff988b6f9ff582",
+      "sha256": "e685ecf5904848b2013843ef5e449783e806f74d6a19f90bf8ee141ea6bcc4df",
+      "size": 14953
     },
     {
       "path": "prototype/owner-r3/connected.css",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "b79937dc36c9bc19d6505b0dd9ad8e16b86bb3ec",
-      "sha256": "f4ce663939f37141f678349fa73fcdd4a36c0726adbd7c0d8adc9bf679177ce3",
-      "size": 4705
+      "git_blob": "5df3e85deff00f0afbd158c46d2141c419aa789f",
+      "sha256": "5d3eb55481a06a35854c978d8af7eb3f8743240e18f95bc20dd4ee71d1f6257b",
+      "size": 4720
     },
     {
       "path": "prototype/owner-r3/connected.html",
@@ -392,9 +392,9 @@
       "path": "prototype/owner-r3/connected.js",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "c5420727cd5900058c3bd2ebcf14ce61fd64fd1f",
-      "sha256": "d034c86c22fad8a8b58983e657cf7441d3b65159f1ce7fba8f4d8a77b9b9aede",
-      "size": 92933
+      "git_blob": "9816e7d4785b4346af55b3497e6f36204f1ef7fd",
+      "sha256": "b4e7a3f1899bab72016dca80b21e5d7325f918f9c85737171ce111444b9211ab",
+      "size": 93721
     },
     {
       "path": "prototype/owner-r3/daily-demo.js",
@@ -560,9 +560,9 @@
       "path": "scripts/r3_connected_sql_evidence.py",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "ef19a64d9493dd29c5c9c71d4fde91a83130ff1c",
-      "sha256": "c936f2ca094d8d19665a5e584bef66f9bd80de576a64bdf41bc692b31900e1c2",
-      "size": 8824
+      "git_blob": "acc5bbe3d5f16c77df00db1d894def2eb0bb3621",
+      "sha256": "49c3bc06b779504e5d02f2640a82903d59f40081c4572d7d3d463fa5c6c90581",
+      "size": 38523
     },
     {
       "path": "scripts/r3_preview.mjs",
@@ -1536,9 +1536,9 @@
       "path": "tests/e2e/r3-connected.mjs",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "b82415924e8c5eba3f578053a40985605b0f43c0",
-      "sha256": "ba15a19968d0d1e609b8ba1d65e7f7c4286cfb6857129d99a8e6c1a912ca7d17",
-      "size": 35934
+      "git_blob": "833f88b1a416a03b410e67a8e55ac84abb42ffd8",
+      "sha256": "1bd46ae77ca767bd5d312cc1a0d7f5877e4df9df106f716dc2eb4e16d9bdd0c3",
+      "size": 39438
     },
     {
       "path": "tests/e2e/task-review-fixture.mjs",
@@ -1760,9 +1760,9 @@
       "path": "tests/frontend/owner-r3-connected.test.mjs",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "7234c9d6226d5e0e0afa132beb0bdc97756326cf",
-      "sha256": "47c61666e18d4c07fb09a9085c17b0923ebb18493dce204298078b1a7e2ff26a",
-      "size": 15879
+      "git_blob": "98d5659135eaaa06914d9777f77f9643ae83fad5",
+      "sha256": "013f71c03b7be4a7a919b54d405776ad3a402a4973767640b3567d233e70736b",
+      "size": 18678
     },
     {
       "path": "tests/frontend/owner-r3-daily-demo.test.mjs",

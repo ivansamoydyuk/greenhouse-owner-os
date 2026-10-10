@@ -41,6 +41,35 @@ export const canonical = (value) =>
         )
       : v,
   );
+/** Expand decimal notation for display only; never convert an amount to float. */
+export function exactDecimalString(value) {
+  if (value == null) return null;
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(
+    String(value),
+  );
+  if (!match) return null;
+  const [, sign, whole, fraction = "", exponent = "0"] = match;
+  if (whole.length + fraction.length > 4096 || exponent.length > 6) return null;
+  const power = BigInt(exponent);
+  if (power < -1000n || power > 1000n) return null;
+  const digits = whole + fraction;
+  if (/^0+$/.test(digits)) return "0";
+  // The bounded integer is a string index, never a financial value.
+  const point = whole.length + Number(power);
+  const expanded =
+    point <= 0
+      ? "0." + "0".repeat(-point) + digits
+      : point >= digits.length
+        ? digits + "0".repeat(point - digits.length)
+        : digits.slice(0, point) + "." + digits.slice(point);
+  const [integer, decimals] = expanded.split(".");
+  return (
+    (sign === "-" ? "-" : "") +
+    integer.replace(/^0+(?=\d)/, "") +
+    (decimals ? "." + decimals : "")
+  );
+}
+
 export function cents(value) {
   const s = String(value);
   if (!/^-?\d+(\.\d{1,2})?$/.test(s)) throw Error("Некорректная точная сумма");
