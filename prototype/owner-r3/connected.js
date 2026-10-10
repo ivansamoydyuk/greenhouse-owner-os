@@ -1,3 +1,6 @@
+import {fertilizerDraft,fertilizerEditRestriction,invalidateFertilizerReview,fertilizerPlanInput,fertilizerEditorView,fertilizerPreviewView,fertilizerCalendarView,fertilizerDetailView,fertilizerReferenceView,fertilizerActualDraft,fertilizerActualInput,fertilizerActualView,exactFertilizerNumber} from './fertilizer-connected.js';
+import {historySelection,historyRoute,historyQuery,purchaseHistoryView,purchaseDetailView,stockEventView,invoiceTargetMatches} from "./purchases-connected.js";
+import { financeAnalyticsView, financeDocumentView, financeSelection, financeRoute, financeQuery, financeBackRoute } from "./finance-connected.js";
 import { monthlyHarvestView, harvestSelection, harvestQuery, harvestRoute } from "./harvest-connected.js";
 import {
   e,
@@ -17,13 +20,13 @@ import {
   decimal,
   totalByCurrency,
   paymentPayload,
-  fileSource,
   CAPABILITIES,
   canRecoverSourceExpense,
   submissionSnapshot,
   estimateConfirmation,
   exactDecimalString,
   ownerFormSource,
+  DraftAttachmentReads,
 } from "./connected-adapter.js";
 import {
   proposalSummary,
@@ -44,9 +47,11 @@ const displayQuantity = (value) =>
 const displayMetric = (value) => legacyDisplayMetric(exactDecimalString(value));
 const btn = (...args) =>
   visualButton(...args).replace("<button ", '<button type="button" ');
+const attachmentReads = new DraftAttachmentReads();
 let activeActionRoute = null;
 let estimateReview = null;
 let lastHarvestRoute = "harvest";
+let lastFinanceRoute = "money";
 const harvestScroll = new Map();
 let config = null,
   ready = false,
@@ -83,6 +88,10 @@ const operationLabels = {
   payment: "Платёж",
   owner_funding: "Взнос владельца",
   receipt: "Приход",
+  transfer: "Перемещение",
+  application: "Внесение",
+  writeoff: "Списание",
+  plan: "План",
 };
 const statuses = {
   open: "Открыто",
@@ -233,7 +242,7 @@ function home() {
   if (!h) return unavailable("Главная");
   const f = h.finance,
     s = h.season || [];
-  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") + btn("Повторить загрузку разделов", "refresh", "secondary") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", lastHarvestRoute, "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес по ADET</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} ADET</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Workers R1 · внешняя отправка недоступна.</p></div></div>`;
+  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") + btn("Повторить загрузку разделов", "refresh", "secondary") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Деньги и результат</h2>${link("Открыть",lastFinanceRoute,"section-link")}</div><p class="note">Счета, движения, учтённые затраты и теплицы</p>`)}${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", lastHarvestRoute, "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес по ADET</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} ADET</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Поручения работникам · внешняя отправка недоступна.</p></div></div>`;
 }
 function reviewList() {
   return (
@@ -324,7 +333,7 @@ function factOrigin(p, key) {
 function formOriginal(evidence) {
   const source = evidence?.structured_original;
   if (!source) return "";
-  const names = {event_date:"Дата в форме",original_greenhouse:"Теплица",cut_count:"Количество веток",field_weight_kg:"Полевой вес, кг",reporter:"Сообщил",notes:"Заметка",original_product_name:"Товар",quantity:"Количество",unit:"Единица",location_id:"Идентификатор склада",work_area_id:"Идентификатор теплицы",product_id:"Идентификатор товара"};
+  const names = {event_date:"Дата в форме",original_greenhouse:"Теплица",cut_count:"Количество веток",field_weight_kg:"Полевой вес, кг",reporter:"Сообщил",notes:"Заметка",original_product_name:"Товар",quantity:"Количество",unit:"Единица",location_id:"Идентификатор склада",destination_id:"Идентификатор склада назначения",work_area_id:"Идентификатор теплицы",product_id:"Идентификатор товара"};
   return `<details class="source-provenance" data-testid="structured-original"><summary>Оригинальная форма · значения и источник</summary><p class="note">Форма заполнена владельцем. Это не расшифровка речи.</p>${facts(Object.entries(source.fields).map(([key,value])=>[names[key]||key,value === "" ? "Не указано" : key === "notes" ? "Заметка: " + value : value]))}<p class="note">Источник ${e(source.form_id)} · ${e(source.captured_at)}</p></details>`;
 }
 function compactExpenseReview(p) {
@@ -490,13 +499,13 @@ function finance(direction = "") {
       "Только подтверждённые TEST-документы",
       !!direction,
     ) +
-    `<div class="page-actions">${link("Мне должны", "finance/receivable", "btn secondary")}${link("Я должен", "finance/payable", "btn secondary")}</div>` +
+    `<div class="page-actions">${link("Деньги и аналитика", lastFinanceRoute, "btn primary")}${link("Мне должны", "finance/receivable", "btn secondary")}${link("Я должен", "finance/payable", "btn secondary")}</div>` +
     panel(
       `<h2>Счета</h2>${f.accounts
         .map((a) =>
           facts([
             ["Счёт", accountName(a)],
-            ["Остаток", money(a.balance ?? a.amount ?? "0.00", a.currency)],
+            ["Остаток", a.balance==null && a.amount==null ? "Неизвестно" : money(a.balance ?? a.amount, a.currency)],
           ]),
         )
         .join("")}`,
@@ -832,7 +841,7 @@ function inventory() {
   if (!v) return unavailable("Склад");
   return (
     Header("Склад", "Товары, места хранения и фактические движения") +
-    `<div class="page-actions">${link("Товар привезли", "quick/receipt", "btn primary")}</div>` +
+    `<div class="page-actions">${link("Товар привезли", "quick/receipt", "btn primary")}${link("История покупок", "purchases", "btn secondary")}${link("Все движения", "stock-history", "btn secondary")}${link("Переместить", "quick/transfer", "btn secondary")}${link("Внесения", "fertilizer", "btn secondary")}</div>` +
     notice(
       "Начальные остатки не подтверждены: UNKNOWN. Учтённый приход и сумма движений не являются проверенным абсолютным остатком.",
       "amber",
@@ -842,7 +851,7 @@ function inventory() {
         v.products
           .map((p) => {
             const ss = v.stock.filter((s) => s.product_id === p.id);
-            return `<div class="list-row"><strong>${e(p.name)}</strong><small>Проверенный физический остаток: UNKNOWN · стоимость ${ss.length && ss.every((x) => /^0(?:\.0+)?$/.test(x.uncosted_quantity)) ? "из учтённых оценённых движений" : "UNKNOWN"}</small>${ss.length ? ss.map((s) => `<p>${e(s.location_name)} · учтено ${e(displayQuantity(s.quantity))} ${e(p.base_unit)}<br><small>Без стоимости: ${e(displayQuantity(s.uncosted_quantity))} ${e(p.base_unit)}</small></p>`).join("") : "<p>Движений пока нет. Физический остаток UNKNOWN.</p>"}${link("Приход этого товара", "quick/receipt/" + p.id, "btn secondary")}</div>`;
+            return `<div class="list-row"><strong>${e(p.name)}</strong><small>Проверенный физический остаток: UNKNOWN · стоимость ${ss.length && ss.every((x) => /^0(?:\.0+)?$/.test(x.uncosted_quantity)) ? "из учтённых оценённых движений" : "UNKNOWN"}</small>${ss.length ? ss.map((s) => `<p>${e(s.location_name)} · учтено ${e(displayQuantity(s.quantity))} ${e(p.base_unit)}<br><small>Без стоимости: ${e(displayQuantity(s.uncosted_quantity))} ${e(p.base_unit)}</small></p>`).join("") : "<p>Движений пока нет. Физический остаток UNKNOWN.</p>"}${link("Приход этого товара", "quick/receipt/" + p.id, "btn secondary")}${link("История товара", "stock-history/all/all/" + p.id, "btn secondary")}${link("Переместить", "quick/transfer/" + p.id, "btn secondary")}${["kg","L"].includes(p.base_unit)?(ss.length?ss.map(s=>link("Внесение · "+s.location_name,"fertilizer-new/"+p.id+"/"+s.location_id,"btn secondary")).join(""):link("План внесения","fertilizer-new/"+p.id,"btn secondary")):""}</div>`;
           })
           .join("") ||
         "<p>Товаров пока нет. Добавьте первый прямо в приходе.</p>"
@@ -875,8 +884,36 @@ function receiptForm(productId) {
     )
   );
 }
+function invoiceNewForm(receipt) {
+  return Header('Счёт к приходу','Оригинал сохраняется отдельно от физического движения',true)+panel(form('invoice-source',
+    facts([['Приход',displayDate(receipt.event_date)],['Товары',receipt.lines.map(l=>l.original_product_name+' · '+l.quantity+' '+l.unit).join('; ')]])+
+    select('Что нужно сделать','intent',[{value:'operating_expense',label:'Новый счёт на операционный расход'},{value:'existing_payable',label:'Связать с уже учтённым долгом'}],draft.intent,'Выберите явно')+
+    '<p class="note">Новый операционный счёт после отдельного подтверждения создаст расход и долг. Для актива, материала или иного неоперационного обязательства используйте уже правильно учтённый документ; классификацию система не угадывает.</p>'+
+    area('Текст документа или подпись · необязательно с файлом','text',draft.text)+fileField('Фото / PDF счёта')+(draft.file?.filename?notice('Копия на телефоне: '+draft.file.filename):'')+
+    '<p class="note">Сохранение оригинала и подготовка не создают второй приход, оплату или долг.</p>','Сохранить счёт и подготовить'));
+}
+function invoiceWorkflowView(c) {
+  const {receipt,source,payable,match,documents}=c,done=p=>['POSTED','CONFIRMED_NONPOSTING'].includes(p?.state);
+  let body=Header('Проверить счёт и связь','Каждое учётное действие подтверждается отдельно',true)+panel(facts([['Физический приход',displayDate(receipt.event_date)],['Товары',receipt.lines.map(l=>l.original_product_name+' · '+l.quantity+' '+l.unit).join('; ')]])+`${source.invoice_receipt_id&&source.invoice_receipt_id!==receipt.id?'<p class="note">Исходный контекст другого прихода сохранён; здесь показан приход из текущей явной ревизии связи.</p>':''}<p class="note">Приход уже учтён. Этот выбор сделан владельцем и не является извлечённым из счёта фактом.</p><details class="source-provenance"><summary>Оригинал счёта</summary><p class="original-text">${e(source.text || 'Текст не добавлялся')}</p>${source.original_name?`<a class="btn secondary" href="${entityPath('/owner/captures/'+source.id+'/original')}" download>${e(source.original_name||'Скачать оригинал')}</a>`:''}</details>`);
+  if(!match) return body+panel(`<h2>Источник сохранён</h2>${stateTag(source.job?.state||source.state)}<p>${e(source.job?.error_code||'Подготовка ещё не завершена.')}</p>${btn('Обновить','refresh')}${source.retryable?btn('Повторить подготовку','prepare:'+source.id):''}${(source.proposals||[]).map(p=>link('Открыть подготовленное действие','review/'+p.id,'btn secondary')).join('')}`)+link('К истории поставки','purchase/'+receipt.id,'btn secondary');
+  if(payable){const f=payable.revision.payload;body+=panel(`<h2>1. Операционный счёт</h2>${stateTag(payable.state)}${facts([['За что',f.description||'Нужно уточнить'],['Сумма',f.amount?money(f.amount,f.currency):'Не указана'],['Дата',displayDate(f.event_date,'Не указана')],['Поставщик',f.counterparty_id?refName(f.counterparty_id):'Нужно выбрать'],['Срок',displayDate(f.due_date,'Не указан')]])}<details class="source-provenance"><summary>Происхождение подготовленных фактов</summary>${['amount','currency','event_date','description','counterparty_id'].map(k=>'<p>'+e(fieldLabel(k))+': '+e(factOrigin(payable,k)||'Не установлено из источника')+'</p>').join('')}</details><p class="note">После подтверждения: операционный расход и долг поставщику. Деньги не списываются; склад повторно не меняется.</p>${!done(payable)&&payable.state!=='REJECTED'?`<div class="page-actions fact-actions">${['amount','currency','event_date','counterparty_id','description','due_date'].map(k=>btn(fieldLabel(k),'invoice-edit:'+k)).join('')}</div>${(payable.revision.missing||[]).map(m=>'<p class="form-error">'+e(m)+'</p>').join('')}${btn('Подтвердить расход и долг в TEST','invoice-confirm-payable','primary full','invoice-confirm-payable',payable.revision.missing?.length?'disabled':'')}`:done(payable)?'<p>Расход и долг подтверждены сервером. Повтор не создаёт новый документ.</p>':'<p>Предложение отклонено. Новый долг по нему не создан.</p>'}`);}
+  const effectId=payable?.confirmed_effect?.effect?.id,linkedId=match.revision.payload.finance_obligation_id,selected=documents.find(d=>d.obligation_id===linkedId),canChoose=!payable||done(payable),matchDone=done(match);
+  body+=panel(`<h2>${payable?'2. ':''}Явная связь с финансовым документом</h2>${stateTag(match.state)}${matchDone?'<p>Связь подтверждена. Повторного прихода, расхода и оплаты нет.</p>':!canChoose?'<p>Сначала подтвердите отдельный операционный счёт выше. Его документ появится здесь без повторного ввода суммы.</p>':(!linkedId||draft.choose==='yes')?form('invoice-link',`${!payable?'<div class="page-actions">'+['TRY','USD','EUR','UAH'].map(cur=>link(cur,'invoice-source/'+receipt.id+'/'+source.id+'/'+cur,'btn secondary')).join('')+'</div>':''}${select('Уже учтённый долг · весь документ','obligation',documents.filter(d=>d.direction==='payable'&&d.status==='posted'&&(!effectId||d.obligation_id===effectId)).map(d=>({id:d.obligation_id,name:(d.source.description||'Документ')+' · '+money(d.original_amount,d.currency)+' · '+d.counterparty_name})),draft.obligation||effectId||linkedId,'Выберите документ')}${area('Основание связи · необязательно','note',draft.note)}<p class="note">Сумма всего документа не становится стоимостью этой строки товара. Сначала проверьте связь, затем подтвердите её отдельно.</p>`,'Проверить связь'):`${facts([['Документ',selected?.source.description||'Подтверждённый документ'],['Сумма всего документа',selected?money(selected.original_amount,selected.currency):'Проверьте выбранный документ'],['Поставщик',selected?.counterparty_name||'Откройте документ'],['Приход',displayDate(receipt.event_date)]])}${(match.revision.missing||[]).map(m=>'<p class="form-error">'+e(m)+'</p>').join('')}${btn('Подтвердить только связь в TEST','invoice-confirm-link','primary full','invoice-confirm-link',match.revision.missing?.length?'disabled':'')}${btn('Изменить выбранный документ','invoice-choose-link')}`}${linkedId?link('Финансовый документ и оплаты','money-document/'+linkedId+'/'+encodeURIComponent(route),'btn secondary'):''}<p class="note">Связь не проводит склад и не устанавливает неизвестную стоимость. Приход, счёт и оплата остаются отдельными событиями.</p>`);
+  return body+'<div class="form-error" id="action-error" role="alert"></div>'+`<div class="page-actions">${link('К истории поставки','purchase/'+receipt.id,'btn secondary')}${link('К исходнику','source/'+source.id,'btn secondary')}</div>`;
+}
+function transferForm(productId) {
+  const v=data.inventory,p=v.products.find(x=>x.id===(draft.product||productId));
+  return Header('Переместить товар','Между настроенными местами хранения',true)+panel(form('transfer',
+    select('Товар','product',v.products.filter(x=>x.active),draft.product||productId)+
+    select('Откуда','location',v.locations,draft.location)+select('Куда','destination',v.locations,draft.destination)+
+    field('Количество','quantity',draft.quantity,'text','inputmode="decimal"')+
+    field('Единица товара','unit',p?.base_unit||'','text','readonly')+field('Дата перемещения','date',draft.date||localDay(),'date')+
+    area('Заметка · необязательно','original',draft.original)+fileField('Фото / PDF · необязательно')+
+    (draft.file?.filename?notice('Копия на телефоне: '+draft.file.filename):'')+
+    '<p class="note">После отдельного подтверждения создаст связанные движения между складами. Не расход, не покупка и не оплата. Неизвестная стоимость остаётся неизвестной.</p>', 'Проверить перемещение'));
+}
 function receiptCanConfirm(r, duplicateReviewed = false) {
-  return r?.kind === "receipt" && r.status === "draft" && !r.replacement_id &&
+  return ["receipt","transfer"].includes(r?.kind) && r.status === "draft" && !r.replacement_id &&
     r.evidence?.verification !== "HISTORY" && Array.isArray(r.issues) &&
     !r.issues.some(issue => !["cost", "review", "duplicate"].includes(issue)) &&
     (!r.issues.includes("duplicate") || duplicateReviewed);
@@ -889,7 +926,7 @@ function syncReceiptConfirmation() {
 }
 function receiptDetail(r) {
   return (
-    Header("Приход товара", statuses[r.status] || r.status, true) +
+    Header(r.kind === "receipt" ? "Приход товара" : (operationLabels[r.kind] || "Складское событие"), statuses[r.status] || r.status, true) +
     panel(
       `${stateTag(r.status)}${(r.payload.lines || [])
         .map((l) =>
@@ -901,13 +938,14 @@ function receiptDetail(r) {
               data.inventory?.locations.find((x) => x.id === l.location_id)
                 ?.name || l.location_id,
             ],
+            ...(l.destination_id ? [["Куда",data.inventory?.locations.find(x=>x.id===l.destination_id)?.name || l.destination_id]] : []),
             ["Стоимость", l.unit_cost ?? "UNKNOWN"],
           ]),
         )
         .join("")}${facts([
         ["Дата", displayDate(r.event_date)],
         ["Начальный остаток", "UNKNOWN"],
-      ])}<p class="note">Только физический приход. Общий остаток и стоимость остаются неизвестными; без долга и оплаты.</p>${formOriginal(r.evidence)}<h2>Заметка владельца</h2><p class="original-text">${e(r.evidence.structured_original?.fields?.notes || r.evidence.raw_text || "Заполненная форма · отдельная заметка не добавлена")}</p>${r.evidence.filename ? `<a class="btn secondary" href="${entityPath("/inventory/events/" + r.id + "/original")}" target="_blank" rel="noopener">${e(r.evidence.filename)}</a>` : ""}${r.evidence?.verification === "HISTORY" ? notice("Исторический источник: проведение в текущие остатки недоступно.", "amber") : ""}${r.replacement_id ? notice("Для этой записи уже создано исправление. Откройте актуальную версию.", "amber") : ""}${(r.issue_messages || []).filter((_, i) => !["cost", "review"].includes(r.issues?.[i])).map((x) => notice(x, "amber")).join("")}<div id="action-error" class="form-error" role="alert"></div>${r.status === "draft" ? `${r.issues?.includes("duplicate") ? '<label class="check-label"><input type="checkbox" id="duplicate-reviewed"><span>Я проверил: это отдельный приход, не повтор.</span></label>' : ""}${btn("Подтвердить физический приход в TEST", "post-receipt", "primary full", "post-receipt", !receiptCanConfirm(r) ? "disabled" : "")}` : r.status === "posted" ? notice("Сервер подтвердил приход. Физическое движение создано один раз.") : notice("Приход отменён обратным движением. Оригинал и история сохранены.")}<div class="page-actions">${link("К складу", "inventory", "btn secondary")}</div>`,
+      ])}<p class="note">${r.kind === "transfer" ? "Только перемещение между складами; общий объём учтённых запасов сохраняется." : r.kind === "receipt" ? "Только физический приход." : r.kind === "plan" ? "План не создаёт складское движение." : "Складское событие и его исходные движения."} Общий остаток и неизвестная стоимость не становятся известными; без долга и оплаты.</p>${formOriginal(r.evidence)}<h2>Заметка владельца</h2><p class="original-text">${e(r.evidence.structured_original?.fields?.notes || r.evidence.raw_text || "Заполненная форма · отдельная заметка не добавлена")}</p>${r.evidence.filename ? `<a class="btn secondary" href="${entityPath("/inventory/events/" + r.id + "/original")}" target="_blank" rel="noopener">${e(r.evidence.filename)}</a>` : ""}${r.evidence?.verification === "HISTORY" ? notice("Исторический источник: проведение в текущие остатки недоступно.", "amber") : ""}${r.replacement_id ? notice("Для этой записи уже создано исправление. Откройте актуальную версию.", "amber") : ""}${(r.issue_messages || []).filter((_, i) => !["cost", "review"].includes(r.issues?.[i])).map((x) => notice(x, "amber")).join("")}<div id="action-error" class="form-error" role="alert"></div>${r.status === "draft" ? `${r.issues?.includes("duplicate") ? '<label class="check-label"><input type="checkbox" id="duplicate-reviewed"><span>Я проверил: это отдельный приход, не повтор.</span></label>' : ""}${btn(r.kind === "transfer" ? "Подтвердить перемещение в TEST" : "Подтвердить физический приход в TEST", "post-receipt", "primary full", "post-receipt", !receiptCanConfirm(r) ? "disabled" : "")}` : r.status === "posted" ? notice(r.kind === "transfer" ? "Сервер подтвердил перемещение. Связанные движения созданы один раз." : r.kind === "receipt" ? "Сервер подтвердил приход. Физическое движение создано один раз." : "Складское событие подтверждено. Движения и исходник показаны отдельно.") : notice("Приход отменён обратным движением. Оригинал и история сохранены.")}<div class="page-actions">${link("К складу", "inventory", "btn secondary")}${r.kind === "receipt" ? link("История поставки", "purchase/" + r.id, "btn secondary") : link("История движения", "stock-event/" + r.id, "btn secondary")}</div>`,
     ) +
     panel(
       `<h2>Движения именно этого события</h2>${
@@ -935,7 +973,7 @@ function personalList(list) {
           "Задачи сохраняются после подтверждения Capture.",
         ),
     ) +
-    `<p class="note">Показано ${list.items.length} из ${list.total}. Workers R1 ведутся отдельно.</p><div class="page-actions">${list.offset > 0 ? link("Назад", `tasks/${list.state}/${Math.max(0, list.offset - list.limit)}`, "btn secondary") : ""}${list.next_offset != null ? link("Следующие", `tasks/${list.state}/${list.next_offset}`, "btn secondary") : ""}</div>`
+    `<p class="note">Показано ${list.items.length} из ${list.total}. Поручения работникам ведутся отдельно.</p><div class="page-actions">${list.offset > 0 ? link("Назад", `tasks/${list.state}/${Math.max(0, list.offset - list.limit)}`, "btn secondary") : ""}${list.next_offset != null ? link("Следующие", `tasks/${list.state}/${list.next_offset}`, "btn secondary") : ""}</div>`
   );
 }
 function personalDetail(t) {
@@ -982,7 +1020,7 @@ function workers() {
   const w = data.workers;
   if (!w) return unavailable("Работники");
   return (
-    Header("Работники", "Workers R1 · CONNECTED TEST") +
+    Header("Работники", "Получение и отчёт · CONNECTED TEST") +
     notice(
       "Назначение и внутренний жизненный цикл сохраняются в TEST. Внешняя отправка, Telegram и новое понимание Dari: NOT AVAILABLE.",
     ) +
@@ -991,13 +1029,13 @@ function workers() {
       `<h2>Поручения</h2>${taskRows(w.tasks, true) || "<p>Пока нет задач.</p>"}`,
     ) +
     panel(
-      `<h2>Работники TEST</h2>${w.workers.map((x) => `<div class="list-row"><strong>${e(x.display_name)}</strong><small>${e(x.language)} · ${x.active ? "активен" : "неактивен"}</small></div>`).join("")}`,
+      `<h2>Работники TEST</h2>${w.workers.map((x) => `<div class="list-row"><strong>${e(x.display_name)}</strong><small>${e(x.language)} · ${x.active ? "активен" : "неактивен"}</small>${x.active ? btn("TEST-вход работника", "worker-session:" + x.id, "secondary") : ""}</div>`).join("")}`,
     )
   );
 }
 function workerForm() {
   return (
-    Header("Поручение работнику", "Создать черновик Workers R1", true) +
+    Header("Поручение работнику", "Получено → результат → проверка владельца", true) +
     panel(
       form(
         "worker",
@@ -1013,8 +1051,12 @@ function workerForm() {
   );
 }
 function workerDetail(t) {
+  const workerName = id => data.workers?.workers.find(w => w.id === id)?.display_name || id;
+  const cycleLabel = cycle => `Цикл ${cycle} · ${cycle === t.cycle ? "текущий" : "предыдущий"}`;
+  const reportClaim = {done:"Сделано", issue:"Проблема", note:"Замечание"};
+  const reportState = {draft:"Черновик", submitted:"Передан владельцу"};
   return (
-    Header(t.title, `Workers R1 · ${statuses[t.status] || t.status}`, true) +
+    Header(t.title, `${t.execution_contract === "R2_RECEIVED_REPORT" ? "Получение и отчёт" : "Поручение R1"} · ${statuses[t.status] || t.status}`, true) +
     panel(
       `<h2>Исходное поручение</h2><p class="original-text">${e(t.original_instruction)}</p>${facts(
         [
@@ -1038,7 +1080,8 @@ function workerDetail(t) {
               ["Проверенный текст", a.rendered_text],
               ["Язык", a.language],
               ["Отправка", a.delivery_state || "not_sent"],
-              ["Подтверждение", a.acknowledged_at || "Не подтверждено"],
+              ["Получение", a.acknowledged_at || "Пока не получено"],
+              ["Цикл назначения", a.cycle],
             ]),
           )
           .join("") || "<p>Не назначено.</p>"
@@ -1068,7 +1111,7 @@ function workerDetail(t) {
       }`,
     ) +
     panel(
-      `<h2>Отчёты</h2>${t.reports.map((r) => `<div class="list-row"><strong>${e(r.claim)} · ${e(r.state)}</strong><p class="original-text">${e(r.original_text)}</p>${r.state === "submitted" ? btn("Проверить отчёт", "review-report:" + r.id) : ""}</div>`).join("") || "<p>Отчётов пока нет.</p>"}<div id="action-error" class="form-error" role="alert"></div><div class="page-actions">${t.status === "reported" ? btn("Завершить после проверки", "worker-action:complete", "primary") : ""}${["completed", "cancelled"].includes(t.status) ? btn("Вернуть в работу", "worker-action:reopen") : btn("Отменить поручение", "worker-action:cancel")}</div><details><summary>История жизненного цикла</summary>${(
+      `<h2>Отчёты</h2>${t.execution_contract === "R2_RECEIVED_REPORT" ? `<details><summary>Исходные ответы работников</summary>${(t.response_history || []).map(x => `<div class="list-row"><strong>${e(workerName(x.worker_id))} · ${e(x.button_label)}</strong><p class="original-text">${e(x.comment || "")}</p><small>${e(cycleLabel(x.cycle))} · ${e(x.captured_at)} · выбор кнопки сохранён</small><details><summary>Идентичность источника</summary><p>${e(x.client_response_id)} · ${e(x.worker_id)}</p></details></div>`).join("") || "<p>Пока нет ответов.</p>"}</details>` : ""}${t.reports.map((r) => `<div class="list-row"><strong>${e(workerName(r.worker_id))} · ${e(reportClaim[r.claim] || r.claim)}</strong><small>${e(cycleLabel(r.cycle))} · ${e(reportState[r.state] || r.state)}</small><p class="original-text">${e(r.original_text)}</p>${r.state === "submitted" ? btn("Проверить отчёт", "review-report:" + r.id) : ""}</div>`).join("") || "<p>Отчётов пока нет.</p>"}<div id="action-error" class="form-error" role="alert"></div><div class="page-actions">${t.can_complete ? btn("Завершить после проверки", "worker-action:complete", "primary") : t.status === "reported" ? '<button type="button" class="btn primary" disabled>Ожидаются результаты и проверка проблем</button>' : ""}${["reported", "completed", "cancelled"].includes(t.status) ? btn("Вернуть в работу", "worker-action:reopen") : ""}${!["completed", "cancelled"].includes(t.status) ? btn("Отменить поручение", "worker-action:cancel") : ""}</div><details><summary>История жизненного цикла</summary>${(
         t.actions || []
       )
         .map((a) =>
@@ -1090,7 +1133,8 @@ function more() {
         ["Финансы", "finance"],
         ["Урожай / Депо", "harvest"],
         ["Склад", "inventory"],
-        ["Работники R1", "workers"],
+        ["Работники", "workers"],
+        ["Внесения", "fertilizer"],
         ["Источники", "sources"],
       ]
         .map(([l, r]) => link(e(l) + " " + icon("arrow"), r, "btn secondary"))
@@ -1103,7 +1147,7 @@ function more() {
         .map(([k, v]) => `<span>${e(k)}<strong>${v}</strong></span>`)
         .join(
           "",
-        )}</div>${notice("Fertilizer Builder остаётся отдельным синтетическим DEMO. Его цифры не участвуют в подключённых показателях.")}${'<a class="btn secondary" href="index.html#inventory" target="_blank" rel="noopener">Открыть отдельный Fertilizer DEMO</a>'}<p class="note">Физический iPhone, камера, клавиатура и микрофон требуют отдельной проверки владельца. Канонические требования не изменены.</p>${btn("Выйти", "logout", "secondary")}`,
+        )}</div>${notice("Внесения подключены к TEST: план, проверенное поручение, отчёт и отдельный фактический расход. Отдельный старый DEMO не участвует в учёте.")}${'<a class="btn secondary" href="index.html#inventory" target="_blank" rel="noopener">Открыть отдельный Fertilizer DEMO</a>'}<p class="note">Физический iPhone, камера, клавиатура и микрофон требуют отдельной проверки владельца. Канонические требования не изменены.</p>${btn("Выйти", "logout", "secondary")}`,
     )
   );
 }
@@ -1157,6 +1201,22 @@ async function render() {
         draft = loaded;
       }
       body = captureForm(arg || "text");
+    } else if (page === "money") {
+      const filters=financeSelection(route,localDay());
+      const loaded=await api.entityGet("/finance/analytics?"+financeQuery(filters));
+      if(token!==epoch)return;
+      current={...loaded,selection:filters};
+      body=financeAnalyticsView(loaded,filters);
+      lastFinanceRoute=financeRoute(filters);
+      await api.draft("finance-navigation",{route:lastFinanceRoute});
+      if(token!==epoch)return;
+    } else if (page === "money-document") {
+      const loaded=await api.entityGet("/finance/analytics/documents/"+arg);
+      if(token!==epoch)return;
+      current=loaded;
+      let back=lastFinanceRoute;
+      back=financeBackRoute(arg2,back);
+      body=financeDocumentView(loaded,back);
     } else if (page === "finance") body = finance(arg);
     else if (page === "settle") {
       if (!data.home) throw Error("Финансовые данные не загружены");
@@ -1241,8 +1301,45 @@ async function render() {
         current = {...loaded,journey};
       }
       body = depotDetail(current);
+    } else if(page==='invoice-new') {
+      const receipt=await api.entityGet('/purchases/'+arg),saved=await getDraft(route,{intent:''});
+      if(token!==epoch)return;current=receipt;draft=saved;body=invoiceNewForm(receipt);
+    } else if(page==='invoice-source') {
+      const receipt=await api.entityGet('/purchases/'+arg),source=await api.entityGet('/owner/captures/'+arg2);
+      const proposals=await Promise.all((source.proposals||[]).filter(p=>['PAYABLE','INVOICE_MATCH'].includes(p.action_type)).map(p=>api.entityGet('/owner/confirmations/'+p.id+'/preview')));
+      const payable=proposals.find(p=>p.action_type==='PAYABLE'),match=proposals.find(p=>p.action_type==='INVOICE_MATCH'),currency=arg3||payable?.revision.payload.currency||'TRY';
+      const finance=await api.entityGet('/finance/analytics?date_from='+localDay()+'&date_to='+localDay()+'&currency='+encodeURIComponent(currency));
+      if(!invoiceTargetMatches(arg,source,match))throw Error('Источник не связан с этим приходом в текущей ревизии. Откройте выбранный приход из истории поставок.');
+      const saved=await getDraft(route,{});if(token!==epoch)return;current={receipt,source,payable,match,documents:finance.debts.documents};draft=saved;body=invoiceWorkflowView(current);
+      if(!match&&['QUEUED','RUNNING'].includes(source.job?.state))readTimer=setTimeout(()=>{if(token===epoch&&!busy&&!document.activeElement?.closest('form'))render();},1500);
+    } else if (['purchases','stock-history'].includes(page)) {
+      const selection=historySelection(route),response=await api.entityGet((page==='purchases'?'/purchases':'/inventory/history')+'?'+historyQuery(selection));
+      if(token!==epoch)return;current={...response,selection};body=purchaseHistoryView(response,selection);
+    } else if (page==='purchase'||page==='stock-event') {
+      const response=await api.entityGet(page==='purchase'?'/purchases/'+arg:'/inventory/history/'+arg);
+      if(token!==epoch)return;current=response;
+      const back=arg2?decodeURIComponent(arg2):(page==='purchase'?'purchases':'stock-history');
+      body=page==='purchase'?purchaseDetailView(response,back):stockEventView(response,back);
+    } else if (page === "fertilizer") {
+      const filters={date_from:arg||localDay(),date_to:arg2||localDay(),greenhouse_id:arg3||''};
+      const refs=await api.entityGet('/fertilizer/references?event_date='+filters.date_to);
+      const result=await api.entityGet('/fertilizer?'+new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([,v])=>v))));
+      if(token!==epoch)return;current={refs,filters,result};body=fertilizerCalendarView(result,filters,refs);
+    } else if (['fertilizer-new','fertilizer-edit'].includes(page)) {
+      const plan=page==='fertilizer-edit'?await api.entityGet('/fertilizer/plans/'+arg):null;
+      let loaded=await api.readDraft(route);
+      const refs=await api.entityGet('/fertilizer/references?event_date='+(loaded?.date||plan?.input.event_date||localDay()));
+      if(!loaded){loaded=fertilizerDraft(refs,{id:crypto.randomUUID(),captured_at:new Date().toISOString(),product:page==='fertilizer-new'?arg:'',location:arg2||'',input:plan?.input});await api.draft(route,loaded);}
+      if(token!==epoch)return;draft=loaded;current={refs,plan};body=draft.review_mode&&draft.plan_preview?fertilizerPreviewView(draft.plan_preview,refs,!!plan):fertilizerEditorView(draft,refs,{editing:!!plan});
+    } else if (page === 'fertilizer-plan') {
+      const plan=await api.entityGet('/fertilizer/plans/'+arg);const refs=await api.entityGet('/fertilizer/references?event_date='+plan.input.event_date);
+      if(token!==epoch)return;current={plan,refs};body=fertilizerDetailView(plan,refs);
+    } else if (page === 'fertilizer-references') {
+      const refs=await api.entityGet('/fertilizer/references?event_date='+localDay());const loaded=await getDraft(route,{effective_from:localDay()});if(token!==epoch)return;current={refs};draft=loaded;body=fertilizerReferenceView(refs,draft);
+    } else if (page === 'fertilizer-actual') {
+      const plan=await api.entityGet('/fertilizer/plans/'+arg);let loaded=await api.readDraft(route);if(!loaded){loaded=fertilizerActualDraft(plan,crypto.randomUUID(),new Date().toISOString());loaded.plan_version=plan.version;await api.draft(route,loaded);}if(loaded.plan_version!==plan.version){delete loaded.actual_preview;delete loaded.actual_input;loaded.plan_version=plan.version;await api.draft(route,loaded);}if(token!==epoch)return;current={plan};draft=loaded;body=fertilizerActualView(plan,draft,draft.actual_preview);
     } else if (page === "inventory") body = inventory();
-    else if (page === "quick" && arg === "receipt") {
+    else if (page === "quick" && ["receipt","transfer"].includes(arg)) {
       if (!data.inventory) throw Error("Склад не загружен");
       {
         const loaded = await getDraft(route, {
@@ -1252,7 +1349,7 @@ async function render() {
         if (token !== epoch) return;
         draft = loaded;
       }
-      body = receiptForm(arg2);
+      body = arg === "transfer" ? transferForm(arg2) : receiptForm(arg2);
     } else if (page === "receipt") {
       {
         const loaded = await api.entityGet("/inventory/events/" + arg);
@@ -1301,7 +1398,7 @@ async function render() {
     shell(body);
     document.querySelector("#main").dataset.renderedRoute = route;
     document.querySelector("#main")?.focus({ preventScroll: true });
-    if(/^(harvest|report|depot)(\/|$)/.test(route) && harvestScroll.has(route))
+    if(/^(harvest|report|depot|money|money-document|purchases|purchase|stock-history|stock-event)(\/|$)/.test(route) && harvestScroll.has(route))
       window.scrollTo({top:harvestScroll.get(route),behavior:'instant'});
   } catch (error) {
     if (token === epoch) shell(errorBox(error));
@@ -1309,7 +1406,7 @@ async function render() {
 }
 function values(form) {
   const result=Object.fromEntries(new FormData(form).entries());
-  if(form.dataset.form==='depot' || form.dataset.form?.startsWith('journey-'))
+  if(form.dataset.form==='depot' || form.dataset.form?.startsWith('journey-') || form.dataset.form?.startsWith('fertilizer-'))
     for(const box of form.querySelectorAll('input[type=checkbox][name]')) result[box.name]=box.checked?'on':'';
   return result;
 }
@@ -1371,15 +1468,27 @@ async function action(run, node = null) {
     syncReceiptConfirmation();
   }
 }
+function assertSubmissionScope(snapshot) {
+  if (snapshot.scope !== api.scope || snapshot.generation !== api.generation)
+    throw Error("Сессия изменилась. Исходник прежнего владельца не отправлен.");
+}
 async function saveDraft(snapshot) {
   const { draft, route, fields, file } = snapshot;
   if (!draft) return;
+  assertSubmissionScope(snapshot);
+  const {scope, generation} = snapshot;
   Object.assign(draft, fields);
-  if (file) draft.file = await fileSource(file);
+  await attachmentReads.merge(scope, route, draft, file);
+  if (scope !== api.scope || generation !== api.generation)
+    throw Error("Сессия изменилась. Исходник прежнего владельца не отправлен.");
   await api.draft(route, draft);
 }
 async function clearDraft(id) {
-  await api.store.delete(`${api.scope}:draft:${id}`);
+  const scope = api.scope, generation = api.generation;
+  const stored = await api.readDraft(id);
+  if (scope !== api.scope || generation !== api.generation) throw Error("Сессия изменилась.");
+  if (stored?.id) attachmentReads.clear(scope, id, stored.id);
+  await api.store.delete(`${scope}:draft:${id}`);
 }
 async function finish(to, message) {
   const origin = activeActionRoute;
@@ -1403,6 +1512,7 @@ function integerOrUnknown(value) {
   return Number(value);
 }
 async function submitForm(formEl, snapshot) {
+  assertSubmissionScope(snapshot);
   const { draft, current, route } = snapshot;
   const submittedDraft = draft,
     submittedCurrent = current;
@@ -1410,8 +1520,45 @@ async function submitForm(formEl, snapshot) {
     v = snapshot.fields,
     savedRoute = route;
   if (draft) await saveDraft(snapshot);
-  if (name === "harvest-filters") {
+  assertSubmissionScope(snapshot);
+  if(name === 'fertilizer-filters') {
+    if(!v.date_from||!v.date_to||v.date_from>v.date_to)throw Error('Проверьте даты периода.');go('fertilizer/'+v.date_from+'/'+v.date_to+'/'+(v.greenhouse_id||''));
+  } else if(name === 'fertilizer-plan') {
+    const input=fertilizerPlanInput(draft,current.refs);await api.draft(savedRoute,draft);
+    const preview=await api.request(entityPath('/fertilizer/plans/preview'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});assertSubmissionScope(snapshot);
+    draft.plan_input=input;draft.plan_preview=preview;draft.review_mode=true;draft.expected_version=current.plan?.version||null;await api.draft(savedRoute,draft);if(route===savedRoute)await render();
+  } else if(name === 'fertilizer-reference') {
+    if(!v.work_area_id)throw Error('Выберите реальную часть или теплицу.');
+    const previous=(current.refs.bindings||[]).filter(b=>b.work_area_id===v.work_area_id).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))[0];
+    const body={client_reference_id:draft.id,captured_at:draft.captured_at,work_area_id:v.work_area_id,area_da:exactFertilizerNumber(v.area_da,{optional:true}),default_worker_id:v.default_worker_id||null,canonical_key:v.canonical_key||null,verification:requireText(v.verification,'основание проверки'),effective_from:v.effective_from,replaces_id:previous?.id||null,confirmed:true};
+    await api.mutate(entityPath('/fertilizer/references'),body,draft.id);await clearDraft(savedRoute);if(route===savedRoute)await render();
+  } else if(name === 'fertilizer-actual') {
+    const input=fertilizerActualInput(draft,current.plan);const preview=await api.request(entityPath('/fertilizer/plans/'+current.plan.id+'/actual-preview'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});assertSubmissionScope(snapshot);draft.actual_input=input;draft.actual_preview=preview;await api.draft(savedRoute,draft);if(route===savedRoute)await render();
+  } else if (name === 'history-filters') {
+    if(v.date_from&&v.date_to&&v.date_from>v.date_to)throw Error('Начало периода должно быть не позже окончания.');
+    go(historyRoute(current.selection,{...v,offset:0}));
+  } else if (name === "finance-filters") {
+    if(!v.date_from || !v.date_to || v.date_from>v.date_to)throw Error("Проверьте даты: начало периода должно быть не позже окончания.");
+    go(financeRoute(current.selection,{date_from:v.date_from,date_to:v.date_to,currency:v.currency,greenhouse_id:v.greenhouse_id || null,money_account_id:v.currency!==current.selection.currency?null:(Object.hasOwn(v,"money_account_id")?(v.money_account_id || null):current.selection.money_account_id)}));
+  } else if (name === "harvest-filters") {
     go(harvestRoute(current.selection,{season_start_year:Number(v.season_start_year),greenhouse_id:v.greenhouse_id || null,currency:v.currency || current.selection.currency,allocation:v.allocation || "all",month:null}));
+  } else if (name === 'invoice-source') {
+    if(!['operating_expense','existing_payable'].includes(draft.intent))throw Object.assign(Error('Выберите назначение документа.'),{field:'intent'});
+    if(!draft.text?.trim()&&!draft.file)throw Object.assign(Error('Добавьте текст документа или оригинальный файл.'),{field:'text'});
+    const body={client_capture_id:draft.id,captured_at:draft.captured_at,timezone:'Europe/Istanbul',capture_context:'supplier_invoice',invoice_intent:draft.intent,invoice_receipt_id:current.id,mode:draft.file?(draft.file.mime_type==='application/pdf'?'file':'photo'):'text',...(draft.text?.trim()?{text:draft.text}:{}),...(draft.file||{})};
+    const source=await api.entityPost('/owner/captures',body,draft.id);
+    await clearDraft(savedRoute);await finish('invoice-source/'+current.id+'/'+source.id,'Оригинал счёта сохранён. Проведённых операций ещё нет.');
+  } else if(name==='invoice-edit-fact') {
+    const proposal=current.payable,key=formEl.dataset.field,payload={...proposal.revision.payload};
+    let value=v.value===''?null:v.value;if(key==='amount'&&value)value=exactMoney(value);payload[key]=value;
+    await api.entityPost('/owner/confirmations/'+proposal.id+'/revise',{expected_version:proposal.version,payload,reason:'Владелец уточнил один факт счёта: '+fieldLabel(key)},proposal.id+':invoice-edit:'+proposal.version);
+    sheetRoot.innerHTML='';await finish(savedRoute,'Уточнение сохранено отдельной ревизией. Оригинал не менялся.');
+  } else if(name==='invoice-link') {
+    const proposal=current.match,document=current.documents.find(d=>d.obligation_id===v.obligation),effectId=current.payable?.confirmed_effect?.effect?.id;
+    if(!document||document.direction!=='payable'||document.status!=='posted'||(effectId&&document.obligation_id!==effectId))throw Object.assign(Error('Выберите подтверждённый долг нужного документа.'),{field:'obligation'});
+    const payload={...proposal.revision.payload,receipt_id:current.receipt.id,finance_obligation_id:document.obligation_id,note:v.note||null};
+    await api.entityPost('/owner/confirmations/'+proposal.id+'/revise',{expected_version:proposal.version,payload,reason:'Владелец явно выбрал приход и уже учтённый финансовый документ'},proposal.id+':invoice-link:'+proposal.version);
+    await clearDraft(savedRoute);await finish(savedRoute,'Связь подготовлена к отдельному подтверждению. Движений и оплаты нет.');
   } else if (name === "capture") {
     const kind = route.split("/")[1],
       body = {
@@ -1592,15 +1739,18 @@ async function submitForm(formEl, snapshot) {
       "depot/" + current.id,
       "Чек подтверждён сервером. Продажа и долг сохранены.",
     );
-  } else if (name === "receipt") {
+  } else if (["receipt","transfer"].includes(name)) {
     const p = data.inventory.products.find((p) => p.id === draft.product),
       location = data.inventory.locations.find((x) => x.id === draft.location);
     if (!p || !location)
       throw Object.assign(Error("Выберите товар и отдельно настроенное место хранения."), {field: !p ? "product" : "location"});
     if (!draft.quantity) throw Object.assign(Error("Укажите количество прихода."), {field:"quantity"});
     if (!draft.date) throw Object.assign(Error("Укажите дату прихода."), {field:"date"});
+    const destination = name === "transfer" ? data.inventory.locations.find(x=>x.id===draft.destination) : null;
+    if(name === "transfer" && (!destination || destination.id===location.id)) throw Object.assign(Error("Выберите другое настроенное место назначения."),{field:"destination"});
+    const sourceKind = name === "transfer" ? "inventory_transfer" : "inventory_receipt";
     const body = {
-      kind: "receipt",
+      kind: name,
       event_date: draft.date,
       lines: [
         {
@@ -1609,17 +1759,18 @@ async function submitForm(formEl, snapshot) {
           quantity: quantity(draft.quantity),
           unit: p.base_unit,
           location_id: location.id,
+          ...(destination ? {destination_id:destination.id} : {}),
           unit_cost: null,
           currency: null,
         },
       ],
       notes: null, // Optional comment belongs to the immutable source, not the physical payload.
       evidence: {
-        source: "owner_form:v1:inventory_receipt",
+        source: name === "transfer" ? "owner_form:v1:inventory_transfer" : "owner_form:v1:inventory_receipt",
         locator: draft.id,
-        structured_original: ownerFormSource("inventory_receipt", draft, {
+        structured_original: ownerFormSource(sourceKind, draft, {
           event_date: draft.date, product_id: p.id, original_product_name: p.name,
-          location_id: location.id, quantity: draft.quantity, unit: p.base_unit,
+          location_id: location.id, ...(destination ? {destination_id:destination.id} : {}), quantity: draft.quantity, unit: p.base_unit,
           notes: draft.original,
         }),
         ...(draft.file || {}),
@@ -1629,7 +1780,7 @@ async function submitForm(formEl, snapshot) {
     await clearDraft(savedRoute);
     await finish(
       "receipt/" + result.id,
-      "Черновик прихода сохранён. Движений пока нет.",
+      name === "transfer" ? "Черновик перемещения сохранён. Движений пока нет." : "Черновик прихода сохранён. Движений пока нет.",
     );
   } else if (name === "product") {
     const body = {
@@ -1645,8 +1796,17 @@ async function submitForm(formEl, snapshot) {
       body,
       draft.id + ":product",
     );
-    submittedDraft.product = result.id;
-    await api.draft(savedRoute, submittedDraft);
+    assertSubmissionScope(snapshot);
+    const receiptScope = snapshot.scope, receiptGeneration = snapshot.generation;
+    const latestReceipt = await api.readDraft(savedRoute);
+    if (latestReceipt?.id !== submittedDraft.id)
+      throw Error("Товар создан, но исходный приход уже изменился. Новый черновик не перезаписан; выберите товар из справочника.");
+    const resumedDraft = latestReceipt;
+    resumedDraft.product = result.id;
+    await attachmentReads.merge(receiptScope, savedRoute, resumedDraft);
+    if (receiptScope !== api.scope || receiptGeneration !== api.generation)
+      throw Error("Сессия изменилась. Карточка товара сохранена для прежнего владельца.");
+    await api.draft(savedRoute, resumedDraft);
     await refreshData();
     if ((location.hash.slice(1) || "home") === savedRoute) {
       sheetRoot.innerHTML = "";
@@ -1665,6 +1825,7 @@ async function submitForm(formEl, snapshot) {
         planned_date: draft.date || null,
         owner_language: "ru",
         category: "general",
+        execution_contract: "R2_RECEIVED_REPORT",
         source: "owner:r3-connected-test",
         locator: draft.id,
       },
@@ -1689,7 +1850,7 @@ async function submitForm(formEl, snapshot) {
         language: v.language,
         translation_source:
           v.language === "ru" ? "original" : "owner_reviewed_translation",
-        translation_version: "manual-r1",
+        translation_version: current.execution_contract === "R2_RECEIVED_REPORT" ? "manual-r2" : "manual-r1",
         rendering_reviewed: true,
       },
       current.id + ":assign:" + current.version + ":" + w.id,
@@ -1733,7 +1894,7 @@ async function submitForm(formEl, snapshot) {
       body.locator,
     );
     sheetRoot.innerHTML = "";
-    await finish(route, "Действие Workers R1 сохранено.");
+    await finish(route, "Действие поручения сохранено.");
   }
 }
 function openSheet(title, body) {
@@ -1864,7 +2025,7 @@ document.addEventListener("submit", (event) => {
   if (!formEl) return;
   event.preventDefault();
   const snapshot = submissionSnapshot(
-    { draft, current, route },
+    { draft, current, route, scope: api.scope, generation: api.generation },
     values(formEl),
     formEl.querySelector("[name=file]")?.files?.[0] || null,
   );
@@ -1886,13 +2047,14 @@ document.addEventListener("input", (event) => {
   if (
     !formEl ||
     !draft ||
-    ["product", "edit-fact", "edit-depot-line"].includes(formEl.dataset.form)
+    ["product", "edit-fact", "edit-depot-line", "invoice-edit-fact"].includes(formEl.dataset.form)
   )
     return;
   if (event.target.type === "file") return;
   const fields = values(formEl);
   delete fields.file;
   Object.assign(draft, fields);
+  if(formEl.dataset.form.startsWith('fertilizer-')){if(formEl.dataset.form==='fertilizer-plan'){invalidateFertilizerReview(draft,event.target.name);for(const box of formEl.querySelectorAll('[name^=reviewed_]'))box.checked=draft[box.name]==='on';}delete draft.actual_preview;delete draft.actual_input;delete draft.plan_preview;draft.review_mode=false;const confirm=document.querySelector('[data-action=fert-confirm-actual]');if(confirm)confirm.disabled=true;}
   api.draft(route, draft).catch((error) => showError(error, formEl));
   if (formEl.dataset.form === "payment") {
     const total = document.querySelector("#payment-total");
@@ -1908,14 +2070,31 @@ document.addEventListener("change", (event) => {
     const formEl = event.target.closest("form"),
       file = event.target.files[0];
     if (file) {
-      const savedDraft = draft,
-        savedRoute = route;
-      action(async () => {
-        savedDraft.file = await fileSource(file);
-        savedDraft.binary = savedDraft.file;
-        await api.draft(savedRoute, savedDraft);
-        toast("Копия на телефоне. На сервер ещё не сохранено.");
-      }, formEl);
+      const savedDraft = draft, savedRoute = route, scope = api.scope,
+        generation = api.generation, input = event.target;
+      input.dataset.attachmentState = "reading";
+      // File selection is source capture, not a second accounting action. It
+      // must survive a concurrent product save instead of action() dropping it.
+      attachmentReads.begin(scope, savedRoute, savedDraft, file).then(async () => {
+        const stored = await api.readDraft(savedRoute);
+        if (scope !== api.scope || generation !== api.generation || stored?.id !== savedDraft.id ||
+            !attachmentReads.current(scope, savedRoute, savedDraft.id, file)) return;
+        const target = route === savedRoute && draft?.id === savedDraft.id ? draft : stored;
+        await attachmentReads.merge(scope, savedRoute, target);
+        if (scope !== api.scope || generation !== api.generation ||
+            !attachmentReads.current(scope, savedRoute, savedDraft.id, file)) return;
+        await api.draft(savedRoute, target);
+        if (scope !== api.scope || generation !== api.generation) return;
+        if (route === savedRoute && draft?.id === target.id) {
+          draft.file = target.file; draft.binary = target.file;
+          toast("Копия на телефоне. На сервер ещё не сохранено.");
+        }
+        if (input.isConnected) input.dataset.attachmentState = "ready";
+      }).catch(error => {
+        if (scope !== api.scope || generation !== api.generation) return;
+        if (input.isConnected) input.dataset.attachmentState = "error";
+        if (route === savedRoute) showError(error, formEl);
+      });
     }
   }
   if (
@@ -1927,6 +2106,12 @@ document.addEventListener("change", (event) => {
       data.workers.workers.find((w) => w.id === event.target.value)?.language ||
       "";
   }
+  if(event.target.closest('[data-form=fertilizer-plan]') && draft) {
+    if(event.target.name==='greenhouse' || event.target.name==='date' || event.target.name.startsWith('part_') || event.target.name.startsWith('product_')) return action(async()=>{Object.assign(draft,values(event.target.closest('form')));if(event.target.name==='greenhouse'){for(const key of Object.keys(draft))if(/^(part_|worker_|reviewed_)/.test(key)&&!['part_cards'].includes(key))delete draft[key];}invalidateFertilizerReview(draft,event.target.name);delete draft.plan_preview;draft.review_mode=false;await api.draft(route,draft);await render();},event.target.closest('form'));
+  }
+  if(event.target.closest('[data-form=fertilizer-reference]') && event.target.name==='canonical_key' && draft){
+    const c=current.refs.canonical_candidates.find(c=>c.key===event.target.value);if(c){draft.canonical_key=c.key;draft.area_da=c.area_da||'';draft.verification=c.provenance||'Проверено соответствие CURRENT';const f=event.target.closest('form');f.querySelector('[name=area_da]').value=draft.area_da;f.querySelector('[name=verification]').value=draft.verification;api.draft(route,draft).catch(error=>showError(error,f));}
+  }
   if (event.target.name === "product" && draft) {
     draft.product = event.target.value;
     const unit = document.querySelector("[name=unit]");
@@ -1937,7 +2122,7 @@ document.addEventListener("change", (event) => {
   }
 });
 document.addEventListener('click',event=>{
-  if(event.target.closest('a[href^="#"], [data-action="back"]') && /^(harvest|report|depot)(\/|$)/.test(route)) harvestScroll.set(route,scrollY);
+  if(event.target.closest('a[href^="#"], [data-action="back"]') && /^(harvest|report|depot|money|money-document|purchases|purchase|stock-history|stock-event)(\/|$)/.test(route)) harvestScroll.set(route,scrollY);
 },true);
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
@@ -1947,6 +2132,37 @@ document.addEventListener("click", (event) => {
   const command = button.dataset.action;
   const [name, ...rest] = command.split(":"),
     arg = rest.join(":");
+  if(name.startsWith('fert-')) return action(async()=>{
+    const origin=route,scope=api.scope,generation=api.generation,plan=current?.plan;
+    const guard=()=>{if(scope!==api.scope||generation!==api.generation)throw Error('Сессия изменилась.');};
+    if(name==='fert-select-known'){
+      const f=document.querySelector('[data-form=fertilizer-actual]');if(f)Object.assign(draft,values(f));
+      for(const c of plan.cards||[]){if(c.current_report?.response!=='DONE')continue;let full=true;for(const x of c.components||[]){const q=(plan.proposed_actual_lines||[]).find(l=>l.card_id===c.card_id&&l.component_id===x.component_id);if(q?.quantity==null||!/[1-9]/.test(String(q.quantity))){full=false;continue;}const key=c.card_id+'_'+x.component_id;draft['selected_'+key]='on';draft['quantity_'+key]=q.quantity;draft['disposition_'+key]='APPLIED';}if(full)draft['completed_'+c.card_id]='on';}
+      delete draft.actual_preview;delete draft.actual_input;await api.draft(origin,draft);if(route===origin)await render();return;
+    }
+    if(['fert-add','fert-remove','fert-all','fert-edit-preview'].includes(name)){
+      if(!draft)throw Error('Черновик не открыт.');const f=document.querySelector('[data-form=fertilizer-plan]');if(f)Object.assign(draft,values(f));
+      if(name==='fert-add'){const id=crypto.randomUUID();draft.components.push(id);draft['location_'+id]=draft['location_'+draft.components[0]]||'';}
+      if(name==='fert-remove'&&draft.components.length>1)draft.components=draft.components.filter(x=>x!==arg);
+      if(name==='fert-all')for(const p of current.refs.work_areas.filter(p=>p.parent_id===draft.greenhouse))draft['part_'+p.id]='on';
+      if(name!=='fert-edit-preview')for(const key of Object.keys(draft))if(key.startsWith('reviewed_'))draft[key]='';draft.review_mode=false;delete draft.plan_preview;await api.draft(origin,draft);if(route===origin)await render();return;
+    }
+    if(name==='fert-save'){
+      if(!draft?.plan_preview||!draft.plan_input)throw Error('Сначала рассчитайте текущие поля.');const body=plan?{expected_version:draft.expected_version,input:draft.plan_input}:draft.plan_input;
+      const saved=await api.mutate(entityPath('/fertilizer/plans'+(plan?'/'+plan.id+'/revisions':'')),body,draft.id);guard();await clearDraft(origin);await finish('fertilizer-plan/'+(saved.id||plan?.id),'План сохранён на сервере. Склад не списан.');return;
+    }
+    if(name==='fert-dispatch'){
+      if(!plan?.can_dispatch)throw Error('Сначала уточните обязательные данные и проверьте инструкцию.');
+      const key='fert-dispatch:'+plan.id+':'+plan.version;let command=await api.readDraft(key);guard();if(!command){command={client_approval_id:crypto.randomUUID(),captured_at:new Date().toISOString(),expected_version:plan.version,revision:plan.revision,preview_digest:plan.preview_digest,confirmed:true};await api.draft(key,command);}guard();await api.mutate(entityPath('/fertilizer/plans/'+plan.id+'/dispatch'),command,command.client_approval_id);guard();if(route===origin)await render();return;
+    }
+    if(name==='fert-copy'){
+      const restriction=fertilizerEditRestriction(plan.input);if(restriction)throw Error(restriction);
+      const next=fertilizerDraft(current.refs,{id:crypto.randomUUID(),captured_at:new Date().toISOString(),input:plan.input});next.copied_from_plan_id=plan.id;next.copied_from_revision=plan.revision;next.copy_reason='';next.date=localDay();next.intended_send_at=localDay()+'T08:00';for(const k of Object.keys(next))if(k.startsWith('reviewed_'))next[k]='';next.part_cards={};next.component_cards={};const key='fertilizer-new/'+crypto.randomUUID();await api.draft(key,next);guard();go(key);return;
+    }
+    if(name==='fert-confirm-actual'){
+      if(!draft?.actual_preview?.can_confirm||!draft.actual_input)throw Error('Поля изменились или не готовы. Повторите проверку эффекта.');const body={input:draft.actual_input,actual_preview_digest:draft.actual_preview.actual_preview_digest,confirmed:true};await api.mutate(entityPath('/fertilizer/plans/'+plan.id+'/actual'),body,draft.id);guard();await clearDraft(origin);await finish('fertilizer-plan/'+plan.id,'Фактическое внесение подтверждено сервером.');
+    }
+  },document.querySelector('[data-form^=fertilizer-]'));
   if (name === "radial-toggle") return setRadial(!radial);
   if (name === "radial-close") return setRadial(false);
   if (name === "back") return history.length > 1 ? history.back() : go("home");
@@ -1955,7 +2171,25 @@ document.addEventListener("click", (event) => {
     sheetRoot.innerHTML = "";
     return;
   }
+  if (name === "worker-session") return action(async () => {
+    const stamp=api.generation,scope=api.scope,origin=route;
+    const worker=data.workers?.workers.find(w=>w.id===arg&&w.active);
+    if(!worker)throw Error("Работник недоступен в текущем хозяйстве.");
+    const session=await api.request("/preview/workers/"+worker.id+"/session",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+    if(stamp!==api.generation||scope!==api.scope||route!==origin)return;
+    const until=new Date(Date.now()+session.expires_in*1000).toLocaleString("ru-RU",{timeZone:"Europe/Istanbul"});
+    openSheet("TEST-вход: "+worker.display_name,`<p>Откройте <a href="/worker" target="_blank" rel="noopener">страницу работника</a> в отдельном окне и вставьте временный ключ.</p><label>Ключ работника<textarea id="worker-test-key" readonly autocomplete="off">${e(session.token)}</textarea></label><p>До ${e(until)} по Стамбулу, пока работает TEST. Только синтетические поручения. Ключ не отправлен работнику.</p>`);
+  },button);
   if (name.startsWith("capture-")) return go("capture/" + name.slice(8));
+  if (name === 'invoice-edit') {
+    const p=current.payable;if(!p||!['amount','currency','event_date','counterparty_id','description','due_date'].includes(arg))return;
+    const value=p.revision.payload[arg];let control;
+    if(arg==='counterparty_id')control=select('Поставщик','value',(data.home?.finance.references||[]).filter(r=>r.kind==='counterparty').map(r=>({id:r.id,name:r.original_name||r.name})),value);
+    else if(arg==='currency')control=select('Валюта','value',['TRY','USD','EUR','UAH'].map(value=>({value,label:value})),value);
+    else if(arg==='description')control=area('За что','value',value);
+    else control=field(fieldLabel(arg),'value',value,arg.endsWith('date')?'date':'text',arg==='amount'?'inputmode="decimal"':'');
+    return openSheet('Уточнить один факт счёта',`<form data-form="invoice-edit-fact" data-field="${e(arg)}">${control}<p class="note">Изменится ревизия, исходник сохранится.</p><div class="form-error" role="alert"></div>${submit('Сохранить факт')}</form>`);
+  }
   if (name === "edit") return editFact(arg);
   if(name==='edit-depot-line') {
     const i=Number(arg),l=current.revision.payload.lines[i];
@@ -2047,6 +2281,16 @@ document.addEventListener("click", (event) => {
       await api.entityPost('/harvest/settlements/'+current.id+'/estimates',checked.body,checked.intent);
       estimateReview=null;sheetRoot.innerHTML='';await clearDraft(route);return finish('depot/'+current.id,'Оценка подтверждена отдельной версией. Итог продажи не изменился.');
     }
+    if(name==='invoice-choose-link') {
+      draft.choose='yes';await api.draft(route,draft);return render();
+    }
+    if(name==='invoice-confirm-payable'||name==='invoice-confirm-link') {
+      const proposal=name==='invoice-confirm-payable'?current.payable:current.match;
+      if(!proposal||proposal.revision.missing?.length)throw Error('Сначала уточните необходимые факты.');
+      if(name==='invoice-confirm-link'&&(!invoiceTargetMatches(current.receipt.id,current.source,proposal)||!proposal.revision.payload.finance_obligation_id||draft.choose==='yes'))throw Error('Сначала проверьте выбранный документ.');
+      await api.entityPost('/owner/confirmations/'+proposal.id+'/confirm',{expected_version:proposal.version,preview_digest:proposal.revision.preview_digest,confirmed:true,reason:name==='invoice-confirm-payable'?'Владелец подтвердил операционный расход и долг без оплаты':'Владелец подтвердил только явную связь счёта и прихода'},proposal.id+':confirm:'+proposal.version);
+      return finish(route,name==='invoice-confirm-payable'?'Расход и долг подтверждены сервером. Теперь отдельно проверьте связь с приходом.':'Связь подтверждена. Склад и деньги повторно не проводились.');
+    }
     if (name === "confirm-proposal") {
       const confirmed = await api.entityPost(
         "/owner/confirmations/" + current.id + "/confirm",
@@ -2099,7 +2343,7 @@ document.addEventListener("click", (event) => {
         },
         current.id + ":post:" + current.version,
       );
-      return finish(route, "Физический приход подтверждён сервером.");
+      return finish(route, current.kind === "transfer" ? "Перемещение подтверждено сервером." : "Физический приход подтверждён сервером.");
     }
     if (name === "personal-state") {
       await api.entityPost(
@@ -2162,8 +2406,10 @@ window.addEventListener("keydown", (event) => {
     const generation = api.generation;
     await refreshData();
     const navigation=await api.readDraft("harvest-navigation");
+    const financeNavigation=await api.readDraft("finance-navigation");
     if (generation !== api.generation) return;
     lastHarvestRoute=navigation?.route || "harvest";
+    lastFinanceRoute=financeNavigation?.route || "money";
     ready = true;
     await render();
   } catch (error) {

@@ -11,11 +11,12 @@ SOURCE_PREFIX = 'owner_form:v1:'
 FIELDS = {
     'field_harvest': {'event_date','original_greenhouse','work_area_id','cut_count','field_weight_kg','reporter','notes'},
     'inventory_receipt': {'event_date','product_id','original_product_name','location_id','quantity','unit','notes'},
+    'inventory_transfer': {'event_date','product_id','original_product_name','location_id','destination_id','quantity','unit','notes'},
 }
 
 class OwnerFormSource(StrictModel):
     schema_version: Literal[1]
-    form_kind: Literal['field_harvest','inventory_receipt']
+    form_kind: Literal['field_harvest','inventory_receipt','inventory_transfer']
     form_id: UUID
     captured_at: str = Field(min_length=1,max_length=80)
     timezone: Literal['Europe/Istanbul']

@@ -398,3 +398,58 @@
 
 /* Source facts remain readable even for long original labels and exact values. */
 .connected #main[data-rendered-route^="depot/"] .fact-row > * { min-width: 0; overflow-wrap: anywhere; }
+
+/* Connected Finance only: compact B-direction cards, exact amounts never clip. */
+.connected .money-tabs {display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 18px;}
+.connected .money-tab {min-height:44px;display:flex;align-items:center;padding:10px 14px;background:#eef4ed;border-radius:12px;font-weight:650;color:#385d43;}
+.connected .money-tab.active {background:#176442;color:#fff;}
+.connected .money-filters {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;margin-bottom:16px;}
+.connected .money-filters .form-error {grid-column:1/-1;}
+.connected .money-filters button {align-self:end;margin:16px 0;min-height:48px;}
+.connected .money-summary-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.connected .money-summary {display:flex;flex-direction:column;gap:10px;min-height:148px;}
+.connected .money-summary .exact-value, .connected .money-card .exact-value {white-space:normal;overflow-wrap:anywhere;min-width:0;}
+.connected .money-summary small {color:#607165;font-size:12px;}
+.connected .money-kpi {font-size:clamp(20px,3.2vw,30px);line-height:1.18;overflow-wrap:anywhere;}
+.connected .money-fact {display:flex;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px solid #e8ede4;}
+.connected .money-fact>div {flex:1;min-width:0;}
+.connected .money-fact strong {max-width:57%;text-align:right;overflow-wrap:anywhere;}
+.connected .money-fact small {display:block;margin-top:5px;color:#66766a;font-size:12px;}
+.connected .money-card details {margin-top:14px;}
+.connected .money-card summary {min-height:44px;padding:12px 0;cursor:pointer;font-weight:650;}
+.connected .money-event {padding:16px 0;border-bottom:1px solid #e3ebe0;}
+.connected .money-event h3 {margin:10px 0;overflow-wrap:anywhere;}
+.connected .money-event .card-header {align-items:flex-start;gap:12px;}
+.connected .money-event .card-header>* {min-width:0;overflow-wrap:anywhere;}
+.connected .money-event .page-actions {flex-wrap:wrap;}
+@media(max-width:360px){.connected .money-summary-grid{grid-template-columns:1fr}.connected .money-filters{gap:0 8px}.connected .money-tab{padding:10px;font-size:13px}.connected .money-fact{gap:8px}}
+@media(min-width:768px){.connected .money-filters{grid-template-columns:repeat(3,minmax(0,1fr));}.connected .money-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
+
+/* Purchase history retains independent physical/document/payment facts. */
+.connected .purchase-filters {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;}
+.connected .purchase-filters label {min-width:0;}
+.connected .purchase-filters button {align-self:end;min-height:48px;margin:16px 0;}
+.connected .purchase-filters .form-error {grid-column:1/-1;}
+.connected .purchase-card {min-width:0;overflow-wrap:anywhere;}
+.connected .purchase-card .page-actions {flex-wrap:wrap;}
+.connected .purchase-card details {margin:12px 0;}
+.connected .purchase-card summary {min-height:44px;padding:10px 0;font-weight:650;cursor:pointer;}
+.connected .purchase-line {padding:14px 0;border-bottom:1px solid #e5ece1;}
+.connected .purchase-line h3 {margin:0 0 10px;}
+.connected .purchase-fact {display:flex;justify-content:space-between;gap:12px;padding:8px 0;}
+.connected .purchase-fact>* {min-width:0;overflow-wrap:anywhere;}
+.connected .purchase-fact strong {max-width:60%;text-align:right;}
+@media(min-width:768px){.connected .purchase-filters{grid-template-columns:repeat(3,minmax(0,1fr));}}
+
+/* Connected fertilizer cards retain exact server quantities and mobile actions. */
+.connected .fertilizer-connected fieldset { min-width:0; border:1px solid var(--line,#dce6dd); border-radius:14px; margin:16px 0; padding:14px; }
+.connected .fertilizer-connected legend { max-width:100%; font-weight:700; overflow-wrap:anywhere; }
+.connected .fertilizer-component { border-bottom:1px solid var(--line,#dce6dd); padding:14px 0; }
+.connected .fertilizer-quantity { display:grid; grid-template-columns:minmax(0,1fr) minmax(70px,auto); gap:8px; padding:12px 0; border-bottom:1px solid var(--line,#dce6dd); }
+.connected .fertilizer-quantity small { grid-column:1/-1; }
+.connected .fertilizer-quantity span,.connected .fertilizer-totals span { white-space:normal; overflow-wrap:anywhere; font-weight:700; }
+.connected .fertilizer-totals p { display:flex; flex-wrap:wrap; justify-content:space-between; gap:10px; }
+.connected .fertilizer-totals strong,.connected .fertilizer-quantity strong { min-width:0; overflow-wrap:anywhere; }
+.connected .fertilizer-connected textarea { min-height:110px; scroll-margin-block:110px; }
+.connected .fertilizer-connected .source-json { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; max-height:480px; overflow:auto; }
+.connected .fertilizer-connected button,.connected .fertilizer-connected .btn { min-height:44px; white-space:normal; }

@@ -466,3 +466,16 @@ dialog[open] { opacity: 1; }
 .task-relative-context { color: var(--green); line-height: 1.5; }
 .task-date-question { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--warning-soft); color: var(--warning); }
 #task-details-extra > .actions { padding-top: 8px; }
+/* Scoped R2 worker actions retain the existing worker shell. */
+#worker-app { padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
+#worker-app .worker-r2-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+#worker-app .worker-r2-actions button { flex: 1 1 110px; min-height: 48px; white-space: normal; }
+#worker-app .worker-instruction, #worker-app .worker-response-history p, #worker-app .worker-pending p { white-space: pre-wrap; overflow-wrap: anywhere; }
+#worker-app .worker-response-history small { display: block; overflow-wrap: anywhere; }
+#worker-app .worker-pending button { min-height: 48px; margin: 8px 8px 0 0; }
+.worker-fertilizer { min-width:0; overflow-wrap:anywhere; }
+.worker-fertilizer .actions { display:flex; flex-wrap:wrap; gap:8px; }
+.worker-fertilizer button { min-height:44px; white-space:normal; }
+.worker-fertilizer textarea,.worker-fertilizer input { width:100%; min-width:0; box-sizing:border-box; scroll-margin-block:90px; }
+.worker-fertilizer .fertilizer-worker-component { border-bottom:1px solid #dce6dd; padding:12px 0; }
+.worker-product-image { max-width:100%; height:auto; }

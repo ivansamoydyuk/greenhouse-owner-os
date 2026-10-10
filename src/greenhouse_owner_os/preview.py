@@ -330,8 +330,8 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
             result.update(mode='CONNECTED_TEST', backend_connected=True, synthetic_only=True,
                 owner_id=str(actor), expires_at=datetime.fromtimestamp(expires_at, timezone.utc).isoformat(),
                 capabilities={'capture':True, 'review_confirm':True, 'finance':True, 'harvest':True,
-                    'inventory':True, 'personal_tasks':True, 'worker_tasks':'R1_DRAFT_ASSIGNMENT_ONLY',
-                    'fertilizer_planning':'DEMO_ONLY', 'real_dispatch':False, 'external_integrations':False},
+                    'inventory':True, 'personal_tasks':True, 'worker_tasks':'R1_AND_R2_INTERNAL_TEST',
+                    'fertilizer_planning':'CONNECTED_TEST_BOUNDED_ACTUAL_SCOPE', 'real_dispatch':False, 'external_integrations':False},
                 synthetic_fixture=profile)
         return result
 

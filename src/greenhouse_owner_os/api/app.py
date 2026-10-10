@@ -125,8 +125,14 @@ def create_app(*, finance_service: FinanceService, actor_provider, reference_ser
         from greenhouse_owner_os.services.owner_view import owner_view
         return owner_view(finance_service.uow_factory, entity_id, offset=offset, limit=limit)
 
+    from .finance_analytics import mount_finance_analytics
+    mount_finance_analytics(app,finance_service,actor_provider)
     from .workers import mount_workers
     mount_workers(app,finance_service,actor_provider,worker_provider)
+    from .fertilizer import mount_fertilizer
+    mount_fertilizer(app,finance_service,actor_provider,worker_provider)
+    from .purchases import mount_purchases
+    mount_purchases(app,finance_service,actor_provider)
     from .inventory import mount_inventory
     mount_inventory(app,finance_service,actor_provider)
     from .harvest import mount_harvest

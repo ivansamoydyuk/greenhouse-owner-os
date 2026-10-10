@@ -44,7 +44,7 @@ test('delayed validation focus cannot cross a route or session boundary',()=>{
 
 test('receipt comments remain source-only and cannot mask physical duplicate review',()=>{
  const ui=fs.readFileSync('prototype/owner-r3/connected.js','utf8');
- const receipt=ui.slice(ui.indexOf('} else if (name === "receipt")'),ui.indexOf('} else if (name === "product")'));
+ const receipt=ui.slice(ui.indexOf('} else if (["receipt","transfer"].includes(name))'),ui.indexOf('} else if (name === "product")'));
  assert.ok(receipt.includes('notes: null'));
  assert.ok(receipt.includes('notes: draft.original'));
  assert.ok(!receipt.includes('notes: draft.original || null'));
