@@ -18,7 +18,7 @@ export const canRecoverSourceExpense = (source) =>
 
 /** Capture the facts visible at submit, before file reads or durable-store awaits. */
 export function submissionSnapshot(
-  { draft, current, route },
+  { draft, current, route, scope, generation },
   fields,
   file = null,
 ) {
@@ -28,6 +28,7 @@ export function submissionSnapshot(
     draft: structuredClone(draft),
     current: structuredClone(current),
     route,
+    scope, generation,
     fields: submittedFields,
     file,
   };
@@ -488,4 +489,39 @@ export function ownerFormSource(formKind, draft, fields) {
 export function estimateConfirmation(review, context) {
   if (!review || review.route !== context.route || review.settlementId !== context.settlementId || review.generation !== context.generation) throw Error("Сначала рассчитайте и проверьте текущую оценку.");
   return { body: structuredClone(review.body), intent: review.draftId + ":estimate" };
+}
+
+/** A chosen original is never discarded because another form action is busy. */
+export class DraftAttachmentReads {
+  constructor(readFile = fileSource) { this.readFile = readFile; this.pending = new Map(); }
+  key(scope, route, id) { return JSON.stringify([scope, route, id]); }
+  begin(scope, route, draft, file) {
+    if (!scope || !draft?.id || !file) throw Error('Не установлена принадлежность выбранного исходника.');
+    const key = this.key(scope, route, draft.id), prior = this.pending.get(key);
+    if (prior?.file === file) return prior.promise;
+    const entry = {file, promise: Promise.resolve().then(() => this.readFile(file))};
+    this.pending.set(key, entry);
+    return entry.promise;
+  }
+  current(scope, route, id, file) { return this.pending.get(this.key(scope, route, id))?.file === file; }
+  clear(scope, route, id) { this.pending.delete(this.key(scope, route, id)); }
+  async merge(scope, route, draft, file = null) {
+    if (file) this.begin(scope, route, draft, file);
+    const key = this.key(scope, route, draft.id);
+    let entry = this.pending.get(key);
+    while (entry) {
+      let binary;
+      try { binary = await entry.promise; } catch (error) {
+        const latest = this.pending.get(key);
+        if (latest !== entry) { entry = latest; continue; }
+        throw error;
+      }
+      const latest = this.pending.get(key);
+      if (latest !== entry) { entry = latest; continue; }
+      draft.file = binary;
+      draft.binary = binary;
+      break;
+    }
+    return draft;
+  }
 }

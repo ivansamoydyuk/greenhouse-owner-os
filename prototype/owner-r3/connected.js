@@ -19,13 +19,13 @@ import {
   decimal,
   totalByCurrency,
   paymentPayload,
-  fileSource,
   CAPABILITIES,
   canRecoverSourceExpense,
   submissionSnapshot,
   estimateConfirmation,
   exactDecimalString,
   ownerFormSource,
+  DraftAttachmentReads,
 } from "./connected-adapter.js";
 import {
   proposalSummary,
@@ -46,6 +46,7 @@ const displayQuantity = (value) =>
 const displayMetric = (value) => legacyDisplayMetric(exactDecimalString(value));
 const btn = (...args) =>
   visualButton(...args).replace("<button ", '<button type="button" ');
+const attachmentReads = new DraftAttachmentReads();
 let activeActionRoute = null;
 let estimateReview = null;
 let lastHarvestRoute = "harvest";
@@ -1442,15 +1443,27 @@ async function action(run, node = null) {
     syncReceiptConfirmation();
   }
 }
+function assertSubmissionScope(snapshot) {
+  if (snapshot.scope !== api.scope || snapshot.generation !== api.generation)
+    throw Error("Сессия изменилась. Исходник прежнего владельца не отправлен.");
+}
 async function saveDraft(snapshot) {
   const { draft, route, fields, file } = snapshot;
   if (!draft) return;
+  assertSubmissionScope(snapshot);
+  const {scope, generation} = snapshot;
   Object.assign(draft, fields);
-  if (file) draft.file = await fileSource(file);
+  await attachmentReads.merge(scope, route, draft, file);
+  if (scope !== api.scope || generation !== api.generation)
+    throw Error("Сессия изменилась. Исходник прежнего владельца не отправлен.");
   await api.draft(route, draft);
 }
 async function clearDraft(id) {
-  await api.store.delete(`${api.scope}:draft:${id}`);
+  const scope = api.scope, generation = api.generation;
+  const stored = await api.readDraft(id);
+  if (scope !== api.scope || generation !== api.generation) throw Error("Сессия изменилась.");
+  if (stored?.id) attachmentReads.clear(scope, id, stored.id);
+  await api.store.delete(`${scope}:draft:${id}`);
 }
 async function finish(to, message) {
   const origin = activeActionRoute;
@@ -1474,6 +1487,7 @@ function integerOrUnknown(value) {
   return Number(value);
 }
 async function submitForm(formEl, snapshot) {
+  assertSubmissionScope(snapshot);
   const { draft, current, route } = snapshot;
   const submittedDraft = draft,
     submittedCurrent = current;
@@ -1481,6 +1495,7 @@ async function submitForm(formEl, snapshot) {
     v = snapshot.fields,
     savedRoute = route;
   if (draft) await saveDraft(snapshot);
+  assertSubmissionScope(snapshot);
   if (name === 'history-filters') {
     if(v.date_from&&v.date_to&&v.date_from>v.date_to)throw Error('Начало периода должно быть не позже окончания.');
     go(historyRoute(current.selection,{...v,offset:0}));
@@ -1743,8 +1758,17 @@ async function submitForm(formEl, snapshot) {
       body,
       draft.id + ":product",
     );
-    submittedDraft.product = result.id;
-    await api.draft(savedRoute, submittedDraft);
+    assertSubmissionScope(snapshot);
+    const receiptScope = snapshot.scope, receiptGeneration = snapshot.generation;
+    const latestReceipt = await api.readDraft(savedRoute);
+    if (latestReceipt?.id !== submittedDraft.id)
+      throw Error("Товар создан, но исходный приход уже изменился. Новый черновик не перезаписан; выберите товар из справочника.");
+    const resumedDraft = latestReceipt;
+    resumedDraft.product = result.id;
+    await attachmentReads.merge(receiptScope, savedRoute, resumedDraft);
+    if (receiptScope !== api.scope || receiptGeneration !== api.generation)
+      throw Error("Сессия изменилась. Карточка товара сохранена для прежнего владельца.");
+    await api.draft(savedRoute, resumedDraft);
     await refreshData();
     if ((location.hash.slice(1) || "home") === savedRoute) {
       sheetRoot.innerHTML = "";
@@ -1962,7 +1986,7 @@ document.addEventListener("submit", (event) => {
   if (!formEl) return;
   event.preventDefault();
   const snapshot = submissionSnapshot(
-    { draft, current, route },
+    { draft, current, route, scope: api.scope, generation: api.generation },
     values(formEl),
     formEl.querySelector("[name=file]")?.files?.[0] || null,
   );
@@ -2006,14 +2030,31 @@ document.addEventListener("change", (event) => {
     const formEl = event.target.closest("form"),
       file = event.target.files[0];
     if (file) {
-      const savedDraft = draft,
-        savedRoute = route;
-      action(async () => {
-        savedDraft.file = await fileSource(file);
-        savedDraft.binary = savedDraft.file;
-        await api.draft(savedRoute, savedDraft);
-        toast("Копия на телефоне. На сервер ещё не сохранено.");
-      }, formEl);
+      const savedDraft = draft, savedRoute = route, scope = api.scope,
+        generation = api.generation, input = event.target;
+      input.dataset.attachmentState = "reading";
+      // File selection is source capture, not a second accounting action. It
+      // must survive a concurrent product save instead of action() dropping it.
+      attachmentReads.begin(scope, savedRoute, savedDraft, file).then(async () => {
+        const stored = await api.readDraft(savedRoute);
+        if (scope !== api.scope || generation !== api.generation || stored?.id !== savedDraft.id ||
+            !attachmentReads.current(scope, savedRoute, savedDraft.id, file)) return;
+        const target = route === savedRoute && draft?.id === savedDraft.id ? draft : stored;
+        await attachmentReads.merge(scope, savedRoute, target);
+        if (scope !== api.scope || generation !== api.generation ||
+            !attachmentReads.current(scope, savedRoute, savedDraft.id, file)) return;
+        await api.draft(savedRoute, target);
+        if (scope !== api.scope || generation !== api.generation) return;
+        if (route === savedRoute && draft?.id === target.id) {
+          draft.file = target.file; draft.binary = target.file;
+          toast("Копия на телефоне. На сервер ещё не сохранено.");
+        }
+        if (input.isConnected) input.dataset.attachmentState = "ready";
+      }).catch(error => {
+        if (scope !== api.scope || generation !== api.generation) return;
+        if (input.isConnected) input.dataset.attachmentState = "error";
+        if (route === savedRoute) showError(error, formEl);
+      });
     }
   }
   if (
