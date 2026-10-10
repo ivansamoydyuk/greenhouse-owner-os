@@ -893,7 +893,7 @@ function receiptDetail(r) {
         .join("")}${facts([
         ["Дата", displayDate(r.event_date)],
         ["Начальный остаток", "UNKNOWN"],
-      ])}<p class="note">Только физический приход. Общий остаток и стоимость остаются неизвестными; без долга и оплаты.</p>${formOriginal(r.evidence)}<h2>Заметка владельца</h2><p class="original-text">${e(r.evidence.structured_original?.fields?.notes || r.evidence.raw_text || "Заполненная форма · отдельная заметка не добавлена")}</p>${r.evidence.filename ? `<a class="btn secondary" href="${entityPath("/inventory/events/" + r.id + "/original")}" target="_blank" rel="noopener">${e(r.evidence.filename)}</a>` : ""}${(r.issue_messages || []).map((x) => notice(x, "amber")).join("")}<div id="action-error" class="form-error" role="alert"></div>${r.status === "draft" ? `${r.issues?.includes("duplicate") ? '<label class="check-label"><input type="checkbox" id="duplicate-reviewed"><span>Я проверил: это отдельный приход, не повтор.</span></label>' : ""}${btn("Подтвердить физический приход в TEST", "post-receipt", "primary full")}` : r.status === "posted" ? notice("Сервер подтвердил приход. Физическое движение создано один раз.") : notice("Приход отменён обратным движением. Оригинал и история сохранены.")}<div class="page-actions">${link("К складу", "inventory", "btn secondary")}</div>`,
+      ])}<p class="note">Только физический приход. Общий остаток и стоимость остаются неизвестными; без долга и оплаты.</p>${formOriginal(r.evidence)}<h2>Заметка владельца</h2><p class="original-text">${e(r.evidence.structured_original?.fields?.notes || r.evidence.raw_text || "Заполненная форма · отдельная заметка не добавлена")}</p>${r.evidence.filename ? `<a class="btn secondary" href="${entityPath("/inventory/events/" + r.id + "/original")}" target="_blank" rel="noopener">${e(r.evidence.filename)}</a>` : ""}${(r.issue_messages || []).filter((_, i) => !["cost", "review"].includes(r.issues?.[i])).map((x) => notice(x, "amber")).join("")}<div id="action-error" class="form-error" role="alert"></div>${r.status === "draft" ? `${r.issues?.includes("duplicate") ? '<label class="check-label"><input type="checkbox" id="duplicate-reviewed"><span>Я проверил: это отдельный приход, не повтор.</span></label>' : ""}${btn("Подтвердить физический приход в TEST", "post-receipt", "primary full")}` : r.status === "posted" ? notice("Сервер подтвердил приход. Физическое движение создано один раз.") : notice("Приход отменён обратным движением. Оригинал и история сохранены.")}<div class="page-actions">${link("К складу", "inventory", "btn secondary")}</div>`,
     ) +
     panel(
       `<h2>Движения именно этого события</h2>${
@@ -1266,6 +1266,7 @@ function showError(error, node) {
     document.querySelector("main");
   if (target) {
     target.textContent = error.message;
+    target.dataset.validationField = error.field || "";
     const field = error.field && node?.querySelector(`[name="${error.field}"]`);
     const errorRoute = route, errorEpoch = epoch, generation = api.generation;
     if (field) requestAnimationFrame(() => {
@@ -1800,7 +1801,18 @@ document.addEventListener("submit", (event) => {
   );
   action(() => submitForm(formEl, snapshot), formEl);
 });
+function clearFieldValidation(input) {
+  if (typeof input.value !== "string" || typeof input.checkValidity !== "function") return;
+  const error = input.closest("[data-form]")?.querySelector(".form-error");
+  if (!error || error.dataset.validationField !== input.name || !input.value.trim() || !input.checkValidity()) return;
+  if (input.name === "quantity") {
+    try { quantity(input.value); } catch { return; }
+  }
+  error.textContent = "";
+  delete error.dataset.validationField;
+}
 document.addEventListener("input", (event) => {
+  clearFieldValidation(event.target);
   const formEl = event.target.closest("[data-form]");
   if (
     !formEl ||
@@ -2056,7 +2068,27 @@ function updateVisibleViewport() {
   if (!viewport) return;
   document.documentElement.style.setProperty('--connected-visual-height', `${viewport.height}px`);
   document.documentElement.style.setProperty('--connected-visual-top', `${viewport.offsetTop}px`);
+  requestAnimationFrame(revealFocusedCaptureField);
 }
 window.visualViewport?.addEventListener('resize', updateVisibleViewport);
 window.visualViewport?.addEventListener('scroll', updateVisibleViewport);
 updateVisibleViewport();
+
+// Scroll only if the active form's visible input line would be behind the dock
+// or software keyboard. Never re-render or clear the owner's draft.
+function revealFocusedCaptureField() {
+  const field = document.activeElement;
+  if (!field?.matches("input:not([type=file]), textarea, select") ||
+      !field.closest('[data-form="report"], [data-form="receipt"]')) return;
+  const viewport = window.visualViewport;
+  const top = (viewport?.offsetTop || 0) + 16;
+  const dockTop = document.querySelector('.dock')?.getBoundingClientRect().top ?? Infinity;
+  const bottom = Math.min((viewport?.offsetTop || 0) + (viewport?.height || innerHeight) - 16, dockTop - 16);
+  if (bottom <= top) return;
+  const rect = field.getBoundingClientRect(), style = getComputedStyle(field);
+  const point = field.tagName === 'TEXTAREA'
+    ? rect.top + parseFloat(style.paddingTop || '0') + (parseFloat(style.lineHeight) || 20) / 2
+    : rect.top + rect.height / 2;
+  if (point < top || point > bottom) window.scrollBy({top: point - (top + bottom) / 2, behavior: 'instant'});
+}
+document.addEventListener('focusin', () => requestAnimationFrame(revealFocusedCaptureField));

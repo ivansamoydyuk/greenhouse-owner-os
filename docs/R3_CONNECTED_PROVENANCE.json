@@ -400,9 +400,9 @@
       "path": "prototype/owner-r3/connected.js",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "1903e89642c438ad0ecb6dd7022a4316405d8db1",
-      "sha256": "bde45e2a38a56ba8cb8cbca92d48efc155fffdb47a21fcdaeb79ba05125f6314",
-      "size": 100555
+      "git_blob": "7923cef4f70326cc41fecc586ed7a19854dd73d4",
+      "sha256": "0a47be46ea05f64af49cec76fb2f08255ec33caa98d3ea26a6e9b1db0973f7e5",
+      "size": 102404
     },
     {
       "path": "prototype/owner-r3/daily-demo.js",
@@ -1576,9 +1576,9 @@
       "path": "tests/e2e/r3-capture-friction.mjs",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "3e18abadaa84ae28977052a7d968fc735bf9e3d1",
-      "sha256": "215f5c2aacbf7ed948711742ffbd9cdbdbb5c2c0c40a075f0ee495cfefb9e890",
-      "size": 11315
+      "git_blob": "2d1fdb99ed032d4b219579e4fa4d101d1808aec6",
+      "sha256": "68f06a3b031545db9dcbd24a87372972ae8d41365f5c25c074e84fb70b47d413",
+      "size": 11763
     },
     {
       "path": "tests/e2e/r3-connected.mjs",
@@ -1808,9 +1808,9 @@
       "path": "tests/frontend/owner-r3-capture-friction.test.mjs",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "dfdd8ca9df10d9a4500eefcab9ab488a3182c472",
-      "sha256": "9e47ec492320a92d6a5a5398705cc2042a8befc91116cbaf11967bf1d9036c9a",
-      "size": 3968
+      "git_blob": "00277eb0d9f79284765beccd73a8d8ab811fd674",
+      "sha256": "fbc864069418385dd3302d9fea11d523917a91b3b2c280fb74252fa802a4eb7c",
+      "size": 5948
     },
     {
       "path": "tests/frontend/owner-r3-connected.test.mjs",

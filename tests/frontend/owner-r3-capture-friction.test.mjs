@@ -34,7 +34,7 @@ test('delayed validation focus cannot cross a route or session boundary',()=>{
  const ui=fs.readFileSync('prototype/owner-r3/connected.js','utf8');
  const body=ui.slice(ui.indexOf('function showError('),ui.indexOf('async function action('));
  let callback,focus=0;const field={isConnected:true,focus(){focus++},scrollIntoView(){}};
- const target={};const node={isConnected:true,inert:false,querySelector:s=>s==='.form-error'?target:field};
+ const target={dataset:{}};const node={isConnected:true,inert:false,querySelector:s=>s==='.form-error'?target:field};
  const run=new Function('node','requestAnimationFrame','document',`${body}; let route='receipt', epoch=1; const api={generation:1}; showError({message:'Missing',field:'quantity'},node); return {route:()=>route='home',epoch:()=>epoch++,session:()=>api.generation++};`);
  for(const change of ['route','epoch','session']){const ctx=run(node,cb=>callback=cb,{});ctx[change]();callback();assert.equal(focus,0);}
  run(node,cb=>callback=cb,{});callback();assert.equal(focus,1);
@@ -47,4 +47,25 @@ test('receipt comments remain source-only and cannot mask physical duplicate rev
  assert.ok(receipt.includes('notes: null'));
  assert.ok(receipt.includes('notes: draft.original'));
  assert.ok(!receipt.includes('notes: draft.original || null'));
+});
+
+test('valid local field correction clears only its own validation message',()=>{
+ const ui=fs.readFileSync('prototype/owner-r3/connected.js','utf8');
+ const body=ui.slice(ui.indexOf('function clearFieldValidation('),ui.indexOf('document.addEventListener("input"'));
+ const run=new Function('input','quantity',body+'; clearFieldValidation(input);');
+ const error={textContent:'Укажите количество',dataset:{validationField:'quantity'}};
+ const input={name:'quantity',value:'120',checkValidity:()=>true,closest:()=>({querySelector:()=>error})};
+ run(input,v=>{assert.equal(v,'120')});assert.equal(error.textContent,'');
+ error.textContent='Ответ сервера не получен';error.dataset.validationField='';run(input,()=>{});assert.equal(error.textContent,'Ответ сервера не получен');
+ error.textContent='Укажите количество';error.dataset.validationField='quantity';input.value='0';run(input,()=>{throw Error('invalid')});assert.equal(error.textContent,'Укажите количество');
+});
+test('focused capture line is revealed only when actually obscured',()=>{
+ const ui=fs.readFileSync('prototype/owner-r3/connected.js','utf8');
+ const body=ui.slice(ui.indexOf('function revealFocusedCaptureField()'),ui.indexOf("document.addEventListener('focusin'"));
+ const run=new Function('document','window','getComputedStyle','innerHeight',body+'; revealFocusedCaptureField();');
+ let moved=0;let y=360;const field={matches:()=>true,closest:()=>true,tagName:'TEXTAREA',getBoundingClientRect:()=>({top:y,height:112})};
+ const document={activeElement:field,querySelector:()=>({getBoundingClientRect:()=>({top:348})})};
+ const window={visualViewport:{offsetTop:0,height:430},scrollBy:({top})=>moved=top};
+ run(document,window,()=>({paddingTop:'12px',lineHeight:'20px'}),430);assert.ok(moved>0);
+ moved=0;y=100;run(document,window,()=>({paddingTop:'12px',lineHeight:'20px'}),430);assert.equal(moved,0);
 });
