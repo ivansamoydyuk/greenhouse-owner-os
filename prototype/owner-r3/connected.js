@@ -873,6 +873,18 @@ function receiptForm(productId) {
     )
   );
 }
+function receiptCanConfirm(r, duplicateReviewed = false) {
+  return r?.kind === "receipt" && r.status === "draft" && !r.replacement_id &&
+    r.evidence?.verification !== "HISTORY" && Array.isArray(r.issues) &&
+    !r.issues.some(issue => !["cost", "review", "duplicate"].includes(issue)) &&
+    (!r.issues.includes("duplicate") || duplicateReviewed);
+}
+function syncReceiptConfirmation() {
+  if (!current || route !== "receipt/" + current.id) return;
+  const button = document.querySelector('[data-action="post-receipt"]');
+  if (button) button.disabled = busy || !receiptCanConfirm(current,
+    !!document.querySelector('#duplicate-reviewed')?.checked);
+}
 function receiptDetail(r) {
   return (
     Header("Приход товара", statuses[r.status] || r.status, true) +
@@ -893,7 +905,7 @@ function receiptDetail(r) {
         .join("")}${facts([
         ["Дата", displayDate(r.event_date)],
         ["Начальный остаток", "UNKNOWN"],
-      ])}<p class="note">Только физический приход. Общий остаток и стоимость остаются неизвестными; без долга и оплаты.</p>${formOriginal(r.evidence)}<h2>Заметка владельца</h2><p class="original-text">${e(r.evidence.structured_original?.fields?.notes || r.evidence.raw_text || "Заполненная форма · отдельная заметка не добавлена")}</p>${r.evidence.filename ? `<a class="btn secondary" href="${entityPath("/inventory/events/" + r.id + "/original")}" target="_blank" rel="noopener">${e(r.evidence.filename)}</a>` : ""}${(r.issue_messages || []).filter((_, i) => !["cost", "review"].includes(r.issues?.[i])).map((x) => notice(x, "amber")).join("")}<div id="action-error" class="form-error" role="alert"></div>${r.status === "draft" ? `${r.issues?.includes("duplicate") ? '<label class="check-label"><input type="checkbox" id="duplicate-reviewed"><span>Я проверил: это отдельный приход, не повтор.</span></label>' : ""}${btn("Подтвердить физический приход в TEST", "post-receipt", "primary full")}` : r.status === "posted" ? notice("Сервер подтвердил приход. Физическое движение создано один раз.") : notice("Приход отменён обратным движением. Оригинал и история сохранены.")}<div class="page-actions">${link("К складу", "inventory", "btn secondary")}</div>`,
+      ])}<p class="note">Только физический приход. Общий остаток и стоимость остаются неизвестными; без долга и оплаты.</p>${formOriginal(r.evidence)}<h2>Заметка владельца</h2><p class="original-text">${e(r.evidence.structured_original?.fields?.notes || r.evidence.raw_text || "Заполненная форма · отдельная заметка не добавлена")}</p>${r.evidence.filename ? `<a class="btn secondary" href="${entityPath("/inventory/events/" + r.id + "/original")}" target="_blank" rel="noopener">${e(r.evidence.filename)}</a>` : ""}${r.evidence?.verification === "HISTORY" ? notice("Исторический источник: проведение в текущие остатки недоступно.", "amber") : ""}${r.replacement_id ? notice("Для этой записи уже создано исправление. Откройте актуальную версию.", "amber") : ""}${(r.issue_messages || []).filter((_, i) => !["cost", "review"].includes(r.issues?.[i])).map((x) => notice(x, "amber")).join("")}<div id="action-error" class="form-error" role="alert"></div>${r.status === "draft" ? `${r.issues?.includes("duplicate") ? '<label class="check-label"><input type="checkbox" id="duplicate-reviewed"><span>Я проверил: это отдельный приход, не повтор.</span></label>' : ""}${btn("Подтвердить физический приход в TEST", "post-receipt", "primary full", "post-receipt", !receiptCanConfirm(r) ? "disabled" : "")}` : r.status === "posted" ? notice("Сервер подтвердил приход. Физическое движение создано один раз.") : notice("Приход отменён обратным движением. Оригинал и история сохранены.")}<div class="page-actions">${link("К складу", "inventory", "btn secondary")}</div>`,
     ) +
     panel(
       `<h2>Движения именно этого события</h2>${
@@ -1314,6 +1326,7 @@ async function action(run, node = null) {
       b.disabled = b.dataset.wasDisabled === "1";
       delete b.dataset.wasDisabled;
     });
+    syncReceiptConfirmation();
   }
 }
 async function saveDraft(snapshot) {
@@ -1831,6 +1844,10 @@ document.addEventListener("input", (event) => {
   }
 });
 document.addEventListener("change", (event) => {
+  if (event.target.id === "duplicate-reviewed" && event.target.isConnected) {
+    syncReceiptConfirmation();
+    return;
+  }
   if (event.target.name === "file" && draft) {
     const formEl = event.target.closest("form"),
       file = event.target.files[0];
@@ -1982,6 +1999,8 @@ document.addEventListener("click", (event) => {
       return finish(route, "Оплата подтверждена сервером.");
     }
     if (name === "post-receipt") {
+      if (!receiptCanConfirm(current, !!document.querySelector('#duplicate-reviewed')?.checked))
+        throw Error("Сначала уточните отмеченные факты и проверьте возможный повтор.");
       await api.entityPost(
         "/inventory/events/" + current.id + "/post",
         {

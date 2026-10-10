@@ -400,9 +400,9 @@
       "path": "prototype/owner-r3/connected.js",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "e743c9dfec9568b361ec4fa8331e40237ed5d3c2",
-      "sha256": "ede57bc4ef5f53c7732cd0c8a8c64c8472602d0f6a8335a04eddfa21e74029b8",
-      "size": 102419
+      "git_blob": "5dfae8a6e3500bc3c66ec01d0027646da81dbebd",
+      "sha256": "df8c808956f873004cb7965a849f0dcbc8b9c829a4d7dbed2cc153f0e2a4132f",
+      "size": 103888
     },
     {
       "path": "prototype/owner-r3/daily-demo.js",
@@ -1576,17 +1576,17 @@
       "path": "tests/e2e/r3-capture-friction.mjs",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "3ad4de8887418299dbae69187a68ef13e3254d98",
-      "sha256": "45e4f467eb2f9d85328cd66e15e47e9a7081999cc4d58eb464fceed24512c3c8",
-      "size": 13451
+      "git_blob": "f32c46c5f8117ff613a012b60c74e845052e790d",
+      "sha256": "0b0576ca752034f742f67edb665edc0d726b891e0cf0caa3858d23fc19ae8e2d",
+      "size": 14087
     },
     {
       "path": "tests/e2e/r3-connected.mjs",
-      "origin": "CONNECTED_PILOT",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "ecb44cf800fa143a9a04b16b6d55b24e46aff16f",
-      "sha256": "03bb0d4a3e63a41a78cd68cf72ca5fe6387bba04c07fb6748697e874d4d0d473",
-      "size": 43519
+      "git_blob": "ea0ab1d14ef96ee568be84273bc34768f16f2696",
+      "sha256": "77d58230638545764609b7dffab231735773e4f793916ec5b3128d66ee2b11fc",
+      "size": 43808
     },
     {
       "path": "tests/e2e/task-review-fixture.mjs",
@@ -1808,9 +1808,9 @@
       "path": "tests/frontend/owner-r3-capture-friction.test.mjs",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "5623971677ef4b478b1d734d724b495079e4b0bd",
-      "sha256": "a18b3b3b68b8851e8aaa834f0bdb8c0d5c11fcadce2ff943fe7edf8ac3f3b40c",
-      "size": 6664
+      "git_blob": "e39e78dbdc924bda748af2ff5d73868d9e19be85",
+      "sha256": "bc7d643e21b59d11b25bf25c7e37ffb70b2291fad1f43ee082642ed194487689",
+      "size": 8942
     },
     {
       "path": "tests/frontend/owner-r3-connected.test.mjs",

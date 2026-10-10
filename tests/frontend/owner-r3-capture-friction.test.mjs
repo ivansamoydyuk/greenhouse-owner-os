@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {btn as realButton} from '../../prototype/owner-r3/components.js';
 import {ownerFormSource} from '../../prototype/owner-r3/connected-adapter.js';
 const draft={id:'b034230a-678b-49be-9e63-d5dd4b35372a',captured_at:'2026-10-10T15:01:00+03:00'};
 test('typed harvest original preserves lexical values without fabricating prose',()=>{
@@ -77,4 +78,25 @@ test('ordinary viewport scrolling never recenters the focused capture field',()=
  const document={documentElement:{style:{setProperty(){}}}};
  new Function('window','document','requestAnimationFrame','revealFocusedCaptureField',body)(window,document,fn=>fn(),()=>reveals++);
  handlers.scroll();assert.equal(reveals,0);handlers.resize();assert.equal(reveals,1);handlers.scroll();assert.equal(reveals,1);
+});
+
+test('receipt confirmation readiness preserves critical and duplicate gates',()=>{
+ const ui=fs.readFileSync('prototype/owner-r3/connected.js','utf8');
+ const body=ui.slice(ui.indexOf('function receiptCanConfirm('),ui.indexOf('function syncReceiptConfirmation('));
+ const ready=new Function('r','reviewed',body+'; return receiptCanConfirm(r,reviewed);');
+ const ordinary={kind:'receipt',status:'draft',replacement_id:null,evidence:{verification:'VERIFY'},issues:['cost','review']};
+ assert.equal(ready(ordinary,false),true);
+ const duplicate={...ordinary,issues:['cost','review','duplicate']};assert.equal(ready(duplicate,false),false);assert.equal(ready(duplicate,true),true);
+ for(const issue of ['product','quantity','unit','conversion','location','date','insufficient','unknown_new_issue'])assert.equal(ready({...ordinary,issues:[issue]},true),false);
+ assert.equal(ready({...ordinary,evidence:{verification:'HISTORY'}},true),false);assert.equal(ready({...ordinary,replacement_id:'new'},true),false);
+ assert.equal(ready({...ordinary,status:'posted'},true),false);assert.equal(ready({...ordinary,issues:undefined},true),false);
+});
+
+test('receipt review renders a real disabled attribute before duplicate review',()=>{
+ const ui=fs.readFileSync('prototype/owner-r3/connected.js','utf8');
+ const body=ui.slice(ui.indexOf('function receiptCanConfirm('),ui.indexOf('function personalList('));
+ const render=new Function('r','btn',`const Header=()=>'', panel=x=>x, statuses={draft:'Черновик'}, stateTag=()=>'', facts=()=>'',displayDate=x=>x,formOriginal=()=>'',notice=()=>'',e=String,entityPath=x=>x,link=()=>'',data={inventory:{locations:[]}}; ${body}; return receiptDetail(r);`);
+ const r={kind:'receipt',status:'draft',payload:{lines:[]},evidence:{verification:'VERIFY'},issues:['cost','review','duplicate'],issue_messages:[],movements:[]};
+ const tag=render(r,realButton).match(/<button[^>]*data-action="post-receipt"[^>]*>/)[0];assert.match(tag,/\sdisabled(?:\s|>)/);assert.doesNotMatch(tag,/\strue(?:\s|>)/);
+ const ordinary=render({...r,issues:['cost','review']},realButton).match(/<button[^>]*data-action="post-receipt"[^>]*>/)[0];assert.doesNotMatch(ordinary,/\sdisabled(?:\s|>)/);
 });
