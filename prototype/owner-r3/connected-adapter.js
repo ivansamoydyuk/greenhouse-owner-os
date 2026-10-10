@@ -473,7 +473,9 @@ export function ownerFormSource(formKind, draft, fields) {
     ? ['event_date','original_greenhouse','work_area_id','cut_count','field_weight_kg','reporter','notes']
     : formKind === 'inventory_receipt'
       ? ['event_date','product_id','original_product_name','location_id','quantity','unit','notes']
-      : null;
+      : formKind === 'inventory_transfer'
+        ? ['event_date','product_id','original_product_name','location_id','destination_id','quantity','unit','notes']
+        : null;
   if (!expected) throw Error('Неизвестный вид исходной формы.');
   if (!draft.id || !draft.captured_at) throw Error('Не сохранена идентичность черновика.');
   return {

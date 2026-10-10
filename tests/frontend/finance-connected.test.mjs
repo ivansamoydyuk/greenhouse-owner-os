@@ -71,3 +71,9 @@ test('Finance exact values wrap inside their cards',async()=>{
  const css=await (await import('node:fs/promises')).readFile(new URL('../../prototype/owner-r3/connected.css',import.meta.url),'utf8');
  assert.match(css,/\.money-summary \.exact-value, \.connected \.money-card \.exact-value \{white-space:normal;overflow-wrap:anywhere;min-width:0;/);
 });
+
+import {financeBackRoute} from '../../prototype/owner-r3/finance-connected.js';
+test('financial document return preserves only bounded internal supply/invoice routes',()=>{
+ const id='b034230a-678b-49be-9e63-d5dd4b35372a';for(const route of ['purchase/'+id,'invoice-source/'+id+'/'+id+'/TRY','money/result/2026-10-01/2026-10-10/TRY/all/all'])assert.equal(financeBackRoute(encodeURIComponent(route)),route);
+ for(const route of ['https://evil.test','javascript:alert(1)','workers/x','%broken'])assert.equal(financeBackRoute(route,'money'),'money');
+});

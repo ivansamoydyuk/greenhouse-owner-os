@@ -86,10 +86,13 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             if prior:
                 if prior.identity_hash!=h:raise ConflictError('Содержание источника изменилось; оригинал сохранён')
                 return self._capture_view(u,prior)
+            if b.capture_context=='supplier_invoice':
+                receipt=rows(u,"SELECT id FROM inventory.events WHERE id=:r AND entity_id=:e AND kind='receipt' AND status='posted'",r=b.invoice_receipt_id,e=e)
+                if not receipt:raise ValidationError('Выберите подтверждённый физический приход этой компании')
             duplicate=u.session.scalar(select(InboxRow.id).where(InboxRow.entity_id==e,InboxRow.fingerprint==fingerprint).limit(1))
             row=InboxRow(id=uuid4(),entity_id=e,source_type='pdf' if b.mime_type=='application/pdf' else 'image' if raw else 'text',
                 source='owner:r2',locator=locator,filename=b.filename,mime_type=b.mime_type,file_bytes=raw,raw_text=b.text,
-                metadata_json=dict(mode=b.mode,timezone=b.timezone,client_capture_id=locator,**({'capture_context':b.capture_context} if b.capture_context else {})),received_at=b.captured_at,
+                metadata_json=dict(mode=b.mode,timezone=b.timezone,client_capture_id=locator,**({'capture_context':b.capture_context} if b.capture_context else {}),**({'invoice_intent':b.invoice_intent,'invoice_receipt_id':str(b.invoice_receipt_id)} if b.capture_context=='supplier_invoice' else {})),received_at=b.captured_at,
                 fingerprint=fingerprint,content_hash=_hash_request(dict(text=b.text,binary=fingerprint if raw else None)),identity_hash=h,
                 duplicate_of_id=duplicate,extractor_version=ENGINE,extracted_text=None,extraction={},normalized={},
                 validation=dict(review_required=True),route='UNRESOLVED',confidence='UNAVAILABLE',state='NEEDS_REVIEW',version=1,created_by=a)
@@ -110,7 +113,8 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
         elif active_actions and all(p['state']=='READY' for p in active_actions):state='READY'
         elif recovery_links:state='NEEDS_REVIEW'
         return dict(id=str(s.id),client_capture_id=s.locator,state=state,server_saved=True,job=job,proposals=actions,recovery_links=recovery_links,retryable=job['attempts']<3 and not recovery_links,
-                    captured_at=s.received_at.isoformat(),original_name=s.filename,text=s.raw_text,duplicate_of_id=str(s.duplicate_of_id) if s.duplicate_of_id else None)
+                    captured_at=s.received_at.isoformat(),original_name=s.filename,text=s.raw_text,duplicate_of_id=str(s.duplicate_of_id) if s.duplicate_of_id else None,
+                    **({k:s.metadata_json[k] for k in ('capture_context','invoice_intent','invoice_receipt_id') if k in s.metadata_json}))
 
     def source(self,e,a,i):
         with self.factory() as u:
@@ -150,12 +154,12 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             job=rows(u,"SELECT * FROM core.processing_jobs WHERE inbox_id=:i AND engine_version=:v AND attempts<3 AND (state='QUEUED' OR state='FAILED' AND retry_at<=clock_timestamp() OR state='RUNNING' AND lease_until<clock_timestamp()) FOR UPDATE SKIP LOCKED",i=i,v=ENGINE)
             if not job:return
             j=job[0];rows(u,"UPDATE core.processing_jobs SET state='RUNNING',attempts=attempts+1,lease_token=:t,lease_until=clock_timestamp()+interval '15 minutes',error_code=NULL WHERE id=:id RETURNING id",t=token,id=j['id'])
-            source=dict(id=s.id,e=s.entity_id,a=s.created_by,raw=s.raw_text,binary=s.file_bytes,mime=s.mime_type,fp=s.fingerprint,saved_at=s.created_at,day=s.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(),duplicate=bool(s.duplicate_of_id),capture_context=s.metadata_json.get('capture_context'))
+            source=dict(id=s.id,e=s.entity_id,a=s.created_by,raw=s.raw_text,binary=s.file_bytes,mime=s.mime_type,fp=s.fingerprint,saved_at=s.created_at,day=s.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(),duplicate=bool(s.duplicate_of_id),capture_context=s.metadata_json.get('capture_context'),invoice_intent=s.metadata_json.get('invoice_intent'),invoice_receipt_id=s.metadata_json.get('invoice_receipt_id'))
             u.commit()
         try:
-            if source['capture_context']=='depot_receipt':
+            if source['capture_context'] in ('depot_receipt','supplier_invoice'):
                 # Explicit manual document workflow never depends on OCR availability.
-                output=dict(provider='owner',engine='manual-depot-source',version=ENGINE,text=source['raw'] or '',pages=[],warnings=[])
+                output=dict(provider='owner',engine='manual-depot-source' if source['capture_context']=='depot_receipt' else 'manual-supplier-invoice-source',version=ENGINE,text=source['raw'] or '',pages=[],warnings=[])
             elif source['binary']:
                 output=self.recognizer.recognize(source['binary'],source['mime'])
             else:output=dict(provider='local',engine='source-text',version=ENGINE,text=source['raw'],pages=[],warnings=[])
@@ -197,6 +201,29 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
         if s.get('capture_context')=='depot_receipt':
             from greenhouse_owner_os.domain.owner_capture import DepotProposal
             return [('DEPOT_RECEIPT',DepotProposal().model_dump(mode='json'),{'currency':{'category':'CONTEXT DEFAULT','basis':'editable_daily_context'},'lines':{'category':'UNKNOWN','basis':'manual_document_review_required'}})]
+        if s.get('capture_context')=='supplier_invoice':
+            from greenhouse_owner_os.domain.owner_capture import MoneyProposal,InvoiceMatchProposal
+            if s.get('invoice_intent') not in ('operating_expense','existing_payable') or not s.get('invoice_receipt_id'):
+                raise ValidationError('Неизвестное назначение или контекст счёта')
+            match=('INVOICE_MATCH',InvoiceMatchProposal(receipt_id=s['invoice_receipt_id']).model_dump(mode='json'),
+                   {'receipt_id':{'category':'OWNER CONTEXT','basis':'explicit_physical_receipt_selection'}})
+            if s['invoice_intent']=='existing_payable':return [match]
+            payable=('PAYABLE',MoneyProposal(currency=None).model_dump(mode='json'),
+                     {'amount':{'category':'UNKNOWN','basis':'manual_invoice_review_required'},'counterparty_id':{'category':'UNKNOWN','basis':'manual_invoice_review_required'}})
+            # Reuse accepted deterministic facts from owner-supplied text; the
+            # receipt context is never evidence of invoice amount/date/supplier.
+            candidates=prepare_owner_source(raw,today=s['day'],refs=references,binary=bool(s['binary']),pages=out.get('pages',[])) if raw else []
+            if [kind for kind,_,_ in candidates]==['PAYABLE','INVOICE_MATCH']:
+                from .preparation_language import date_value
+                _,facts,provenance=candidates[0]
+                facts=dict(facts)
+                facts['currency']=source_currency(raw,default=None)
+                _,date_mentioned=date_value(raw,s['day'])
+                if not date_mentioned:facts['event_date']=None
+                for field in ('currency','event_date'):
+                    if facts.get(field) is None:provenance[field]={'category':'UNKNOWN','basis':'manual_invoice_review_required','source_text':raw}
+                payable=('PAYABLE',MoneyProposal.model_validate(facts).model_dump(mode='json'),provenance)
+            return [payable,match]
         result=prepare_quick_expense(raw,today=s['day']) if s.get('capture_context')=='quick_expense' and not s['binary'] else None
         if result is None:result=prepare_owner_source(raw,today=s['day'],refs=references,binary=bool(s['binary']),pages=out.get('pages',[]))
         for kind,payload,provenance in result:
@@ -344,6 +371,11 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             if receipt and (receipt['kind']!='receipt' or receipt['status']!='posted'):raise ValidationError('Выберите проведённый физический приход')
             obligation=scoped('finance.obligations',fields.get('finance_obligation_id'))
             if obligation and (obligation['direction']!='payable' or obligation['status']!='posted'):raise ValidationError('Выберите проведённый долг поставщику')
+            original=u.session.get(InboxRow,UUID(p['inbox_id']))
+            if original and original.metadata_json.get('capture_context')=='supplier_invoice':
+                required('finance_obligation_id','Подтверждённый долг, с которым связать счёт')
+            if receipt and obligation and receipt['payload'].get('supplier_id') and receipt['payload']['supplier_id']!=obligation['counterparty_id']:
+                raise ValidationError('Поставщик физического прихода не совпадает с кредитором выбранного долга')
         else:missing.append('Выберите точный ручной режим по сохранённому оригиналу')
         return fields,list(dict.fromkeys(missing)),basis
 
@@ -367,7 +399,8 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
         rev=rows(u,'SELECT * FROM core.proposal_revisions WHERE proposal_id=:i AND version=:v',i=p['id'],v=p['version'])[0]
         src=u.session.get(InboxRow,UUID(p['inbox_id']))
         overdue=reminder_eligible(datetime.fromisoformat(p['first_unresolved_at']),now(),p['state'])
-        return dict(p,revision=rev,source=dict(id=str(src.id),text=src.raw_text,filename=src.filename,has_file=src.file_bytes is not None),reminder_eligible=overdue and not rows(u,'SELECT recovery_proposal_id FROM core.owner_recovery_links WHERE origin_proposal_id=:p',p=p['id']),**self._recovery_view(u,p,rev))
+        confirmed=rows(u,'SELECT response FROM core.confirmation_effects WHERE proposal_id=:p AND entity_id=:e',p=p['id'],e=p['entity_id'])
+        return dict(p,revision=rev,confirmed_effect=confirmed[0]['response'] if confirmed else None,source=dict(id=str(src.id),text=src.raw_text,filename=src.filename,has_file=src.file_bytes is not None,**{k:src.metadata_json[k] for k in ('capture_context','invoice_intent','invoice_receipt_id') if k in src.metadata_json}),reminder_eligible=overdue and not rows(u,'SELECT recovery_proposal_id FROM core.owner_recovery_links WHERE origin_proposal_id=:p',p=p['id']),**self._recovery_view(u,p,rev))
 
     def queue(self,e,a,offset=0,limit=50):
         with self.factory() as u:
@@ -418,6 +451,9 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             kind=p['action_type'];payload=rev['payload']
             if kind in ('STOCK_RECEIPT','STOCK_APPLICATION','INVOICE_MATCH'):
                 u.session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended('inventory:'||CAST(:e AS text),0))"),{'e':str(e)})
+            if kind=='INVOICE_MATCH' and payload.get('finance_obligation_id'):
+                # Same inventory -> obligation lock order as the SQL link guard.
+                u.session.execute(text('SELECT id FROM finance.obligations WHERE id=:id FOR SHARE'),dict(id=payload['finance_obligation_id']))
             if kind=='DEPOT_RECEIPT':
                 if payload.get('depot_id'):u.session.execute(text('SELECT id FROM core.counterparties WHERE id=:d FOR UPDATE'),{'d':payload['depot_id']})
                 fingerprint=u.session.get(InboxRow,UUID(p['inbox_id'])).fingerprint

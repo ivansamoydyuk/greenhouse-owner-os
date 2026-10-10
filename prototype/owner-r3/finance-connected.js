@@ -84,7 +84,12 @@ export function financeAnalyticsView(r,f) {
 }
 export function financeDocumentView(d,backRoute) {
  return Header(d.counterparty_name,d.direction==='receivable'?'Мне должны · документ':'Я должен · документ',true)+
- `<div class="page-actions">${d.status==='posted'&&d.settlement_status!=='settled'?link(d.direction==='receivable'?'Записать поступление':'Записать оплату',`settle/${d.direction}/${d.counterparty_id}/${d.currency}`,'btn primary'):''}${link('Назад к финансам',backRoute,'btn secondary')}</div>`+
+ `<div class="page-actions">${d.status==='posted'&&d.settlement_status!=='settled'?link(d.direction==='receivable'?'Записать поступление':'Записать оплату',`settle/${d.direction}/${d.counterparty_id}/${d.currency}`,'btn primary'):''}${link(backRoute.startsWith('purchase/')?'Назад к поставке':backRoute.startsWith('invoice-source/')?'Назад к счёту':'Назад к финансам',backRoute,'btn secondary')}</div>`+
  card(`<h2>${e(d.source.description || 'Подтверждённый документ')}</h2>${row('Первоначальная сумма',financeAmount(d.original_amount,d.currency))}${row('Погашено',financeAmount(d.allocated_amount,d.currency))}${row('Текущий остаток',financeAmount(d.remaining_amount,d.currency))}${row('Дата события',financeDate(d.event_date))}${row('Срок',financeDate(d.due_date))}${note(d.status==='reversed'?'Документ отменён обратным событием. История сохранена.':'Текущее состояние документа; не исторический остаток на выбранную дату.')}${financeSourceLinks({...d.source,kind:d.source.kind==='obligation'?'document':d.source.kind},backRoute)}`)+
  card(`<h2>Оплаты и распределения</h2>${d.history.map(h=>`<article class="money-event">${row(h.kind==='payment'?'Платёж':h.kind==='advance_application'?'Зачёт аванса':'Прямой расчёт',financeAmount(h.amount,h.currency))}${note(financeDate(h.event_date)+(h.status==='reversed'?' · Отменён обратной проводкой':h.status==='posted'?' · Подтверждён':' · Черновик'))}${h.kind==='payment'?link('Открыть платёж','payment/'+h.id,'btn secondary'):''}${h.source?`<details><summary>Основание</summary><p class="source-text">${e(h.source)}</p></details>`:''}</article>`).join('') || note('Погашений пока нет.')}`);
+}
+
+export function financeBackRoute(encoded,fallback='money'){
+ try{const candidate=decodeURIComponent(encoded||'');if(candidate.length<=1500&&(/^(money\/|purchase\/[0-9a-f-]{36}(?:\/|$)|invoice-source\/[0-9a-f-]{36}\/[0-9a-f-]{36}(?:\/|$))/.test(candidate)))return candidate;}catch{}
+ return fallback;
 }

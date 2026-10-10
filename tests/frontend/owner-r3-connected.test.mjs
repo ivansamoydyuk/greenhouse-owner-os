@@ -495,10 +495,10 @@ test("connected expense review keeps facts and effects compact before optional p
   assert.match(source, /basis\[`\$\{table\}:\$\{id\}`\]/);
   assert.match(source, /Общий расход · без указанной теплицы/);
   assert.match(source, /Долг и аванс не создаются/);
-  assert.ok(
-    source.indexOf("Уточнить один факт") <
-      source.indexOf('<details class="review-provenance">'),
-  );
+  const review = source.slice(source.indexOf('function proposalDetail('),source.indexOf('const labels ='));
+  const editHeading = review.indexOf('Исправить или уточнить');
+  assert.ok(editHeading >= 0);
+  assert.ok(editHeading < review.indexOf('<details class="review-provenance">'));
   assert.match(source, /irrigation: "Полив"/);
 });
 

@@ -8,7 +8,9 @@ from .inventory import InventoryLine
 from .harvest import LineInput
 
 class CaptureSource(StrictModel):
-    capture_context: Literal['quick_expense','depot_receipt'] | None = Field(default=None,exclude_if=lambda v:v is None)
+    capture_context: Literal['quick_expense','depot_receipt','supplier_invoice'] | None = Field(default=None,exclude_if=lambda v:v is None)
+    invoice_intent: Literal['operating_expense','existing_payable'] | None = Field(default=None,exclude_if=lambda v:v is None)
+    invoice_receipt_id: UUID | None = Field(default=None,exclude_if=lambda v:v is None)
     client_capture_id: UUID
     captured_at: datetime
     timezone: Literal['Europe/Istanbul'] = 'Europe/Istanbul'
@@ -19,6 +21,9 @@ class CaptureSource(StrictModel):
     mime_type: Literal['image/jpeg','image/png','application/pdf'] | None = None
     @model_validator(mode='after')
     def meaningful(self):
+        if self.capture_context=='supplier_invoice':
+            if self.invoice_intent is None or self.invoice_receipt_id is None:raise ValueError('Invoice intent and physical receipt context are required')
+        elif self.invoice_intent is not None or self.invoice_receipt_id is not None:raise ValueError('Invoice fields require supplier_invoice context')
         if self.captured_at.tzinfo is None: raise ValueError('Capture timestamp must include timezone')
         if not ((self.text and self.text.strip()) or self.file_base64): raise ValueError('Meaningful source required')
         if self.file_base64 and not (self.filename and self.mime_type): raise ValueError('File type and name required')

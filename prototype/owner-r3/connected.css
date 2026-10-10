@@ -424,3 +424,19 @@
 .connected .money-event .page-actions {flex-wrap:wrap;}
 @media(max-width:360px){.connected .money-summary-grid{grid-template-columns:1fr}.connected .money-filters{gap:0 8px}.connected .money-tab{padding:10px;font-size:13px}.connected .money-fact{gap:8px}}
 @media(min-width:768px){.connected .money-filters{grid-template-columns:repeat(3,minmax(0,1fr));}.connected .money-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
+
+/* Purchase history retains independent physical/document/payment facts. */
+.connected .purchase-filters {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;}
+.connected .purchase-filters label {min-width:0;}
+.connected .purchase-filters button {align-self:end;min-height:48px;margin:16px 0;}
+.connected .purchase-filters .form-error {grid-column:1/-1;}
+.connected .purchase-card {min-width:0;overflow-wrap:anywhere;}
+.connected .purchase-card .page-actions {flex-wrap:wrap;}
+.connected .purchase-card details {margin:12px 0;}
+.connected .purchase-card summary {min-height:44px;padding:10px 0;font-weight:650;cursor:pointer;}
+.connected .purchase-line {padding:14px 0;border-bottom:1px solid #e5ece1;}
+.connected .purchase-line h3 {margin:0 0 10px;}
+.connected .purchase-fact {display:flex;justify-content:space-between;gap:12px;padding:8px 0;}
+.connected .purchase-fact>* {min-width:0;overflow-wrap:anywhere;}
+.connected .purchase-fact strong {max-width:60%;text-align:right;}
+@media(min-width:768px){.connected .purchase-filters{grid-template-columns:repeat(3,minmax(0,1fr));}}

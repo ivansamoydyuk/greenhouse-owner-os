@@ -95,7 +95,7 @@ def test_harvest_original_metadata_contract_matches_actual_read_route():
     assert set(typed['properties']) == set(typed['required']) == {
         'schema_version', 'form_kind', 'form_id', 'captured_at', 'timezone', 'fields'}
     assert typed['properties']['schema_version']['const'] == 1
-    assert set(typed['properties']['form_kind']['enum']) == {'field_harvest', 'inventory_receipt'}
+    assert set(typed['properties']['form_kind']['enum']) == {'field_harvest', 'inventory_receipt', 'inventory_transfer'}
     assert typed['properties']['fields']['additionalProperties'] == {'type': 'string'}
     assert model['additionalProperties'] is False
     assert {item['type'] for item in model['properties']['raw_text']['anyOf']} == {'string', 'null'}

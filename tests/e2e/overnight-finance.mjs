@@ -43,14 +43,31 @@ try {for(const [engine,type] of [['chromium',chromium],['webkit',webkit]]) {
  const data=await get(root+`/finance/analytics?date_from=${date}&date_to=${date}&currency=TRY&money_account_id=${account.id}`);
  assert.equal(data.economics.revenue,'1000.00');assert.equal(data.economics.operating_cost,'500.00');assert.equal(data.economics.operating_result,'500.00');assert.equal(data.cash_totals.net_change,'200.00');assert.equal(data.accounts[0].current_balance,'200.00');
  for(const [direction,remaining] of [['receivable','600.00'],['payable','300.00']])assert.equal(data.debts.documents.find(d=>d.obligation_id===documents[direction].id).remaining_amount,remaining);
- await layout('overview');await page.locator('.money-summary').first().scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,`${engine}-390-overview-scrolled-viewport.png`)});await page.getByRole('link',{name:'Деньги',exact:true}).click();await ready('money/cash');await layout('cash');assert.match(await page.locator('#main').innerText(),/TEST .* finance acceptance/);
+ await layout('overview');await page.locator('.money-summary').first().evaluate(el=>el.scrollIntoView({block:'center'}));record.kpi_visibility=await page.locator('.money-summary').first().evaluate(el=>{const r=el.getBoundingClientRect(),nav=document.querySelector('.navigation').getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return {scrollY,top:r.top,bottom:r.bottom,navTop:nav.top,hit:el.contains(hit)};});assert.ok(record.kpi_visibility.hit&&record.kpi_visibility.bottom<record.kpi_visibility.navTop);assert.ok(record.kpi_visibility.scrollY>0);await page.screenshot({path:path.join(out,`${engine}-390-overview-scrolled-viewport.png`)});await page.getByRole('link',{name:'Деньги',exact:true}).click();await ready('money/cash');await layout('cash');assert.match(await page.locator('#main').innerText(),/TEST .* finance acceptance/);
  await page.getByRole('link',{name:'Результат',exact:true}).click();await ready('money/result');await layout('result');assert.match(await page.locator('#main').innerText(),/Результат по учтённым затратам/);
  await page.getByRole('link',{name:'Долги',exact:true}).click();await ready('money/debts');await page.getByRole('link',{name:new RegExp(`TEST ${engine} Продажа 1000`)}).click();await ready('money-document/');assert.match(await page.locator('#main').innerText(),/600 TRY/);assert.match(await page.locator('#main').innerText(),/400 TRY/);await layout('document-history');
  await page.getByRole('link',{name:'Назад к финансам',exact:true}).click();await ready('money/debts');assert.ok(page.url().includes(date+'/'+date+'/TRY/all/'+account.id));await page.reload();await ready('money/debts');
  await page.getByRole('link',{name:'Теплицы',exact:true}).click();await ready('money/areas');await layout('areas');
  // Read error stays local; session remains valid and retry recovers same selection.
  await page.route('**/finance/analytics?*',r=>r.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{message:'TEST temporary finance read failure'}})}));await page.reload();await page.getByRole('heading',{name:'Не удалось загрузить'}).waitFor();assert.ok(!page.url().includes('/preview/login'));await page.unroute('**/finance/analytics?*');await click('Повторить');await ready('money/areas');
- const after=await get(root+`/finance/analytics?date_from=${date}&date_to=${date}&currency=TRY&money_account_id=${account.id}`);assert.equal(after.cash_totals.net_change,'200.00');assert.equal(after.economics.operating_result,'500.00');record.analytics=after;result.engines.push(record);await browser.close();
+ const after=await get(root+`/finance/analytics?date_from=${date}&date_to=${date}&currency=TRY&money_account_id=${account.id}`);assert.equal(after.cash_totals.net_change,'200.00');assert.equal(after.economics.operating_result,'500.00');record.analytics=after;
+ // Actual partial and estimated denominator views from an already authored Harvest document.
+ const harvestEvidence=JSON.parse(await fs.readFile('artifacts/harvest-journey/harvest-journey-results.json','utf8'));
+ const harvestRecord=harvestEvidence.records.find(x=>x.engine===engine),areaA=config.synthetic_fixture.areas[0].id,areaB=config.synthetic_fixture.areas[1].id;
+ record.denominator_views=[];
+ for(const total of ['200','150']) {
+  await goto('depot-estimate/'+harvestRecord.settlement_id);
+  await page.locator('[name="basis_'+areaA+'"]').fill('100');await page.locator('[name="basis_'+areaB+'"]').fill('50');
+  await page.locator('[name=total_basis_count]').fill(total);await page.locator('[name=basis_description]').fill('TEST Finance denominator '+total);await page.locator('[name=reason]').fill('TEST explicit estimate coverage review');
+  await click('Рассчитать и проверить');await page.locator('#sheet-root [role=dialog]').waitFor();await click('Подтвердить оценку');await ready('depot/');
+  const moneyRoute='money/result/2026-10-10/2026-10-10/TRY/'+areaB+'/all';await goto(moneyRoute);
+  const metric=await get(root+'/finance/analytics?date_from=2026-10-10&date_to=2026-10-10&currency=TRY&greenhouse_id='+areaB);
+  assert.equal(metric.harvest_denominator.classification,total==='200'?'PARTIAL':'ESTIMATED');
+  assert.equal(metric.harvest_denominator.basis_incomplete,total==='200');
+  await page.getByText(total==='200'?'Покрытие веса неполное':'Есть оценочное распределение',{exact:true}).waitFor();await layout('denominator-'+metric.harvest_denominator.classification.toLowerCase());
+  record.denominator_views.push(metric.harvest_denominator);
+ }
+ result.engines.push(record);await browser.close();
 }
  assert.deepEqual(result.errors,[]);result.status='PASS';
 } catch(error) {result.status='FAIL';result.failure=String(error.stack || error);throw error;}

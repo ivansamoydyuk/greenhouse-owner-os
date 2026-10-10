@@ -129,6 +129,8 @@ def create_app(*, finance_service: FinanceService, actor_provider, reference_ser
     mount_finance_analytics(app,finance_service,actor_provider)
     from .workers import mount_workers
     mount_workers(app,finance_service,actor_provider,worker_provider)
+    from .purchases import mount_purchases
+    mount_purchases(app,finance_service,actor_provider)
     from .inventory import mount_inventory
     mount_inventory(app,finance_service,actor_provider)
     from .harvest import mount_harvest

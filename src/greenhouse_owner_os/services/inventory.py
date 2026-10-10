@@ -116,6 +116,10 @@ class InventoryService:
                 if payload[k]:
                     r=u.session.get(model,UUID(payload[k]))
                     if not r or r.entity_id!=e:raise ValidationError('Связанная запись относится к другой компании')
+            if b.kind=='receipt' and payload['supplier_id'] and payload['finance_obligation_id']:
+                obligation=u.session.get(ObligationRow,UUID(payload['finance_obligation_id']))
+                if str(obligation.counterparty_id)!=payload['supplier_id']:
+                    raise ValidationError('Поставщик физического прихода не совпадает с кредитором выбранного долга')
             if ev.get('import_batch_id'):
                 if not rows(u,'SELECT id FROM core.import_batches WHERE id=:id AND entity_id=:e',id=ev['import_batch_id'],e=e):raise ValidationError('Import batch scope mismatch')
             for ln in b.lines:

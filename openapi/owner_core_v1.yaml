@@ -4415,6 +4415,252 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/purchases:
+    get:
+      summary: Purchases
+      operationId: purchases_v1_entities__entity_id__purchases_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      - name: supplier_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supplier Id
+      - name: product_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Product Id
+      - name: location_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseHistory'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/purchases/{receipt_id}:
+    get:
+      summary: Purchase
+      operationId: purchase_v1_entities__entity_id__purchases__receipt_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: receipt_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Receipt Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseReceipt'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/history:
+    get:
+      summary: History
+      operationId: history_v1_entities__entity_id__inventory_history_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      - name: supplier_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supplier Id
+      - name: product_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Product Id
+      - name: location_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+      - name: kind
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Kind
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryHistory'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/history/{event_id}:
+    get:
+      summary: History Event
+      operationId: history_event_v1_entities__entity_id__inventory_history__event_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryHistoryEvent'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -7164,8 +7410,23 @@ components:
             enum:
             - quick_expense
             - depot_receipt
+            - supplier_invoice
           - type: 'null'
           title: Capture Context
+        invoice_intent:
+          anyOf:
+          - type: string
+            enum:
+            - operating_expense
+            - existing_payable
+          - type: 'null'
+          title: Invoice Intent
+        invoice_receipt_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Invoice Receipt Id
         client_capture_id:
           type: string
           format: uuid
@@ -7348,6 +7609,7 @@ components:
           enum:
           - field_harvest
           - inventory_receipt
+          - inventory_transfer
           title: Form Kind
         form_id:
           type: string
@@ -8684,7 +8946,921 @@ components:
       - finance_obligation_ids
       - recognition
       title: InventoryCostCoverage
-
+    HistoryFilters:
+      properties:
+        date_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+        date_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+        supplier_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supplier Id
+        product_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Product Id
+        location_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+        kind:
+          anyOf:
+          - type: string
+            enum:
+            - receipt
+            - application
+            - transfer
+            - writeoff
+            - plan
+          - type: 'null'
+          title: Kind
+        inclusive:
+          type: boolean
+          const: true
+          title: Inclusive
+          default: true
+        date_basis:
+          type: string
+          const: SOURCE_EVENT_DATE
+          title: Date Basis
+          default: SOURCE_EVENT_DATE
+      additionalProperties: false
+      type: object
+      title: HistoryFilters
+    HistoryReference:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        base_unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Base Unit
+        currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      title: HistoryReference
+    HistoryStock:
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        product_name:
+          type: string
+          title: Product Name
+        location_id:
+          type: string
+          format: uuid
+          title: Location Id
+        location_name:
+          type: string
+          title: Location Name
+        base_unit:
+          type: string
+          title: Base Unit
+        quantity:
+          type: string
+          title: Quantity
+        uncosted_quantity:
+          type: string
+          title: Uncosted Quantity
+        known_cost:
+          type: string
+          title: Known Cost
+        currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - product_id
+      - product_name
+      - location_id
+      - location_name
+      - base_unit
+      - quantity
+      - uncosted_quantity
+      - known_cost
+      title: HistoryStock
+    InventoryHistory:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        snapshot_at:
+          type: string
+          format: date-time
+          title: Snapshot At
+        filters:
+          $ref: '#/components/schemas/HistoryFilters'
+        offset:
+          type: integer
+          title: Offset
+        limit:
+          type: integer
+          title: Limit
+        total:
+          type: integer
+          title: Total
+        next_offset:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Next Offset
+        available_products:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Products
+        available_locations:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Locations
+        available_suppliers:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Suppliers
+        opening_state:
+          type: string
+          const: UNINITIALIZED_VERIFY
+          title: Opening State
+          default: UNINITIALIZED_VERIFY
+        events:
+          items:
+            $ref: '#/components/schemas/InventoryHistoryEvent'
+          type: array
+          title: Events
+        stock:
+          items:
+            $ref: '#/components/schemas/HistoryStock'
+          type: array
+          title: Stock
+        stock_scope:
+          type: string
+          const: CURRENT_PRODUCT_LOCATION_NOT_PERIOD_OPENING
+          title: Stock Scope
+          default: CURRENT_PRODUCT_LOCATION_NOT_PERIOD_OPENING
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - snapshot_at
+      - filters
+      - offset
+      - limit
+      - total
+      - next_offset
+      - available_products
+      - available_locations
+      - available_suppliers
+      - events
+      - stock
+      title: InventoryHistory
+    InventoryHistoryEvent:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          enum:
+          - receipt
+          - application
+          - transfer
+          - writeoff
+          - plan
+          title: Kind
+        event_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Event Date
+        status:
+          type: string
+          enum:
+          - draft
+          - posted
+          - reversed
+          title: Status
+        version:
+          type: integer
+          title: Version
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        supplier_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supplier Id
+        supplier_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Supplier Name
+        finance_obligation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Finance Obligation Id
+        replacement_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Of Id
+        replacement_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Id
+        reversal_event_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Reversal Event Date
+        reversal_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reversal Reason
+        lines:
+          items:
+            $ref: '#/components/schemas/InventoryHistoryLine'
+          type: array
+          title: Lines
+        movements:
+          items:
+            $ref: '#/components/schemas/InventoryHistoryMovement'
+          type: array
+          title: Movements
+        original:
+          $ref: '#/components/schemas/InventoryOriginal'
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        issue_messages:
+          items:
+            type: string
+          type: array
+          title: Issue Messages
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - kind
+      - status
+      - version
+      - created_at
+      - lines
+      - movements
+      - original
+      - issues
+      - issue_messages
+      title: InventoryHistoryEvent
+    InventoryHistoryLine:
+      properties:
+        line_no:
+          type: integer
+          title: Line No
+        product_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Product Id
+        product_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Product Name
+        original_product_name:
+          type: string
+          title: Original Product Name
+        quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity
+        unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Unit
+        original_quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Original Quantity
+        original_unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Original Unit
+        base_quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Base Quantity
+        base_unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Base Unit
+        location_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+        location_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location Name
+        destination_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Destination Id
+        destination_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Destination Name
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        work_area_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Work Area Id
+        unit_cost:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Unit Cost
+        currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - line_no
+      - original_product_name
+      title: InventoryHistoryLine
+    InventoryHistoryMovement:
+      properties:
+        seq:
+          type: integer
+          title: Seq
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        role:
+          type: string
+          title: Role
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        product_name:
+          type: string
+          title: Product Name
+        location_id:
+          type: string
+          format: uuid
+          title: Location Id
+        location_name:
+          type: string
+          title: Location Name
+        base_unit:
+          type: string
+          title: Base Unit
+        quantity:
+          type: string
+          title: Quantity
+        uncosted_quantity:
+          type: string
+          title: Uncosted Quantity
+        known_cost:
+          type: string
+          title: Known Cost
+        currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Currency
+        reversal_of_seq:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Reversal Of Seq
+      additionalProperties: false
+      type: object
+      required:
+      - seq
+      - event_id
+      - role
+      - event_date
+      - product_id
+      - product_name
+      - location_id
+      - location_name
+      - base_unit
+      - quantity
+      - uncosted_quantity
+      - known_cost
+      title: InventoryHistoryMovement
+    InventoryOriginal:
+      properties:
+        source:
+          type: string
+          title: Source
+        locator:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Locator
+        source_document:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Document
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        structured_original:
+          anyOf:
+          - $ref: '#/components/schemas/OwnerFormSource'
+          - type: 'null'
+        filename:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Filename
+        mime_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mime Type
+        has_file:
+          type: boolean
+          title: Has File
+        original_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Original Url
+        sha256:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sha256
+        hash_basis:
+          type: string
+          enum:
+          - BINARY_BYTES
+          - RAW_TEXT_UTF8
+          - CANONICAL_TYPED_FORM_JSON
+          - UNAVAILABLE
+          title: Hash Basis
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - has_file
+      - hash_basis
+      title: InventoryOriginal
+    InvoiceLink:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        original_source_id:
+          type: string
+          format: uuid
+          title: Original Source Id
+        proposal_id:
+          type: string
+          format: uuid
+          title: Proposal Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        finance_obligation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Finance Obligation Id
+        valuation_state:
+          type: string
+          const: UNKNOWN_UNCHANGED
+          title: Valuation State
+        supplier_consistency:
+          type: string
+          enum:
+          - MATCH
+          - UNKNOWN
+          - LEGACY_MISMATCH
+          title: Supplier Consistency
+        original_url:
+          type: string
+          title: Original Url
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - original_source_id
+      - proposal_id
+      - created_at
+      - valuation_state
+      - supplier_consistency
+      - original_url
+      title: InvoiceLink
+    InvoiceProposalState:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        action_type:
+          type: string
+          enum:
+          - PAYABLE
+          - INVOICE_MATCH
+          title: Action Type
+        state:
+          type: string
+          title: State
+        version:
+          type: integer
+          title: Version
+        confirmed_effect_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Confirmed Effect Id
+        current_receipt_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Current Receipt Id
+        finance_obligation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Finance Obligation Id
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - action_type
+      - state
+      - version
+      title: InvoiceProposalState
+    InvoiceWorkflow:
+      properties:
+        source_id:
+          type: string
+          format: uuid
+          title: Source Id
+        saved_at:
+          type: string
+          format: date-time
+          title: Saved At
+        capture_context:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Capture Context
+        invoice_intent:
+          anyOf:
+          - type: string
+            enum:
+            - operating_expense
+            - existing_payable
+          - type: 'null'
+          title: Invoice Intent
+        invoice_receipt_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Invoice Receipt Id
+        job_state:
+          type: string
+          title: Job State
+        filename:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Filename
+        text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Text
+        has_file:
+          type: boolean
+          title: Has File
+        original_url:
+          type: string
+          title: Original Url
+        proposals:
+          items:
+            $ref: '#/components/schemas/InvoiceProposalState'
+          type: array
+          title: Proposals
+      additionalProperties: false
+      type: object
+      required:
+      - source_id
+      - saved_at
+      - job_state
+      - has_file
+      - original_url
+      - proposals
+      title: InvoiceWorkflow
+    PurchaseHistory:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        snapshot_at:
+          type: string
+          format: date-time
+          title: Snapshot At
+        filters:
+          $ref: '#/components/schemas/HistoryFilters'
+        offset:
+          type: integer
+          title: Offset
+        limit:
+          type: integer
+          title: Limit
+        total:
+          type: integer
+          title: Total
+        next_offset:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Next Offset
+        available_products:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Products
+        available_locations:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Locations
+        available_suppliers:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Suppliers
+        opening_state:
+          type: string
+          const: UNINITIALIZED_VERIFY
+          title: Opening State
+          default: UNINITIALIZED_VERIFY
+        items:
+          items:
+            $ref: '#/components/schemas/PurchaseReceipt'
+          type: array
+          title: Items
+        linked_documents:
+          items:
+            $ref: '#/components/schemas/DebtDocument'
+          type: array
+          title: Linked Documents
+        document_scope:
+          type: string
+          const: CURRENT_PAGE_LINKED_WHOLE_DOCUMENTS
+          title: Document Scope
+          default: CURRENT_PAGE_LINKED_WHOLE_DOCUMENTS
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - snapshot_at
+      - filters
+      - offset
+      - limit
+      - total
+      - next_offset
+      - available_products
+      - available_locations
+      - available_suppliers
+      - items
+      - linked_documents
+      title: PurchaseHistory
+    PurchaseReceipt:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          enum:
+          - receipt
+          - application
+          - transfer
+          - writeoff
+          - plan
+          title: Kind
+        event_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Event Date
+        status:
+          type: string
+          enum:
+          - draft
+          - posted
+          - reversed
+          title: Status
+        version:
+          type: integer
+          title: Version
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        supplier_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supplier Id
+        supplier_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Supplier Name
+        finance_obligation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Finance Obligation Id
+        replacement_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Of Id
+        replacement_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Id
+        reversal_event_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Reversal Event Date
+        reversal_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reversal Reason
+        lines:
+          items:
+            $ref: '#/components/schemas/InventoryHistoryLine'
+          type: array
+          title: Lines
+        movements:
+          items:
+            $ref: '#/components/schemas/InventoryHistoryMovement'
+          type: array
+          title: Movements
+        original:
+          $ref: '#/components/schemas/InventoryOriginal'
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        issue_messages:
+          items:
+            type: string
+          type: array
+          title: Issue Messages
+        invoice_links:
+          items:
+            $ref: '#/components/schemas/InvoiceLink'
+          type: array
+          title: Invoice Links
+        pending_invoice_actions:
+          items:
+            $ref: '#/components/schemas/InvoiceWorkflow'
+          type: array
+          title: Pending Invoice Actions
+        linked_documents:
+          items:
+            $ref: '#/components/schemas/DebtDocument'
+          type: array
+          title: Linked Documents
+        valuation_policy:
+          type: string
+          const: UNKNOWN_UNCHANGED_ON_INVOICE_LINK
+          title: Valuation Policy
+          default: UNKNOWN_UNCHANGED_ON_INVOICE_LINK
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - kind
+      - status
+      - version
+      - created_at
+      - lines
+      - movements
+      - original
+      - issues
+      - issue_messages
+      - invoice_links
+      - pending_invoice_actions
+      - linked_documents
+      title: PurchaseReceipt
   responses:
     Conflict:
       description: Version or idempotency conflict

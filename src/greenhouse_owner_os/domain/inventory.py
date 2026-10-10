@@ -96,7 +96,9 @@ class InventoryEvidence(StrictModel):
     verification:Literal['VERIFY','VERIFIED','HISTORY']='VERIFY'
     @model_validator(mode='after')
     def binary(self):
-        validate_binding(self,'inventory_receipt',self.locator)
+        kind=self.structured_original.form_kind if self.structured_original else 'inventory_receipt'
+        if kind not in ('inventory_receipt','inventory_transfer'):raise ValueError('Inventory form source required')
+        validate_binding(self,kind,self.locator)
         if self.filename and re.search(r'[/\\\x00-\x1f\x7f]',self.filename):raise ValueError('Unsafe filename')
         if self.file_base64:
             try:b=base64.b64decode(self.file_base64,validate=True)
@@ -121,17 +123,18 @@ class InventoryInput(StrictModel):
         original=self.evidence.structured_original
         if original:
             f=original.fields
-            if self.kind!='receipt' or len(self.lines)!=1:raise ValueError('Typed receipt source requires one initial physical receipt')
+            expected_kind='transfer' if original.form_kind=='inventory_transfer' else 'receipt'
+            if self.kind!=expected_kind or len(self.lines)!=1:raise ValueError('Typed form requires one matching inventory event')
             if self.replacement_of_id is not None:return self # Service verifies unchanged original against predecessor.
             ln=self.lines[0]
-            expected=InventoryLine(product_id=f['product_id'] or None,original_product_name=f['original_product_name'],location_id=f['location_id'] or None,quantity=form_decimal(f['quantity']),unit=f['unit'] or None)
+            expected=InventoryLine(product_id=f['product_id'] or None,original_product_name=f['original_product_name'],location_id=f['location_id'] or None,destination_id=f.get('destination_id') or None,quantity=form_decimal(f['quantity']),unit=f['unit'] or None)
             if ln.original_quantity not in (None,f['quantity']) or ln.original_unit not in (None,f['unit']):raise ValueError('Contradictory original unit or quantity')
-            keys=('product_id','original_product_name','location_id','quantity','unit')
+            keys=('product_id','original_product_name','location_id','destination_id','quantity','unit')
             if any(getattr(ln,k)!=getattr(expected,k) for k in keys) or (f['event_date'] or None)!=(self.event_date.isoformat() if self.event_date else None) or self.notes is not None:
                 raise ValueError('Initial receipt differs from immutable form source')
             # Optional form notes stay only in the immutable original, like
             # legacy raw_text. They do not alter the physical-event payload.
-            if any(v is not None for v in (self.supplier_id,self.finance_obligation_id,self.method,ln.unit_cost,ln.currency,ln.destination_id,ln.greenhouse_id,ln.work_area_id)):
+            if any(v is not None for v in (self.supplier_id,self.finance_obligation_id,self.method,ln.unit_cost,ln.currency,ln.greenhouse_id,ln.work_area_id)):
                 raise ValueError('Typed receipt does not assert additional accounting or location facts')
         return self
 
