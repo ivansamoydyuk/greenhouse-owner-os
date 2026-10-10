@@ -128,7 +128,7 @@ function toast(message) {
 }
 function shell(body, focused = false) {
   const section = route.split("/")[0];
-  app.innerHTML = `<div class="shell"><div class="demo-strip connected-mode">CONNECTED TEST · синтетические данные · ${e((config?.feature_sha || "local").slice(0, 8))}</div><main id="main" tabindex="-1">${body}</main>${focused ? "" : `<div class="radial-backdrop" data-action="radial-close" hidden></div><footer class="dock">${CaptureBar().replace("Источник сохраняется в DEMO", "Источник сохраняется в TEST PostgreSQL")}${Navigation(section === "personal" ? "tasks" : section, data.home?.confirmations?.n || 0)}</footer>`}</div>`;
+  app.innerHTML = `<div class="shell"><div class="demo-strip connected-mode">CONNECTED TEST · синтетические данные · ${e(config?.feature_sha ? config.feature_sha.slice(0, 8) : "сборка не подтверждена")}</div><main id="main" tabindex="-1">${body}</main>${focused ? "" : `<div class="radial-backdrop" data-action="radial-close" hidden></div><footer class="dock">${CaptureBar().replace("Источник сохраняется в DEMO", "Источник сохраняется в TEST PostgreSQL")}${Navigation(section === "personal" ? "tasks" : section, data.home?.confirmations?.n || 0)}</footer>`}</div>`;
   setRadial(false);
 }
 function setRadial(open) {
@@ -1150,8 +1150,20 @@ async function action(run, node = null) {
     await run();
   } catch (error) {
     showError(error, node);
-    if (error.status === 409)
+    if (error.status === 409) {
       toast("Данные изменились. Обновите и проверьте текущую версию.");
+      const target =
+        node?.querySelector(".form-error") ||
+        document.querySelector("#action-error");
+      if (target) {
+        const refresh = document.createElement("button");
+        refresh.type = "button";
+        refresh.className = "btn secondary";
+        refresh.dataset.action = "refresh";
+        refresh.textContent = "Обновить текущую запись";
+        target.append(document.createElement("br"), refresh);
+      }
+    }
   } finally {
     busy = false;
     activeActionRoute = null;
@@ -1736,6 +1748,10 @@ document.addEventListener("click", (event) => {
   action(async () => {
     const { current, draft, route } = snapshot;
     if (name === "refresh") {
+      if (!api.scope) {
+        config = await api.get("/preview/config");
+        api.configure(config);
+      }
       await refreshData();
       return render();
     }

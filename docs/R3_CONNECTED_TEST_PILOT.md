@@ -63,3 +63,28 @@ restricted-role API A–F proof and backend auth/scope/runtime/expiry tests PASS
 publication. Browser journeys and final frozen full regression are still pending.
 Earlier failed assembly/test attempts are retained in the delivery evidence. Do not
 reinterpret these provisional results as final acceptance or a merge decision.
+
+## Bounded owner TEST access
+
+The separate `connected-preview` job requires a successful connected-browser job.
+On the initial push it records **NO PUBLIC PREVIEW STARTED** and performs no
+installation, tunnel or database action. Only an explicit rerun of that completed
+dry job, after the final exact-head gate and review, opens the existing approved
+tunnel mechanism. Before that gate, publish fixes as new commits/run1: do not use
+rerun-all, failed-job reruns or browser-job reruns, which can rerun dependents.
+Never use a workflow rerun as a substitute for the final verification gate.
+
+The owner window uses a fresh synthetic database and a new temporary access key,
+with the same non-superuser runtime, entity fence, CSP and 35-minute all-route
+expiry. The authenticated entry is `/r3/`; the standalone DEMO remains separately
+labelled. The access key is held only in the process environment and a private,
+one-day access artifact, for delivery through the closed owner-access document.
+It is absent from source, query strings, public metadata and final audit evidence.
+
+The exact SHA, UTC expiry and verified access boundary are recorded in a separate
+sanitized metadata artifact. At the end, a read-only snapshot preserves row counts,
+role flags, reconciliation and source hashes without raw originals or credentials.
+Always-cleanup stops only that job's app/tunnel processes and removes its owned
+container and test volume. No existing database, process or external integration
+is touched. A later review needs a fresh explicitly launched window; this does not
+constitute production hosting or continuing access.

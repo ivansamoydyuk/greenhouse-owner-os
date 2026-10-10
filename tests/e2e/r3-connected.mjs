@@ -204,6 +204,11 @@ try {
       }
     }
     const beforeRevision = proposal.version;
+    const staleReview = await context.newPage();
+    await route(staleReview, "review/" + proposalId);
+    await staleReview
+      .getByRole("button", { name: "Подтвердить действие в TEST", exact: true })
+      .waitFor();
     await edit(page, "amount", "126.00");
     proposal = await read(
       context,
@@ -212,9 +217,35 @@ try {
     assert.equal(proposal.version, beforeRevision + 1);
     assert.equal(proposal.source.text, original);
     assert.equal(proposal.revision.payload.amount, "126.00");
+    await click(staleReview, "Подтвердить действие в TEST");
+    await staleReview
+      .getByRole("button", { name: "Обновить текущую запись", exact: true })
+      .waitFor();
+    const afterStale = await read(
+      context,
+      root + "/owner/confirmations/" + proposalId + "/preview",
+    );
+    assert.equal(afterStale.version, proposal.version);
+    assert.notEqual(afterStale.state, "POSTED");
+    assert.equal(afterStale.source.text, original);
+    await click(staleReview, "Обновить текущую запись");
+    await staleReview
+      .getByText(`Версия ${proposal.version} · CONNECTED TEST`, { exact: true })
+      .waitFor();
+    await snap(staleReview, engine + "-390-stale-review-refreshed");
+    await staleReview.close();
+    result.journeys.push({
+      engine,
+      name: "two-tab stale confirmation rejected before any effect",
+      pass: true,
+    });
     await snap(page, engine + "-390-expense-review");
     // Drop the response only AFTER the server has committed; retry actual button.
     let lost = false;
+    let releaseConfirmResponse;
+    const doubleTapFinished = new Promise((resolve) => {
+      releaseConfirmResponse = resolve;
+    });
     await page.route(
       "**/owner/confirmations/" + proposalId + "/confirm",
       async (intercept) => {
@@ -222,11 +253,15 @@ try {
           lost = true;
           const response = await intercept.fetch();
           assert.equal(response.status(), 200);
+          await doubleTapFinished;
           await intercept.abort("failed");
         } else await intercept.continue();
       },
     );
-    await click(page, "Подтвердить действие в TEST");
+    await page
+      .getByRole("button", { name: "Подтвердить действие в TEST", exact: true })
+      .dblclick();
+    releaseConfirmResponse();
     await page
       .locator("#action-error")
       .filter({ hasText: "Ответ сервера не получен" })
@@ -302,6 +337,38 @@ try {
     result.journeys.push({
       engine,
       name: "E all tasks DONE reload completed restore",
+      pass: true,
+    });
+    // Two actual tabs: a prior same-key DONE replay cannot overwrite a later restore.
+    const staleTab = await context.newPage();
+    await route(staleTab, "personal/" + taskId);
+    await staleTab
+      .getByRole("button", { name: "Отметить готовой", exact: true })
+      .waitFor();
+    await click(page, "Отметить готовой");
+    await page
+      .getByRole("button", { name: "Вернуть в активные", exact: true })
+      .waitFor();
+    await click(page, "Вернуть в активные");
+    await page
+      .getByRole("button", { name: "Отметить готовой", exact: true })
+      .waitFor();
+    const restoredTask = await read(context, root + "/owner/tasks/" + taskId);
+    await click(staleTab, "Отметить готовой");
+    await staleTab
+      .getByText("Состояние задачи сохранено.", { exact: true })
+      .waitFor();
+    await staleTab
+      .getByRole("button", { name: "Отметить готовой", exact: true })
+      .waitFor();
+    const replayedTask = await read(context, root + "/owner/tasks/" + taskId);
+    assert.equal(replayedTask.version, restoredTask.version);
+    assert.equal(replayedTask.state, "TO_DO");
+    await snap(staleTab, engine + "-390-old-task-replay-fresh-read");
+    await staleTab.close();
+    result.journeys.push({
+      engine,
+      name: "two-tab old DONE replay preserves later restore and reads current state",
       pass: true,
     });
     // D: inline product creation, independently configured warehouse, durable original, movement.

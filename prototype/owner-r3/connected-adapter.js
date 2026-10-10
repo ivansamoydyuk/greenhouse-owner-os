@@ -205,7 +205,7 @@ export class BrowserStore {
 }
 export class ConnectedAPI {
   constructor({
-    fetcher = globalThis.fetch,
+    fetcher = globalThis.fetch.bind(globalThis),
     store = new BrowserStore(),
     onAuth = () => {},
   } = {}) {
@@ -244,7 +244,9 @@ export class ConnectedAPI {
       });
     } catch {
       throw new ApiError(
-        "Ответ сервера не получен. Действие могло сохраниться; повторите с тем же ключом.",
+        ["GET", "HEAD"].includes((options.method || "GET").toUpperCase())
+          ? "Не удалось получить данные сервера. Проверьте соединение и повторите загрузку."
+          : "Ответ сервера не получен. Действие могло сохраниться; повторите с тем же ключом.",
         0,
       );
     }
@@ -336,6 +338,12 @@ export class ConnectedAPI {
           await this.store.put({
             ...saved,
             state: "REJECTED",
+            error: error.message,
+          });
+        else if (error.status === 409)
+          await this.store.put({
+            ...saved,
+            state: "CONFLICT",
             error: error.message,
           });
         else if (error.status !== 401)

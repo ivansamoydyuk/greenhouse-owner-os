@@ -32,9 +32,9 @@
       "path": ".github/workflows/r3-connected-pilot.yml",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "5a7aaf4a89258502ef666f13750e8f6a4ab14a46",
-      "sha256": "03b268df61d1cf0de9aa3773211981e908d52809f1becbd89fda4f173f70eadb",
-      "size": 3116
+      "git_blob": "236af63330804d62474930f8bf4d1ac9a882a409",
+      "sha256": "270977c23c40ffe381d7204d9be30f9dc8e8a6cae66d67c7466342b70f24c8f1",
+      "size": 8996
     },
     {
       "path": ".gitignore",
@@ -296,9 +296,9 @@
       "path": "docs/R3_CONNECTED_TEST_PILOT.md",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "b29671ae4b19efac5eb66a616031250d5282765c",
-      "sha256": "0ab786dd471a51c5e6ee1c119e6ba9e40176714aaf7ee070e3a9a5e6a4221b13",
-      "size": 3948
+      "git_blob": "acee927517f588bdbc3ffad4f91a37df5bf2630c",
+      "sha256": "d21d796984963edd12f3ed6b1be1803e1a128424132076a758af3e0d79c5f84a",
+      "size": 5571
     },
     {
       "path": "openapi/owner_core_v1.yaml",
@@ -368,9 +368,9 @@
       "path": "prototype/owner-r3/connected-adapter.js",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "1d8c4d40fe8359569f46a8c0f51821fd703ad700",
-      "sha256": "63d35aeb956d34c01d7ac7194004b8c84d6500225e6bd020fef4ec15e890a7ea",
-      "size": 13026
+      "git_blob": "59509f415d48deb5436fbbf97f22d313b445994c",
+      "sha256": "dba43830d6135ca8b41655d8d08881ea869e27731173e3950ee7f45d3af6543a",
+      "size": 13454
     },
     {
       "path": "prototype/owner-r3/connected.css",
@@ -392,9 +392,9 @@
       "path": "prototype/owner-r3/connected.js",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "90af201f037f35188dc23c8888e0cc9c82e7d05d",
-      "sha256": "dcab55f8f77a1cd55c2419ccd6c76ab6b46a3c462b2c2ee1cb510f18d52a1cd1",
-      "size": 88831
+      "git_blob": "4120a56e3608d6126f0e5f24dd470a3202598dfe",
+      "sha256": "8603a1de2d0b80c9dcc472ce0de90113a572b3188b65031e10dbcb249703b239",
+      "size": 89472
     },
     {
       "path": "prototype/owner-r3/daily-demo.js",
@@ -539,6 +539,14 @@
       "git_blob": "746497536085afe3580b10966139a61ee387ccc8",
       "sha256": "96bc96214a03a7bea3f9bea7b459ec6f2da608a68c0e88bd34412615391e5c6d",
       "size": 1071
+    },
+    {
+      "path": "scripts/r3_connected_preview_access.py",
+      "origin": "CONNECTED_PILOT",
+      "remote_ref": null,
+      "git_blob": "32b4110e81074d5612e5eb1b267640c2b5c7aa35",
+      "sha256": "cbb40b1c41182048d02b47013cb79aac009205cff4f49b8d693cecc835bb5687",
+      "size": 14158
     },
     {
       "path": "scripts/r3_connected_runtime.py",
@@ -1528,9 +1536,9 @@
       "path": "tests/e2e/r3-connected.mjs",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "1d6e5a23ec723fa7e2cfefdc131be7f68eafadb7",
-      "sha256": "fb1954420f23de305943627ad0d1fa2b24ef01ed386f1da2955abf04b6dae046",
-      "size": 30212
+      "git_blob": "25b38ea97a1d911b3de1d608a02545783296ab86",
+      "sha256": "62cb9a496e3a64e8bf09f5c0056211c3c4076e66d24108e6d32f1014d9335a22",
+      "size": 33149
     },
     {
       "path": "tests/e2e/task-review-fixture.mjs",
@@ -1752,9 +1760,9 @@
       "path": "tests/frontend/owner-r3-connected.test.mjs",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "884c217d9bc66c333aa73f100bf25e6980b9ded0",
-      "sha256": "599076a0c642565e7e8a353845ba680e324cd4083e6bb08d904659a1ed323219",
-      "size": 10825
+      "git_blob": "f4218d4e4ed42c9a50bd700cec42af079833314f",
+      "sha256": "7bfc6146f372406ce8a538671483b60c695b3131a97a9df72636b4297180eae3",
+      "size": 12367
     },
     {
       "path": "tests/frontend/owner-r3-daily-demo.test.mjs",
@@ -2253,6 +2261,14 @@
       "size": 4060
     },
     {
+      "path": "tests/test_r3_connected_preview_access.py",
+      "origin": "CONNECTED_PILOT",
+      "remote_ref": null,
+      "git_blob": "4d5dce873d5f2518301055d9f21df916e1a4b1d2",
+      "sha256": "e7619209cbc9a2a17e0a9cebb6a1523d171fb456f0b019caeee5a2a4d30a1793",
+      "size": 6865
+    },
+    {
       "path": "tests/test_r3_preview_boundary.py",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
@@ -2427,6 +2443,14 @@
       "git_blob": "2014f5aeb0968ee82ce12eaa64649ba365720bf7",
       "sha256": "edabbf9ff823e4a4b321aa75cd51edbd6e476d3f0324935098c46f2ad8e26e94",
       "size": 2204
+    },
+    {
+      "path": "tests/unit/test_r3_preview_launch_workflow.py",
+      "origin": "CONNECTED_PILOT",
+      "remote_ref": null,
+      "git_blob": "c1e50c09bccdee2fbb96e1daf990ad544293a169",
+      "sha256": "b4d4912eb21a242ef2a60f30b374dfc43737062f70258690fa0d4cf973322fcc",
+      "size": 2049
     },
     {
       "path": "tests/unit/test_reference_safety.py",

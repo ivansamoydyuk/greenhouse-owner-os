@@ -364,3 +364,52 @@ test("source-only expense recovery requires exhausted preparation and no existin
   ])
     assert.equal(canRecoverSourceExpense(source), false);
 });
+
+test("default browser fetch preserves its global receiver", async () => {
+  const native = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = function () {
+    assert.equal(
+      this,
+      globalThis,
+      "browser fetch rejects a class instance receiver",
+    );
+    called = true;
+    return Promise.resolve(response({ ok: true }));
+  };
+  try {
+    const api = new ConnectedAPI({ store: new Store() });
+    assert.deepEqual(await api.get("/preview/config"), { ok: true });
+    assert.equal(called, true);
+  } finally {
+    globalThis.fetch = native;
+  }
+});
+
+test("failed reads do not claim an uncertain business commit", async () => {
+  const api = create(async () => {
+    throw Error("offline");
+  });
+  await assert.rejects(
+    api.get("/preview/config"),
+    /Не удалось получить данные/,
+  );
+  await assert.rejects(
+    api.mutate("/write", { amount: "1.00" }, "intent"),
+    /Действие могло сохраниться/,
+  );
+});
+
+test("explicit server conflict keeps immutable request but is not an uncertain pending send", async () => {
+  const api = create(async () => response({ detail: "stale revision" }, 409));
+  await assert.rejects(
+    api.mutate("/confirm", { expected_version: 1 }, "one"),
+    /stale revision/,
+  );
+  assert.equal((await api.records())[0].state, "CONFLICT");
+  assert.equal((await api.pendingRequests()).length, 0);
+  await assert.rejects(
+    api.mutate("/confirm", { expected_version: 2 }, "one"),
+    /Предыдущая отправка/,
+  );
+});
