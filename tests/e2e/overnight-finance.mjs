@@ -27,6 +27,8 @@ try {for(const [engine,type] of [['chromium',chromium],['webkit',webkit]]) {
   const doc=await post('/v1/obligations',{entity_id:config.entity_id,counterparty_id:party.id,direction,original_amount:amount,currency:'TRY',event_date:date,offset_ledger_account_id:ledger[code],description:`TEST ${engine} ${direction==='receivable'?'Продажа 1000':'Принятый ремонт 500'}`},'document-'+role);
   documents[direction]=await post(`/v1/obligations/${doc.id}/post?expected_version=1`,null,'post-'+role);
  }
+ // Fixtures were prepared out of band. Reload once so the ordinary app reads them.
+ await page.reload();await page.getByText('Добрый день',{exact:true}).waitFor();
  const record={engine,date,entity_id:config.entity_id,account_id:account.id,documents,payments:[]};
  // Actual owner UI allocates and confirms each payment, one lost server response.
  for(const [direction,amount] of [['receivable','400.00'],['payable','200.00']]) {
