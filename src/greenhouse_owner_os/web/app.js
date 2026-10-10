@@ -109,7 +109,7 @@ let sheetReturnFocus=null;
 function openSheet(title,html){
  sheetRevision++;
  if(!sheet.open)sheetReturnFocus=document.activeElement;
- $('#sheet-content').innerHTML=`<header class="sheet-header"><h2 id="sheet-title">${title}</h2><button type="button" class="close quiet" aria-label="Закрыть">×</button></header>${html}`;
+ $('#sheet-content').innerHTML=`<header class="sheet-header"><h2 id="sheet-title">${e(title)}</h2><button type="button" class="close quiet" aria-label="Закрыть">×</button></header>${html}`;
  $('#sheet-content .close').onclick=()=>{if(!busy)sheet.close();};
  document.body.classList.add('sheet-open');measureSheetViewport();
  if(!sheet.open)sheet.showModal();

@@ -48,6 +48,18 @@ def owner_view(factory, entity_id, *, offset=0, limit=50):
                 data = {c.name:json_value(getattr(r,c.name)) for c in model.__table__.columns}
                 operations.append(dict(data,kind=kind,opening=openings.get(str(r.id))))
         operations.sort(key=lambda r:(r['created_at'],r['id']),reverse=True)
+        # Direct expenses are source-owned records outside the legacy operations
+        # families. Expose a separate bounded recent list, never a new ledger sum
+        # or a claim of complete period history. Preserve exact currency/date.
+        direct_expenses_total = s.scalar(text('SELECT count(*) FROM finance.direct_expenses WHERE entity_id=:e'), {'e':entity_id})
+        direct_expenses = [{k:json_value(v) for k,v in row.items()} for row in s.execute(text("""
+            SELECT d.*, source.id AS source_id
+            FROM finance.direct_expenses d
+            JOIN core.proposed_actions p ON p.id=d.proposal_id AND p.entity_id=d.entity_id
+            JOIN core.inbox_items source ON source.id=p.inbox_id AND source.entity_id=d.entity_id
+            WHERE d.entity_id=:e
+            ORDER BY d.created_at DESC, d.id DESC LIMIT 50
+            """), {'e':entity_id}).mappings()]
         obligations = view('obligation_balances')
         basis={str(r.id):r for r in s.scalars(select(ObligationRow).where(ObligationRow.entity_id==entity_id))}
         areas=[{c.name:json_value(getattr(r,c.name)) for c in WorkAreaRow.__table__.columns} for r in s.scalars(select(WorkAreaRow).where(WorkAreaRow.entity_id==entity_id).order_by(WorkAreaRow.name))]
@@ -89,5 +101,8 @@ def owner_view(factory, entity_id, *, offset=0, limit=50):
             attention=attention, captures=captures, economics=economics,
             balances={x:{k:f'{v:.2f}' for k,v in b.items()} for x,b in sorted(uow.finance.currency_balances(entity_id).items())},
             accounts=view('money_account_balances'), obligations=obligations, advances=view('advance_balances'),
+            direct_expenses=direct_expenses, direct_expenses_total=direct_expenses_total,
+            direct_expenses_limit=50, direct_expenses_has_more=direct_expenses_total>len(direct_expenses),
+            direct_expenses_order='created_at_desc_id_desc', direct_expenses_period='ALL_DATES',
             operations=operations[offset:offset+limit], offset=offset, limit=limit,
             has_more=len(operations)>offset+limit, history_policy='NON_POSTING')

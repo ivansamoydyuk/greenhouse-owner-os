@@ -1,0 +1,62 @@
+name: R3 connected TEST pilot
+on:
+  push:
+    branches: [06-owner-r3-connected-test-pilot]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: r3-connected-pilot-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+  OWNER_PREVIEW_FEATURE_SHA: ${{ github.sha }}
+jobs:
+  connected-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install existing dependencies and local OCR
+        run: |
+          pip install -e '.[dev]'
+          npm ci
+          sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
+          npx playwright install --with-deps chromium webkit
+      - name: Targeted connected boundary and complete frontend gate
+        run: |
+          mkdir -p artifacts/r3-connected
+          git rev-parse HEAD > artifacts/r3-connected/checkout-sha.txt
+          pytest -q tests/test_r3_preview_boundary.py --junitxml=artifacts/r3-connected/boundary.xml
+          npm run test:ui > artifacts/r3-connected/frontend.log 2>&1
+      - name: Start fresh non-superuser synthetic TEST backend
+        run: bash scripts/start_r3_connected_ci.sh
+      - name: Actual Chromium and WebKit connected journeys
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/r3-connected
+        run: node tests/e2e/r3-connected.mjs
+      - name: Prove SQL effects and reconciliation
+        run: python scripts/r3_connected_sql_evidence.py artifacts/r3-connected/browser-results.json artifacts/r3-connected/sql-evidence.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r3-connected-browser-${{ github.sha }}
+          path: artifacts/r3-connected/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Preserve diagnostics and stop only owned runtime
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/r3-connected-server.log" ]; then tail -100 "$RUNNER_TEMP/r3-connected-server.log"; fi
+          if [ -f "$RUNNER_TEMP/r3-connected-server.pid" ]; then kill "$(cat "$RUNNER_TEMP/r3-connected-server.pid")" || true; fi
+          if [ -n "${R3_PILOT_CONTAINER:-}" ]; then docker stop "$R3_PILOT_CONTAINER" || true; fi
