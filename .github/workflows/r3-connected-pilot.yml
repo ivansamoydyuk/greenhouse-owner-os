@@ -1,7 +1,7 @@
 name: R3 connected TEST pilot
 on:
   push:
-    branches: [06-owner-r3-connected-test-pilot]
+    branches: [06-owner-r3-connected-test-pilot, 06-owner-r3-capture-friction]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.15'
@@ -32,6 +33,29 @@ jobs:
           npm ci
           sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
           npx playwright install --with-deps chromium webkit
+      - name: Before evidence on immutable delivered baseline
+        if: github.ref_name == '06-owner-r3-capture-friction'
+        env:
+          BASELINE_SHA: 296833f0ed4eca252dcbbda3bff4dc9797423d9d
+        run: |
+          set -euo pipefail
+          BEFORE="$RUNNER_TEMP/r3-friction-before"
+          git worktree add --detach "$BEFORE" "$BASELINE_SHA"
+          cp tests/e2e/r3-capture-before.mjs "$BEFORE/tests/e2e/r3-capture-before.mjs"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$BEFORE/node_modules"
+          cd "$BEFORE"
+          mkdir -p artifacts/r3-connected "$GITHUB_WORKSPACE/artifacts/friction-before"
+          export PYTHONPATH="$BEFORE/src:$BEFORE"
+          export OWNER_PREVIEW_FEATURE_SHA="$BASELINE_SHA"
+          # This is a fresh loopback-only synthetic baseline, never the old preview.
+          export PREVIEW_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          echo "::add-mask::$PREVIEW_SECRET"
+          trap 'kill "$(cat "$RUNNER_TEMP/r3-connected-server.pid")" 2>/dev/null || true; docker stop "r3-connected-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >/dev/null 2>&1 || true; docker rm -v "r3-connected-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >/dev/null 2>&1 || true' EXIT
+          bash scripts/start_r3_connected_ci.sh
+          export TEST_DATABASE_URL="$(sed -n 's/^TEST_DATABASE_URL=//p' "$GITHUB_ENV" | tail -1)"
+          export BASELINE_FIXTURE_SCRIPT="$GITHUB_WORKSPACE/scripts/r3_capture_baseline_fixture.py"
+          PREVIEW_URL=http://127.0.0.1:4173 E2E_ARTIFACTS="$GITHUB_WORKSPACE/artifacts/friction-before" node tests/e2e/r3-capture-before.mjs
+          cp "$RUNNER_TEMP/r3-connected-server.log" "$GITHUB_WORKSPACE/artifacts/friction-before/server.log"
       - name: Targeted connected boundary and complete frontend gate
         run: |
           mkdir -p artifacts/r3-connected
@@ -47,6 +71,14 @@ jobs:
         run: node tests/e2e/r3-connected.mjs
       - name: Prove SQL effects and reconciliation
         run: python scripts/r3_connected_sql_evidence.py artifacts/r3-connected/browser-results.json artifacts/r3-connected/sql-evidence.json
+      - name: Three owner capture cases on the candidate
+        if: github.ref_name == '06-owner-r3-capture-friction'
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/friction-after
+        run: |
+          node tests/e2e/r3-capture-friction.mjs
+          python scripts/r3_capture_sql_evidence.py artifacts/friction-after/capture-friction-results.json artifacts/friction-after/sql-evidence.json
       - name: Capture owned runtime diagnostics
         if: always()
         run: |
@@ -57,7 +89,10 @@ jobs:
         if: always()
         with:
           name: r3-connected-browser-${{ github.sha }}
-          path: artifacts/r3-connected/
+          path: |
+            artifacts/r3-connected/
+            artifacts/friction-before/
+            artifacts/friction-after/
           retention-days: 14
           if-no-files-found: error
       - name: Preserve diagnostics and stop only owned runtime
@@ -72,6 +107,7 @@ jobs:
           fi
 
   connected-preview:
+    if: github.ref_name == '06-owner-r3-connected-test-pilot'
     needs: connected-browser
     name: Owner TEST access (rerun only after frozen gate)
     runs-on: ubuntu-latest

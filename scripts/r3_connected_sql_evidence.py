@@ -280,7 +280,11 @@ def attest(uow, result, proof=None):
             require((uid(rec['product_id']), uid(rec['location_id']), Decimal(rec['quantity'])) == (pid, loc, qty), 'Browser stock input mismatch')
             row = one('SELECT * FROM inventory.events WHERE entity_id=:e AND id=:id', id=uid(rec['id']))
             require(row['kind'] == 'receipt' and row['status'] == 'posted' and row['created_by'] == row['posted_by'] == owner
-                    and row['evidence']['raw_text'] == raw and row['replacement_of_id'] is None, 'Receipt original/status mismatch')
+                    and row['evidence']['raw_text'] is None and row['evidence']['structured_original']['fields']['notes'] == raw
+                    and row['evidence']['structured_original']['form_kind'] == 'inventory_receipt'
+                    and row['evidence']['structured_original']['fields']['quantity'] == str(qty)
+                    and row['evidence']['structured_original']['fields']['unit'] == 'kg'
+                    and row['replacement_of_id'] is None, 'Receipt original/status mismatch')
             require(row['duplicate_reviewed'] is (i == 1 and j == 1), 'Intentional second South delivery must be explicitly duplicate-reviewed')
             require(len(row['payload']['lines']) == 1 and row['payload']['lines'][0]['unit_cost'] is None, 'Receipt must not invent an invoice or unit cost')
             movements = rows('SELECT * FROM inventory.movements WHERE entity_id=:e AND event_id=:id', id=row['id'])
@@ -309,8 +313,12 @@ def attest(uow, result, proof=None):
         item = records['settlementEvidence'][i]
         report = one('''SELECT r.*,e.raw_text,e.fingerprint,e.file_bytes FROM harvest.worker_reports r
             JOIN harvest.evidence e ON e.id=r.evidence_id AND e.entity_id=r.entity_id WHERE r.entity_id=:e AND r.id=:id''', id=uid(item['report_id']))
-        require(report['cut_count'] == 7 and report['field_weight_kg'] == 70 and report['raw_text'] == item['field_original']
-                and report['fingerprint'] == digest(item['field_original']) and report['file_bytes'] is None
+        from greenhouse_owner_os.domain.owner_form_source import decode_original
+        typed_original = decode_original('owner_form:v1:field_harvest', report['raw_text'])
+        require(typed_original is not None and typed_original['fields']['notes'] == item['field_original']
+                and typed_original['fields']['cut_count'] == '7' and typed_original['fields']['field_weight_kg'] == '70'
+                and report['cut_count'] == 7 and report['field_weight_kg'] == 70
+                and report['fingerprint'] == digest(report['raw_text']) and report['file_bytes'] is None
                 and report['created_by'] == owner, 'Field original/count/weight mismatch')
         settlement = one('SELECT * FROM harvest.depot_settlements WHERE entity_id=:e AND id=:id', id=uid(item['id']))
         ev = one('SELECT * FROM harvest.evidence WHERE entity_id=:e AND id=:id', id=settlement['evidence_id'])

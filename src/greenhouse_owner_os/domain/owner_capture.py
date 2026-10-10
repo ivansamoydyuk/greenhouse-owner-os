@@ -8,6 +8,7 @@ from .inventory import InventoryLine
 from .harvest import LineInput
 
 class CaptureSource(StrictModel):
+    capture_context: Literal['quick_expense'] | None = Field(default=None,exclude_if=lambda v:v is None)
     client_capture_id: UUID
     captured_at: datetime
     timezone: Literal['Europe/Istanbul'] = 'Europe/Istanbul'

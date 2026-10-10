@@ -246,3 +246,24 @@
     padding: 18px;
   }
 }
+/* Connected capture forms: a clear last action stays above the leaf and safe area. */
+.connected main { padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px)); }
+.connected input, .connected select, .connected textarea,
+.connected .confirmation-bar, .connected .form-error {
+  scroll-margin-top: 24px;
+  scroll-margin-bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+}
+.connected .source-provenance { padding: 8px 12px; border: 1px solid #dce5d8; border-radius: 12px; }
+.connected .source-provenance .card { margin-bottom: 0; border: 0; box-shadow: none; padding: 10px 0; }
+.connected .source-provenance summary { min-height: 44px; display: flex; align-items: center; }
+.connected .fact-origin { font-size: 12px; color: #627169; margin: -4px 0 12px; }
+.connected .fact-actions { gap: 8px; }
+.connected .fact-actions .btn { min-height: 44px; }
+.connected .focus-sheet { height: var(--connected-visual-height, 100dvh); top: var(--connected-visual-top, 0px); bottom: auto; }
+.connected .focus-sheet article { max-height: calc(var(--connected-visual-height, 100dvh) - 12px); }
+@media (max-height: 520px) {
+  .connected .confirmation-bar { position: static; }
+}
+
+/* A review action must never float over an unresolved fact or error. */
+.connected .capture-confirmation { position: static; bottom: auto; }

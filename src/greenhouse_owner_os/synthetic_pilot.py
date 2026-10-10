@@ -28,7 +28,7 @@ def _work_areas(factory, entity_id, actor_id):
         require_disposable_database(u.session.get_bind().url, 'test')
         if not u.session.scalar(text('SELECT core.r2_owner(:e,:a)'), dict(e=entity_id, a=actor_id)):
             raise ValueError('synthetic references require the authenticated entity owner')
-        for name in ('TEST Теплица А', 'TEST Теплица Б', 'TEST Теплица В'):
+        for name in ('TEST Теплица А', 'TEST Теплица Б', 'TEST Теплица В', 'TEST İmamlı'):
             rid = uuid5(NAMESPACE_URL, f'{SOURCE}/{entity_id}/greenhouse/{name}')
             u.session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:key,73))'), dict(key=str(rid)))
             old = u.session.get(WorkAreaRow, rid)

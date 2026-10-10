@@ -413,3 +413,16 @@ def prepare_owner_source(raw,*,today,refs,binary=False,pages=()):
             output.extend(slots[1:])
         else:output.extend(slots)
     return annotated(output or unresolved_parts(raw))
+
+
+def prepare_quick_expense(raw,*,today):
+    """Only one explicitly contextual owner shorthand; no payment inference."""
+    match=re.fullmatch(r'\s*(\d{1,18}(?:[.,]\d{1,2})?)\s+(насос\s+ремонт|ремонт\s+насоса)\s*',raw,re.I)
+    if not match:return None
+    amount=match[1].replace(',','.')
+    if Decimal(amount)<=0:return None
+    payload=dict(amount=amount,description='Ремонт насоса',currency='TRY',event_date=today.isoformat(),money_account_id=None,payment_purpose=None)
+    prov={key:dict(category='UNKNOWN' if value is None else 'SOURCE FACT' if key=='amount' else 'INFERENCE',source_text=raw,
+        basis='visible_context_default' if key in ('currency','event_date') else 'normalized_purpose' if key=='description' else 'owner_payment_confirmation_required' if key=='payment_purpose' else 'source_numeric_amount',
+        interpretation_version=INTERPRETATION_VERSION) for key,value in payload.items()}
+    return [('DIRECT_EXPENSE',payload,prov)]

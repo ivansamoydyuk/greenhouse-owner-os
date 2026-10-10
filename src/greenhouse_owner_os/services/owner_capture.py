@@ -89,7 +89,7 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             duplicate=u.session.scalar(select(InboxRow.id).where(InboxRow.entity_id==e,InboxRow.fingerprint==fingerprint).limit(1))
             row=InboxRow(id=uuid4(),entity_id=e,source_type='pdf' if b.mime_type=='application/pdf' else 'image' if raw else 'text',
                 source='owner:r2',locator=locator,filename=b.filename,mime_type=b.mime_type,file_bytes=raw,raw_text=b.text,
-                metadata_json=dict(mode=b.mode,timezone=b.timezone,client_capture_id=locator),received_at=b.captured_at,
+                metadata_json=dict(mode=b.mode,timezone=b.timezone,client_capture_id=locator,**({'capture_context':b.capture_context} if b.capture_context else {})),received_at=b.captured_at,
                 fingerprint=fingerprint,content_hash=_hash_request(dict(text=b.text,binary=fingerprint if raw else None)),identity_hash=h,
                 duplicate_of_id=duplicate,extractor_version=ENGINE,extracted_text=None,extraction={},normalized={},
                 validation=dict(review_required=True),route='UNRESOLVED',confidence='UNAVAILABLE',state='NEEDS_REVIEW',version=1,created_by=a)
@@ -150,7 +150,7 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             job=rows(u,"SELECT * FROM core.processing_jobs WHERE inbox_id=:i AND engine_version=:v AND attempts<3 AND (state='QUEUED' OR state='FAILED' AND retry_at<=clock_timestamp() OR state='RUNNING' AND lease_until<clock_timestamp()) FOR UPDATE SKIP LOCKED",i=i,v=ENGINE)
             if not job:return
             j=job[0];rows(u,"UPDATE core.processing_jobs SET state='RUNNING',attempts=attempts+1,lease_token=:t,lease_until=clock_timestamp()+interval '15 minutes',error_code=NULL WHERE id=:id RETURNING id",t=token,id=j['id'])
-            source=dict(id=s.id,e=s.entity_id,a=s.created_by,raw=s.raw_text,binary=s.file_bytes,mime=s.mime_type,fp=s.fingerprint,saved_at=s.created_at,day=s.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(),duplicate=bool(s.duplicate_of_id))
+            source=dict(id=s.id,e=s.entity_id,a=s.created_by,raw=s.raw_text,binary=s.file_bytes,mime=s.mime_type,fp=s.fingerprint,saved_at=s.created_at,day=s.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(),duplicate=bool(s.duplicate_of_id),capture_context=s.metadata_json.get('capture_context'))
             u.commit()
         try:
             if source['binary']:
@@ -184,13 +184,15 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
                 rows(u,"UPDATE core.processing_jobs SET state='FAILED',error_code='PREPARATION_FAILED',retry_at=clock_timestamp()+interval '1 minute',lease_token=NULL,lease_until=NULL WHERE id=:id AND lease_token=:t RETURNING id",id=j['id'],t=token);u.commit()
 
     def prepare(self,u,s,out):
-        from .owner_preparation import prepare_owner_source, INTERPRETATION_VERSION
+        from .owner_preparation import prepare_owner_source, prepare_quick_expense, INTERPRETATION_VERSION
         refs=lambda m:list(u.session.scalars(select(m).where(m.entity_id==s['e'])))
         references=dict(counterparties=refs(CounterpartyRow),areas=refs(WorkAreaRow),accounts=refs(MoneyAccountRow),
                         products=rows(u,'SELECT * FROM inventory.products WHERE entity_id=:e',e=s['e']),
                         locations=rows(u,'SELECT * FROM inventory.locations WHERE entity_id=:e',e=s['e']),
                         workers=rows(u,'SELECT * FROM workers.people WHERE entity_id=:e',e=s['e']))
-        result=prepare_owner_source(out.get('preparation_text',out['text']) or '',today=s['day'],refs=references,binary=bool(s['binary']),pages=out.get('pages',[]))
+        raw=out.get('preparation_text',out['text']) or ''
+        result=prepare_quick_expense(raw,today=s['day']) if s.get('capture_context')=='quick_expense' and not s['binary'] else None
+        if result is None:result=prepare_owner_source(raw,today=s['day'],refs=references,binary=bool(s['binary']),pages=out.get('pages',[]))
         for kind,payload,provenance in result:
             if kind!='DEPOT_RECEIPT' or not payload.get('depot_id'):continue
             learned=[]
@@ -229,6 +231,11 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             required('amount','Сумма');required('event_date','Дата');required('currency','Валюта: уточните явно указанную валюту')
             if kind!='DIRECT_EXPENSE':required('counterparty_id','Кому / от кого')
             if kind=='DIRECT_EXPENSE':
+                original=u.session.get(InboxRow,UUID(str(p['inbox_id'])))
+                if original and original.metadata_json.get('capture_context')=='quick_expense':
+                    from .owner_preparation import prepare_quick_expense
+                    if prepare_quick_expense(original.raw_text or '',today=original.received_at.date()) is not None and fields.get('payment_purpose')!='expense':
+                        missing.append('Подтвердите факт оплаты расхода')
                 # MoneyProposal is shared, but this trusted adapter recognises
                 # only a current operating expense. Never ignore debt/advance
                 # fields and accidentally recognise a second economic cost.
@@ -362,7 +369,13 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
                 payload=b.payload if action=='EDIT' else self._view(u,p)['revision']['payload']
                 provenance={k:{'category':'OWNER INPUT'} for k in payload}
                 if p['action_type']=='DIRECT_EXPENSE':
-                    payload,provenance=expense_revision(self._view(u,p)['revision'],payload)
+                    previous=self._view(u,p)['revision']
+                    original=u.session.get(InboxRow,UUID(str(p['inbox_id'])))
+                    if original and original.metadata_json.get('capture_context')=='quick_expense':
+                        from .owner_preparation import prepare_quick_expense
+                        if prepare_quick_expense(original.raw_text or '',today=original.received_at.date()) is not None and previous['payload'].get('payment_purpose')=='expense' and any(previous['payload'].get(k)!=payload.get(k) for k in ('amount','currency','event_date','money_account_id','description','counterparty_id','obligation_id','due_date','attributions')):
+                            payload=dict(payload,payment_purpose=None)
+                    payload,provenance=expense_revision(previous,payload)
                 return self._revision(u,p,payload,provenance,a,action,review_reason=b.reason)
             previous=self._view(u,p)['revision']
             revised=self._revision(u,p,previous['payload'],previous['provenance'],a,action,warnings=previous['missing'],review_reason=b.reason)

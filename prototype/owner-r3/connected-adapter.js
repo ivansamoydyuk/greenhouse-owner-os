@@ -456,3 +456,20 @@ export async function fileSource(file) {
     mime_type: file.type,
   };
 }
+
+// Exact owner form values are evidence; normalization belongs to the command.
+// This envelope is deliberately typed and never presented as dictated prose.
+export function ownerFormSource(formKind, draft, fields) {
+  const expected = formKind === 'field_harvest'
+    ? ['event_date','original_greenhouse','work_area_id','cut_count','field_weight_kg','reporter','notes']
+    : formKind === 'inventory_receipt'
+      ? ['event_date','product_id','original_product_name','location_id','quantity','unit','notes']
+      : null;
+  if (!expected) throw Error('Неизвестный вид исходной формы.');
+  if (!draft.id || !draft.captured_at) throw Error('Не сохранена идентичность черновика.');
+  return {
+    schema_version: 1, form_kind: formKind, form_id: draft.id,
+    captured_at: draft.captured_at, timezone: 'Europe/Istanbul',
+    fields: Object.fromEntries(expected.map(key => [key, String(fields[key] ?? '')])),
+  };
+}

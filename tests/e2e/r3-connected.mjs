@@ -552,8 +552,13 @@ try {
       // This second synthetic delivery intentionally has the same date/line as Chromium.
       // Existing backend duplicate review must be exercised, never silently bypassed.
       await page.locator("#duplicate-reviewed").waitFor();
+      assert.equal(await page.locator('[data-action="post-receipt"]').isDisabled(), true);
       await page.locator("#duplicate-reviewed").check();
-    } else assert.equal(await page.locator("#duplicate-reviewed").count(), 0);
+      assert.equal(await page.locator('[data-action="post-receipt"]').isDisabled(), false);
+    } else {
+      assert.equal(await page.locator("#duplicate-reviewed").count(), 0);
+      assert.equal(await page.locator('[data-action="post-receipt"]').isDisabled(), false);
+    }
     await click(page, "Подтвердить физический приход в TEST");
     await page
       .getByText(
