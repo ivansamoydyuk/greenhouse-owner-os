@@ -2068,9 +2068,11 @@ function updateVisibleViewport() {
   if (!viewport) return;
   document.documentElement.style.setProperty('--connected-visual-height', `${viewport.height}px`);
   document.documentElement.style.setProperty('--connected-visual-top', `${viewport.offsetTop}px`);
-  requestAnimationFrame(revealFocusedCaptureField);
 }
-window.visualViewport?.addEventListener('resize', updateVisibleViewport);
+window.visualViewport?.addEventListener('resize', () => {
+  updateVisibleViewport();
+  requestAnimationFrame(revealFocusedCaptureField);
+});
 window.visualViewport?.addEventListener('scroll', updateVisibleViewport);
 updateVisibleViewport();
 

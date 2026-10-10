@@ -69,3 +69,12 @@ test('focused capture line is revealed only when actually obscured',()=>{
  run(document,window,()=>({paddingTop:'12px',lineHeight:'20px'}),430);assert.ok(moved>0);
  moved=0;y=100;run(document,window,()=>({paddingTop:'12px',lineHeight:'20px'}),430);assert.equal(moved,0);
 });
+
+test('ordinary viewport scrolling never recenters the focused capture field',()=>{
+ const ui=fs.readFileSync('prototype/owner-r3/connected.js','utf8');
+ const body=ui.slice(ui.indexOf('function updateVisibleViewport()'),ui.indexOf('// Scroll only if'));
+ const handlers={};let reveals=0;const window={visualViewport:{height:430,offsetTop:0,addEventListener:(name,fn)=>handlers[name]=fn}};
+ const document={documentElement:{style:{setProperty(){}}}};
+ new Function('window','document','requestAnimationFrame','revealFocusedCaptureField',body)(window,document,fn=>fn(),()=>reveals++);
+ handlers.scroll();assert.equal(reveals,0);handlers.resize();assert.equal(reveals,1);handlers.scroll();assert.equal(reveals,1);
+});
