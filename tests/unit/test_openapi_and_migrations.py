@@ -84,7 +84,19 @@ def test_harvest_original_metadata_contract_matches_actual_read_route():
     assert success['content']['application/json']['schema']['$ref'] == '#/components/schemas/HarvestEvidenceMetadata'
     model = spec['components']['schemas']['HarvestEvidenceMetadata']
     fields = {column.name for column in EvidenceRow.__table__.columns if column.name != 'file_bytes'} | {'has_file', 'original_url'}
-    assert set(model['properties']) == set(model['required']) == fields
+    # Typed owner forms add one optional read member without changing any
+    # required legacy metadata, the binary route or the immutable SQL columns.
+    assert set(model['properties']) == fields | {'structured_original'}
+    assert set(model['required']) == fields
+    assert model['properties']['structured_original']['anyOf'] == [
+        {'$ref': '#/components/schemas/OwnerFormSource'}, {'type': 'null'}]
+    typed = spec['components']['schemas']['OwnerFormSource']
+    assert typed['additionalProperties'] is False
+    assert set(typed['properties']) == set(typed['required']) == {
+        'schema_version', 'form_kind', 'form_id', 'captured_at', 'timezone', 'fields'}
+    assert typed['properties']['schema_version']['const'] == 1
+    assert set(typed['properties']['form_kind']['enum']) == {'field_harvest', 'inventory_receipt'}
+    assert typed['properties']['fields']['additionalProperties'] == {'type': 'string'}
     assert model['additionalProperties'] is False
     assert {item['type'] for item in model['properties']['raw_text']['anyOf']} == {'string', 'null'}
     assert {item['type'] for item in model['properties']['original_url']['anyOf']} == {'string', 'null'}
@@ -98,6 +110,7 @@ def test_harvest_original_metadata_contract_matches_actual_read_route():
     # previously hid its empty response schema from this focused test.
     assert actual['paths']['/v1' + path] == route
     assert actual['components']['schemas']['HarvestEvidenceMetadata'] == model
+    assert actual['components']['schemas']['OwnerFormSource'] == typed
     actual_route = next(r for r in app.routes if getattr(r, 'path', None) == '/v1' + path)
     assert actual_route.response_model is None, 'OpenAPI documentation must not change existing payload serialization'
     assert actual_route.response_field is None

@@ -76,7 +76,9 @@ jobs:
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/friction-after
-        run: node tests/e2e/r3-capture-friction.mjs
+        run: |
+          node tests/e2e/r3-capture-friction.mjs
+          python scripts/r3_capture_sql_evidence.py artifacts/friction-after/capture-friction-results.json artifacts/friction-after/sql-evidence.json
       - name: Capture owned runtime diagnostics
         if: always()
         run: |

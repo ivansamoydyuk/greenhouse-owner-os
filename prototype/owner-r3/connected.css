@@ -264,3 +264,6 @@
 @media (max-height: 520px) {
   .connected .confirmation-bar { position: static; }
 }
+
+/* A review action must never float over an unresolved fact or error. */
+.connected .capture-confirmation { position: static; bottom: auto; }

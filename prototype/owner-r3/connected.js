@@ -414,7 +414,7 @@ function proposalDetail(p) {
     (p.action_type === "DIRECT_EXPENSE"
       ? `<details class="review-provenance"><summary>Происхождение фактов и история подготовки</summary>${expenseContext(p)}<p class="note">Распределение прямого расхода по теплицам в этой карточке недоступно. Общая сумма и факт списания от этого не меняются.</p></details>`
       : "") +
-    `<div class="form-error" role="alert" id="action-error"></div>${!done && p.state !== "REJECTED" ? `<div class="confirmation-bar">${btn("Подтвердить действие в TEST", "confirm-proposal", "primary full", "confirm-proposal", p.revision.missing?.length || p.action_type === "UNRESOLVED" ? "disabled" : "")}</div><div class="page-actions">${btn("Отложить", "defer-proposal")}${btn("Отклонить", "reject-proposal")}</div>` : done ? notice("Сервер подтвердил действие. Оригинал и версии сохранены.") : notice("Предложение отклонено. Оригинал и версии сохранены.")}<div class="page-actions">${link("Финансы", "finance", "btn secondary")}${link("К источнику", "source/" + p.source.id, "btn secondary")}</div>`
+    `<div class="form-error" role="alert" id="action-error"></div>${!done && p.state !== "REJECTED" ? `<div class="confirmation-bar capture-confirmation">${btn("Подтвердить действие в TEST", "confirm-proposal", "primary full", "confirm-proposal", p.revision.missing?.length || p.action_type === "UNRESOLVED" ? "disabled" : "")}</div><div class="page-actions">${btn("Отложить", "defer-proposal")}${btn("Отклонить", "reject-proposal")}</div>` : done ? notice("Сервер подтвердил действие. Оригинал и версии сохранены.") : notice("Предложение отклонено. Оригинал и версии сохранены.")}<div class="page-actions">${link("Финансы", "finance", "btn secondary")}${link("К источнику", "source/" + p.source.id, "btn secondary")}</div>`
   );
 }
 const labels = {
@@ -1266,12 +1266,13 @@ function showError(error, node) {
     document.querySelector("main");
   if (target) {
     target.textContent = error.message;
-    target.tabIndex = -1;
-    const field = node?.querySelector(`[name="${error.field || ""}"]`);
-    requestAnimationFrame(() => {
-      const focus = field || target;
-      focus.focus({preventScroll:true});
-      focus.scrollIntoView({block:"center",behavior:"instant"});
+    const field = error.field && node?.querySelector(`[name="${error.field}"]`);
+    const errorRoute = route, errorEpoch = epoch, generation = api.generation;
+    if (field) requestAnimationFrame(() => {
+      if (!node.isConnected || node.inert || !field.isConnected ||
+          route !== errorRoute || epoch !== errorEpoch || api.generation !== generation) return;
+      field.focus({preventScroll:true});
+      field.scrollIntoView({block:"center",behavior:"instant"});
     });
   }
 }

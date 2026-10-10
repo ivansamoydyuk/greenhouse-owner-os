@@ -6947,13 +6947,6 @@ components:
       additionalProperties: false
       type: object
       title: ExpenseRecoveryAction
-  responses:
-    Conflict:
-      description: Version or idempotency conflict
-    Validation:
-      description: Business validation failed; no partial effect committed
-    NotFound:
-      description: Resource not found
     OwnerFormSource:
       properties:
         schema_version:
@@ -6994,3 +6987,10 @@ components:
       - timezone
       - fields
       title: OwnerFormSource
+  responses:
+    Conflict:
+      description: Version or idempotency conflict
+    Validation:
+      description: Business validation failed; no partial effect committed
+    NotFound:
+      description: Resource not found

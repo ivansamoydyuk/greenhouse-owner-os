@@ -30,3 +30,13 @@ test('connected form paths do not require redundant narrative',()=>{
  assert.ok(ui.includes('formOriginal(r.original_evidence)'));
  assert.ok(ui.includes('formOriginal(r.evidence)'));
 });
+test('delayed validation focus cannot cross a route or session boundary',()=>{
+ const ui=fs.readFileSync('prototype/owner-r3/connected.js','utf8');
+ const body=ui.slice(ui.indexOf('function showError('),ui.indexOf('async function action('));
+ let callback,focus=0;const field={isConnected:true,focus(){focus++},scrollIntoView(){}};
+ const target={};const node={isConnected:true,inert:false,querySelector:s=>s==='.form-error'?target:field};
+ const run=new Function('node','requestAnimationFrame','document',`${body}; let route='receipt', epoch=1; const api={generation:1}; showError({message:'Missing',field:'quantity'},node); return {route:()=>route='home',epoch:()=>epoch++,session:()=>api.generation++};`);
+ for(const change of ['route','epoch','session']){const ctx=run(node,cb=>callback=cb,{});ctx[change]();callback();assert.equal(focus,0);}
+ run(node,cb=>callback=cb,{});callback();assert.equal(focus,1);
+ node.isConnected=false;run(node,cb=>callback=cb,{});callback();assert.equal(focus,1);
+});
