@@ -323,7 +323,7 @@ def test_preparation_version_is_additive_provenance_not_job_identity(references)
     for raw in ['Неизвестный текст','Должен Серкану не 5000, а 5400 TRY','Умар завтра полить Имамлы']:
         for _,payload,prov in prepare(raw,references):
             assert set(prov)==set(payload)
-            assert all(v['interpretation_version']=='owner-language-preparation-r2-v3' for v in prov.values())
+            assert all(v['interpretation_version']=='owner-language-preparation-r2-v4' for v in prov.values())
 
 
 def test_iso_date_hyphens_are_not_an_amount_range(references):

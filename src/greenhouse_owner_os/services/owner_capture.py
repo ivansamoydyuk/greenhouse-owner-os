@@ -228,7 +228,12 @@ class OwnerCaptureService:
             if not fields['lines']:missing.append('Товар и количество')
             for ln in fields['lines']:
                 for key,label in [('product_id','Товар'),('location_id','Склад'),('quantity','Количество'),('unit','Единица')]:
-                    if ln.get(key) is None:missing.append(label)
+                    if ln.get(key) is None:
+                        if key=='quantity':
+                            from .inventory_capture import is_rate_quantity,rate_quantity_clarification
+                            if is_rate_quantity(ln.get('original_quantity')):
+                                label=rate_quantity_clarification(ln['original_quantity'],fields.get('notes'))
+                        missing.append(label)
                 product=scoped('inventory.products',ln.get('product_id'));scoped('inventory.locations',ln.get('location_id'))
                 if ln.get('greenhouse_id'):scoped('core.work_areas',ln['greenhouse_id'])
                 if kind=='STOCK_APPLICATION' and not ln.get('greenhouse_id'):missing.append('Теплица фактического внесения')
