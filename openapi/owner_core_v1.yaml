@@ -2105,7 +2105,9 @@ paths:
   /entities/{entity_id}/harvest/evidence/{evidence_id}/metadata:
     get:
       summary: Read immutable Harvest original metadata
-      description: Authenticated, entity-scoped read of original source text and provenance. Does not infer source text from prepared fields or return file bytes. The existing binary evidence endpoint remains unchanged.
+      description: Authenticated, entity-scoped read of original source text and provenance. Does not infer
+        source text from prepared fields or return file bytes. The existing binary evidence endpoint remains
+        unchanged.
       operationId: evidence_metadata_v1_entities__entity_id__harvest_evidence__evidence_id__metadata_get
       parameters:
       - name: entity_id
@@ -2114,24 +2116,26 @@ paths:
         schema:
           type: string
           format: uuid
+          title: Entity Id
       - name: evidence_id
         in: path
         required: true
         schema:
           type: string
           format: uuid
+          title: Evidence Id
       responses:
         '200':
           description: Immutable original metadata, including exact nullable raw text and binary availability.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HarvestEvidenceMetadata'
           headers:
             Cache-Control:
               schema:
                 type: string
                 const: private, no-store
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HarvestEvidenceMetadata'
         '401':
           description: Authenticated owner required.
         '403':
@@ -2139,7 +2143,11 @@ paths:
         '404':
           description: Evidence is missing or does not belong to the requested entity.
         '422':
-          description: Invalid entity or evidence identity.
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /entities/{entity_id}/inbox:
     post:
       summary: Ingest
@@ -4168,8 +4176,65 @@ components:
           description: Persisted original inbox identity joined through the same-entity
             proposal; summary includes no original bytes or raw text.
     HarvestEvidenceMetadata:
-      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        source:
+          type: string
+          title: Source
+        source_reference:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Reference
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+          description: Exact immutable original text or source-associated caption; never synthesized from
+            prepared report fields.
+        filename:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Filename
+        mime_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mime Type
+        fingerprint:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Fingerprint
+        created_by:
+          type: string
+          format: uuid
+          title: Created By
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+        has_file:
+          type: boolean
+          title: Has File
+        original_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          format: uri-reference
+          title: Original Url
+          description: Same-origin existing /v1/entities/{entity_id}/harvest/evidence/{evidence_id} binary
+            route when has_file is true; otherwise null. Never a source-provided URL.
       additionalProperties: false
+      type: object
       required:
       - id
       - entity_id
@@ -4183,52 +4248,7 @@ components:
       - received_at
       - has_file
       - original_url
-      properties:
-        id:
-          type: string
-          format: uuid
-        entity_id:
-          type: string
-          format: uuid
-        source:
-          type: string
-        source_reference:
-          type:
-          - string
-          - 'null'
-        raw_text:
-          type:
-          - string
-          - 'null'
-          description: Exact immutable original text or source-associated caption; never
-            synthesized from prepared report fields.
-        filename:
-          type:
-          - string
-          - 'null'
-        mime_type:
-          type:
-          - string
-          - 'null'
-        fingerprint:
-          type: string
-          pattern: ^[0-9a-f]{64}$
-        created_by:
-          type: string
-          format: uuid
-        received_at:
-          type: string
-          format: date-time
-        has_file:
-          type: boolean
-        original_url:
-          type:
-          - string
-          - 'null'
-          format: uri-reference
-          description: Same-origin existing /v1/entities/{entity_id}/harvest/evidence/{evidence_id}
-            binary route when has_file is true; otherwise null. Never a source-provided
-            URL.
+      title: HarvestEvidenceMetadata
     Money:
       type: string
       pattern: ^-?[0-9]+\\.[0-9]{2}$

@@ -304,9 +304,9 @@
       "path": "openapi/owner_core_v1.yaml",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "ee6309027d81f5a3f87500dd39a5200bdcb45247",
-      "sha256": "167f8176e1e881a51fbf979b37d5c25ad3129aeec6a396b9e0fb3052a215bcc2",
-      "size": 177144
+      "git_blob": "6c7b65c03a67515b83fff1fe8395156343104c97",
+      "sha256": "e8cb08aabb7a61f6318b68c08ef313c546bac9769fa79a334ca4bbc232b3238f",
+      "size": 177748
     },
     {
       "path": "package-lock.json",
@@ -680,9 +680,9 @@
       "path": "src/greenhouse_owner_os/api/harvest.py",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "f4dcc7eb61912f9132b14d979626282240dce109",
-      "sha256": "970a74469a78b74df6c6c4b1824a6ab81af3833137d6284f901297c816cc6202",
-      "size": 3979
+      "git_blob": "72ee6ded0431a7ef314e449602ff7a2275314d0c",
+      "sha256": "ba3269cd3946cdd7a75e85b4e8cb9fa6ead2238ae310d6359d7b59e2159cdd64",
+      "size": 5829
     },
     {
       "path": "src/greenhouse_owner_os/api/inbox.py",
@@ -2392,9 +2392,9 @@
       "path": "tests/unit/test_openapi_and_migrations.py",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "27ce2d1ded67fda23eccb725b843366f8b058fa1",
-      "sha256": "8e4479ae981a31997ea02d52954fd9dd5f01a224eb4b7ea397d628f5c2df30b6",
-      "size": 7071
+      "git_blob": "f4bd7269c3697315c90ec9081178810b13de0e09",
+      "sha256": "f1badbfeefcabc5992311ca9f7ecfad602a698a4a4572807d67863bcd87b63b7",
+      "size": 7772
     },
     {
       "path": "tests/unit/test_opening_contract.py",

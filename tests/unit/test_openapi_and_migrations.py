@@ -86,15 +86,24 @@ def test_harvest_original_metadata_contract_matches_actual_read_route():
     fields = {column.name for column in EvidenceRow.__table__.columns if column.name != 'file_bytes'} | {'has_file', 'original_url'}
     assert set(model['properties']) == set(model['required']) == fields
     assert model['additionalProperties'] is False
-    assert model['properties']['raw_text']['type'] == ['string', 'null']
-    assert model['properties']['original_url']['type'] == ['string', 'null']
+    assert {item['type'] for item in model['properties']['raw_text']['anyOf']} == {'string', 'null'}
+    assert {item['type'] for item in model['properties']['original_url']['anyOf']} == {'string', 'null'}
     assert model['properties']['has_file']['type'] == 'boolean'
     assert 'file_bytes' not in model['properties'] and 'file_base64' not in model['properties']
     # The original binary route remains a distinct, existing endpoint.
     assert path.removesuffix('/metadata') in spec['paths']
-    actual = create_app(finance_service=None, actor_provider=lambda: UUID(int=1)).openapi()['paths']
-    assert '/v1' + path in actual
-    assert actual['/v1' + path]['get']['operationId'] == operation['operationId']
+    app = create_app(finance_service=None, actor_provider=lambda: UUID(int=1))
+    actual = app.openapi()
+    # Match the complete retained contract, not only operationId: a bare route
+    # previously hid its empty response schema from this focused test.
+    assert actual['paths']['/v1' + path] == route
+    assert actual['components']['schemas']['HarvestEvidenceMetadata'] == model
+    actual_route = next(r for r in app.routes if getattr(r, 'path', None) == '/v1' + path)
+    assert actual_route.response_model is None, 'OpenAPI documentation must not change existing payload serialization'
+    assert actual_route.response_field is None
+    assert set(actual_route.response_fields) == {200}
+    validation = operation['responses']['422']['content']['application/json']['schema']
+    assert validation == {'$ref': '#/components/schemas/HTTPValidationError'}
 
 
 def test_finance_direct_expense_contract_is_additive_bounded_and_source_linked():
