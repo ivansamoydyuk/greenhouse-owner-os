@@ -1568,9 +1568,9 @@
       "path": "tests/e2e/r3-capture-friction.mjs",
       "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "a20ef1a1edb4da4913c39de8e4ee414ca646d4f9",
-      "sha256": "5558287e5742273a6f9e5c148859d7baa60cfab4c1f815cd6e7ce409776e7a4a",
-      "size": 11216
+      "git_blob": "d250c1d4281aebb6c49321c4737c4daaed840379",
+      "sha256": "a0dabafa3b35919f1b5afc1e3f1d3fdf63dd9d7057679ac7317fbb4912d18fd4",
+      "size": 11315
     },
     {
       "path": "tests/e2e/r3-connected.mjs",
