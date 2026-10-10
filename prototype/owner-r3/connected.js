@@ -758,7 +758,7 @@ function depotDetail(s) {
             ? "Долг ещё не создан"
             : money(s.remaining_amount, s.currency),
         ],
-      ])}<h2>Оригинал документа</h2>${s.evidence.filename || s.owner_source_id ? `<a class="btn secondary" href="${entityPath(s.owner_source_id ? "/owner/captures/"+s.owner_source_id+"/original" : "/harvest/evidence/" + s.evidence.id)}" target="_blank" rel="noopener">${e(s.evidence.filename || "Оригинальный документ")} · неизменённые байты</a>` : "<p>Файл не добавлен</p>"}<h3>Комментарий владельца · отдельно</h3><p class="original-text">${e(s.evidence.raw_text || "Не добавлен")}</p>`,
+      ])}<h2>Оригинал документа</h2>${s.evidence.filename || s.owner_source_id ? `<a class="btn secondary" href="${entityPath(s.owner_source_id ? "/owner/captures/"+s.owner_source_id+"/original" : "/harvest/evidence/" + s.evidence.id)}" download>${e(s.evidence.filename || "Оригинальный документ")} · неизменённые байты</a>` : "<p>Файл не добавлен</p>"}<h3>Комментарий владельца · отдельно</h3><p class="original-text">${e(s.evidence.raw_text || "Не добавлен")}</p>`,
     ) +
     panel(
       `<h2>Срез и ADET</h2>${facts([

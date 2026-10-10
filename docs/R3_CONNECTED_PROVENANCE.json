@@ -408,9 +408,9 @@
       "path": "prototype/owner-r3/connected.js",
       "origin": "HARVEST_OWNER_JOURNEY",
       "remote_ref": null,
-      "git_blob": "13161b602693a0aa81099bae3ca7b147c7988544",
-      "sha256": "66e09441970a5b897d5db903f501270629c62834020da60ca0f0500d18ea002e",
-      "size": 128812
+      "git_blob": "17f4f3484e88efa3f6da1f997c359df8a9d49499",
+      "sha256": "523a4eb93a78fe7e6cce91b86a9815efdd6e5adfae9c88eb597195fc32cba3fe",
+      "size": 128790
     },
     {
       "path": "prototype/owner-r3/daily-demo.js",
@@ -536,9 +536,9 @@
       "path": "scripts/harvest_journey_sql_evidence.py",
       "origin": "HARVEST_OWNER_JOURNEY",
       "remote_ref": null,
-      "git_blob": "72943ff0812d74fc33ed87a5b9c5e7e68e74a5e6",
-      "sha256": "e8d1a07b150f831bc36288c279c33fc15a3a4165042e5cb19b4f8ae864e65fb6",
-      "size": 9110
+      "git_blob": "ebe9834728e82d9cb886fe43bc995f45402b007e",
+      "sha256": "10ea2ad2b0ac3f6093d33d96b862c03dc5eb03f4a7a5fe956ca0b89babf38c24",
+      "size": 9157
     },
     {
       "path": "scripts/owner_friction_posting_evidence.py",
@@ -1464,9 +1464,9 @@
       "path": "tests/e2e/harvest-owner-journey.mjs",
       "origin": "HARVEST_OWNER_JOURNEY",
       "remote_ref": null,
-      "git_blob": "f6fc73af6b92489707cd00de342fb9240bab6d58",
-      "sha256": "cba91cd622974dadfbc2a9881b6f7abe0d79dc83906fd8b36d3853ea2672f8e7",
-      "size": 14540
+      "git_blob": "e5a12dfeca95bb520a9d257b25b9d8012c803125",
+      "sha256": "802aa1af92a45b834de13180a653acd685af451e6ffc9b6b50e924780b96fb25",
+      "size": 14647
     },
     {
       "path": "tests/e2e/harvest.mjs",

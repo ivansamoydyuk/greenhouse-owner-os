@@ -32,7 +32,7 @@ with sf() as db:
  def rows(sql,**kw):return [dict(x) for x in db.execute(text(sql),dict(e=e,**kw)).mappings()]
  for record in result['records']:
   sid=UUID(record['settlement_id']);pid=UUID(record['proposal_id']);source=one('SELECT * FROM core.inbox_items WHERE id=:id AND entity_id=:e',id=UUID(record['source_id']))
-  assert record['clicked_original_sha256']==record['source_sha256']
+  assert record['clicked_original_sha256']==record['source_sha256'] and record['original_route_preserved'] is True
   assert source['metadata']['capture_context']=='depot_receipt' and hashlib.sha256(source['file_bytes']).hexdigest()==record['source_sha256'];assert source['raw_text']=='TEST separate caption '+record['engine']
   report=one('SELECT * FROM harvest.worker_reports WHERE id=:id AND entity_id=:e',id=UUID(record['report_id']));assert report['cut_count']==131 and report['field_weight_kg'] is None
   proposal=one('SELECT * FROM core.proposed_actions WHERE id=:id AND entity_id=:e',id=pid);assert proposal['inbox_id']==source['id'] and proposal['state']=='POSTED'
