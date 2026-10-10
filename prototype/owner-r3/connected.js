@@ -21,6 +21,7 @@ import {
   canRecoverSourceExpense,
   submissionSnapshot,
   exactDecimalString,
+  ownerFormSource,
 } from "./connected-adapter.js";
 import {
   proposalSummary,
@@ -305,6 +306,22 @@ function sourceDetail(s) {
     )
   );
 }
+function factOrigin(p, key) {
+  const origin = p.revision.provenance?.[key];
+  if (!origin) return "";
+  if (origin.category === "SOURCE FACT") return "из исходника";
+  if (origin.category === "OWNER INPUT" || origin.category === "OWNER CORRECTION") return "подтверждено владельцем";
+  if (origin.category === "LEARNED DEFAULT") return "сохранённое предположение · можно изменить";
+  if (["DEFAULT", "CONTEXT DEFAULT"].includes(origin.category) || ["capture_candidate", "visible_context_default"].includes(origin.basis)) return "предложено из контекста · можно изменить";
+  if (origin.category === "INFERENCE") return "предложено · можно изменить";
+  return "";
+}
+function formOriginal(evidence) {
+  const source = evidence?.structured_original;
+  if (!source) return "";
+  const names = {event_date:"Дата в форме",original_greenhouse:"Теплица",cut_count:"Количество веток",field_weight_kg:"Полевой вес, кг",reporter:"Сообщил",notes:"Заметка",original_product_name:"Товар",quantity:"Количество",unit:"Единица",location_id:"Идентификатор склада",work_area_id:"Идентификатор теплицы",product_id:"Идентификатор товара"};
+  return `<details class="source-provenance" data-testid="structured-original"><summary>Оригинальная форма · значения и источник</summary><p class="note">Форма заполнена владельцем. Это не расшифровка речи.</p>${facts(Object.entries(source.fields).map(([key,value])=>[names[key]||key,value === "" ? "Не указано" : key === "notes" ? "Заметка: " + value : value]))}<p class="note">Источник ${e(source.form_id)} · ${e(source.captured_at)}</p></details>`;
+}
 function compactExpenseReview(p) {
   const f = p.revision.payload;
   const basis = p.revision.basis || {};
@@ -329,9 +346,10 @@ function compactExpenseReview(p) {
       ? "Предложение отклонено. Расход по нему не подтверждён."
       : "После подтверждения: запишет оплаченный расход и спишет деньги с выбранного счёта. Долг и аванс не создаются.");
   return panel(
-    `${stateTag(p.current_effect?.status || p.state)}<h2>${e(f.description || "За что: нужно уточнить")}</h2><strong class="exact-value">${e(f.amount == null ? "Сумма не указана" : money(f.amount, f.currency || "Валюта не указана"))}</strong>${facts(
+    `${stateTag(p.current_effect?.status || p.state)}<h2>${e(f.description || "За что: нужно уточнить")}</h2><p class="fact-origin">${e(factOrigin(p,"description"))}</p><strong class="exact-value">${e(f.amount == null ? "Сумма не указана" : money(f.amount, f.currency || "Валюта не указана"))}</strong>${facts(
       [
-        ["Дата", displayDate(f.event_date, "Не указана")],
+        ["Дата", displayDate(f.event_date, "Не указана") + (factOrigin(p,"event_date") ? " · " + factOrigin(p,"event_date") : "")],
+        ["Валюта", (f.currency || "Не указана") + (factOrigin(p,"currency") ? " · " + factOrigin(p,"currency") : "")],
         [
           "Счёт",
           reviewedName(
@@ -349,10 +367,18 @@ function compactExpenseReview(p) {
           ),
         ],
         ["Распределение", distribution],
+        ...(needsPaidReview(p) ? [["Факт оплаты", f.payment_purpose === "expense" ? "Подтверждён владельцем" : "Не подтверждён"]] : []),
       ],
     )}${notice(effect)}${(p.revision.missing || []).map((m) => `<p class="form-error">${e(m)}</p>`).join("")}`,
     "compact-expense-review",
   );
+}
+function needsPaidReview(p) {
+  return p.action_type === "DIRECT_EXPENSE" && (p.revision.provenance?.payment_purpose?.basis === "owner_payment_confirmation_required" || p.revision.payload.payment_purpose === "expense" || p.revision.missing?.some(x => x.includes("факт оплаты")));
+}
+function nextMissingFact(p) {
+  if (p.action_type !== "DIRECT_EXPENSE" || !p.revision.missing?.length) return null;
+  return ["amount", "description", "currency", "event_date", "money_account_id", "payment_purpose"].find(k => p.revision.payload[k] == null || p.revision.payload[k] === "");
 }
 function proposalDetail(p) {
   const done = ["POSTED", "CONFIRMED_NONPOSTING"].includes(p.state),
@@ -367,19 +393,19 @@ function proposalDetail(p) {
       `Версия ${p.version} · CONNECTED TEST`,
       true,
     ) +
-    panel(
+    `<details class="source-provenance"><summary>Оригинал и источник · неизменяемые</summary>` + panel(
       `<span class="eyebrow">ОРИГИНАЛ · неизменяемый</span><p class="original-text" data-testid="source-original">${e(p.source.text || "Текст отсутствует")}</p>${p.source.has_file ? `<a class="btn secondary" href="${entityPath("/owner/captures/" + p.source.id + "/original")}" target="_blank" rel="noopener">${e(p.source.filename || "Открыть исходный файл")}</a>` : ""}`,
-    ) +
+    ) + `</details>` +
     (p.action_type === "DIRECT_EXPENSE"
       ? compactExpenseReview(p)
       : proposalSummary(p, context, false)) +
     (!done && p.state !== "REJECTED"
       ? panel(
-          `<h2>Уточнить один факт</h2><div class="page-actions">${Object.keys(
+          `<h2>Исправить или уточнить</h2><div class="page-actions fact-actions">${Object.keys(
             p.revision.payload,
           )
             .filter((k) => editableKeys(p).includes(k))
-            .map((k) => btn(e(fieldLabel(k)), `edit:${k}`, "secondary"))
+            .map((k) => btn(e(k === "payment_purpose" && p.action_type === "DIRECT_EXPENSE" ? "Факт оплаты" : fieldLabel(k)), `edit:${k}`, nextMissingFact(p) === k ? "primary" : "secondary"))
             .join(
               "",
             )}</div>${p.action_type === "UNRESOLVED" ? btn("Оформить прямой расход", "recover:" + p.id) : ""}`,
@@ -421,6 +447,7 @@ function editableKeys(p) {
       "description",
       "money_account_id",
       "counterparty_id",
+      ...(needsPaidReview(p) ? ["payment_purpose"] : []),
       ...(p.action_type === "PAYABLE"
         ? ["due_date"]
         : p.action_type === "PAYMENT"
@@ -643,7 +670,7 @@ function reportForm() {
           "greenhouse",
           areas().filter((a) => a.kind === "greenhouse"),
           draft.greenhouse,
-        )}${field("Дата", "date", draft.date || localDay(), "date")}${field("Количество срезов · можно оставить неизвестным", "count", draft.count, "number", 'min="1" step="1"')}${field("Полевой вес, кг · необязательно", "kg", draft.kg, "text", 'inputmode="decimal"')}${field("Кто сообщил", "reporter", draft.reporter || "Владелец TEST")}${area("Исходная формулировка", "original", draft.original)}${notice("Полевой срез не создаёт продажу, оплату или вес депо. Неизвестный вес остаётся UNKNOWN.")}`,
+        )}${field("Дата", "date", draft.date || localDay(), "date")}${field("Количество веток · можно оставить неизвестным", "count", draft.count, "number", 'min="1" step="1"')}${field("Полевой вес, кг · необязательно", "kg", draft.kg, "text", 'inputmode="decimal"')}${field("Кто сообщил", "reporter", draft.reporter || "Владелец TEST")}${area("Заметка · необязательно", "original", draft.original)}<p class="note">Заполненная форма сохраняется как оригинал. Вес можно не указывать. Это полевой отчёт, без продажи или оплаты.</p>`,
         "Сохранить полевой срез",
       ),
     )
@@ -659,15 +686,15 @@ function reportDetail(r) {
   return (
     Header("Полевой срез", displayDate(r.event_date), true) +
     panel(
-      `<h2>Оригинальная полевая запись</h2><p class="original-text" data-testid="field-original">${e(r.original_evidence?.raw_text || "Текст не добавлен")}</p>${facts(
+      `<h2>Оригинальная полевая запись</h2><p class="original-text" data-testid="field-original">${e(r.original_evidence?.structured_original ? "Заполненная владельцем форма" : r.original_evidence?.raw_text || "Текст не добавлен")}</p>${facts(
         [
           ["Теплица в оригинале", r.original_greenhouse],
-          ["Полевое количество", r.cut_count ?? "UNKNOWN"],
+          ["Количество веток", r.cut_count ?? "UNKNOWN"],
           ["Полевой вес, кг", r.field_weight_kg ?? "UNKNOWN"],
           ["Сообщил", r.reporter],
           ["Примечание", r.notes || "Не добавлено"],
         ],
-      )}<p class="note">Исходное полевое наблюдение неизменно. Документ депо остаётся отдельным.</p>${link("Фото / PDF чека депо", `attach-depot/${r.id}`, "btn primary full")}`,
+      )}${formOriginal(r.original_evidence)}<p class="note">Исходное полевое наблюдение неизменно. Документ депо остаётся отдельным.</p>${link("Фото / PDF чека депо", `attach-depot/${r.id}`, "btn primary full")}`,
     ) +
     panel(
       `<h2>Связанные документы</h2>${linked.map((s) => link(`${e(refName(s.depot_id))} · ${e(money(s.total_amount, s.currency))}`, `depot/${s.id}`, "list-row")).join("") || "<p>Связь ещё не подтверждена.</p>"}${notice("Добавление файла прямо к неизменяемому полевому отчёту и поздняя связь уже проведённого чека: NOT AVAILABLE. Здесь создаётся новый документ депо с явной связью.")}`,
@@ -840,7 +867,7 @@ function receiptForm(productId) {
           "product",
           v.products.filter((x) => x.active),
           draft.product || productId,
-        )}${btn("Создать новый товар", "new-product", "secondary")}${select("Место хранения · настроено отдельно", "location", v.locations, draft.location)}${field("Количество", "quantity", draft.quantity, "text", 'inputmode="decimal"')}${field("Базовая единица", "unit", p?.base_unit || "", "text", "readonly")}${field("Дата прихода", "date", draft.date || localDay(), "date")}${area("Оригинальная запись о приходе", "original", draft.original)}${fileField("Фото / PDF исходника · необязательно")}${draft.file?.filename ? notice("Копия на телефоне: " + draft.file.filename) : ""}${notice("Стоимость UNKNOWN. Подтверждение создаст только физическое движение в выбранном месте. Долг, счёт и платёж не создаются.")}`,
+        )}${btn("Создать новый товар", "new-product", "secondary")}${select("Место хранения · настроено отдельно", "location", v.locations, draft.location)}${field("Количество", "quantity", draft.quantity, "text", 'inputmode="decimal"')}${field("Базовая единица", "unit", p?.base_unit || "", "text", "readonly")}${field("Дата прихода", "date", draft.date || localDay(), "date")}${area("Заметка · необязательно", "original", draft.original)}${fileField("Фото / PDF исходника · необязательно")}${draft.file?.filename ? notice("Копия на телефоне: " + draft.file.filename) : ""}<p class="note">Стоимость неизвестна. После проверки создаётся только приход; долг и оплата не создаются.</p>`,
         "Проверить приход",
       ),
     )
@@ -866,7 +893,7 @@ function receiptDetail(r) {
         .join("")}${facts([
         ["Дата", displayDate(r.event_date)],
         ["Начальный остаток", "UNKNOWN"],
-      ])}${notice("Увеличится только учтённое физическое количество. Абсолютный остаток не подтверждён. Долг/счёт/оплата не создаются.")}<h2>Оригинал</h2><p class="original-text">${e(r.evidence.raw_text || "Текст не добавлен")}</p>${r.evidence.filename ? `<a class="btn secondary" href="${entityPath("/inventory/events/" + r.id + "/original")}" target="_blank" rel="noopener">${e(r.evidence.filename)}</a>` : ""}${(r.issue_messages || []).map((x) => notice(x, "amber")).join("")}<div id="action-error" class="form-error" role="alert"></div>${r.status === "draft" ? `${r.issues?.includes("duplicate") ? '<label class="check-label"><input type="checkbox" id="duplicate-reviewed"><span>Я проверил: это отдельный приход, не повтор.</span></label>' : ""}${btn("Подтвердить физический приход в TEST", "post-receipt", "primary full")}` : r.status === "posted" ? notice("Сервер подтвердил приход. Физическое движение создано один раз.") : notice("Приход отменён обратным движением. Оригинал и история сохранены.")}<div class="page-actions">${link("К складу", "inventory", "btn secondary")}</div>`,
+      ])}<p class="note">Только физический приход. Общий остаток и стоимость остаются неизвестными; без долга и оплаты.</p>${formOriginal(r.evidence)}<h2>Заметка владельца</h2><p class="original-text">${e(r.evidence.structured_original?.fields?.notes || r.evidence.raw_text || "Заполненная форма · отдельная заметка не добавлена")}</p>${r.evidence.filename ? `<a class="btn secondary" href="${entityPath("/inventory/events/" + r.id + "/original")}" target="_blank" rel="noopener">${e(r.evidence.filename)}</a>` : ""}${(r.issue_messages || []).map((x) => notice(x, "amber")).join("")}<div id="action-error" class="form-error" role="alert"></div>${r.status === "draft" ? `${r.issues?.includes("duplicate") ? '<label class="check-label"><input type="checkbox" id="duplicate-reviewed"><span>Я проверил: это отдельный приход, не повтор.</span></label>' : ""}${btn("Подтвердить физический приход в TEST", "post-receipt", "primary full")}` : r.status === "posted" ? notice("Сервер подтвердил приход. Физическое движение создано один раз.") : notice("Приход отменён обратным движением. Оригинал и история сохранены.")}<div class="page-actions">${link("К складу", "inventory", "btn secondary")}</div>`,
     ) +
     panel(
       `<h2>Движения именно этого события</h2>${
@@ -1237,7 +1264,16 @@ function showError(error, node) {
     node?.querySelector(".form-error") ||
     document.querySelector("#action-error") ||
     document.querySelector("main");
-  if (target) target.textContent = error.message;
+  if (target) {
+    target.textContent = error.message;
+    target.tabIndex = -1;
+    const field = node?.querySelector(`[name="${error.field || ""}"]`);
+    requestAnimationFrame(() => {
+      const focus = field || target;
+      focus.focus({preventScroll:true});
+      focus.scrollIntoView({block:"center",behavior:"instant"});
+    });
+  }
 }
 async function action(run, node = null) {
   if (busy) return;
@@ -1323,6 +1359,7 @@ async function submitForm(formEl, snapshot) {
         client_capture_id: draft.id,
         captured_at: draft.captured_at,
         timezone: "Europe/Istanbul",
+        ...(kind === "expense" ? { capture_context: "quick_expense" } : {}),
         mode: draft.file
           ? draft.file.mime_type === "application/pdf"
             ? "file"
@@ -1366,19 +1403,26 @@ async function submitForm(formEl, snapshot) {
     );
   } else if (name === "report") {
     const place = areas().find((a) => a.id === draft.greenhouse);
-    if (!place) throw Error("Выберите зарегистрированную теплицу.");
+    if (!place) throw Object.assign(Error("Выберите зарегистрированную теплицу."), {field:"greenhouse"});
+    if (!draft.date) throw Object.assign(Error("Укажите дату среза."), {field:"date"});
+    if (!String(draft.reporter || "").trim()) throw Object.assign(Error("Укажите, кто сообщил."), {field:"reporter"});
     const body = {
       event_date: draft.date,
       original_greenhouse: place.name,
       work_area_id: place.id,
       cut_count: integerOrUnknown(draft.count),
       field_weight_kg: draft.kg ? quantity(draft.kg) : null,
-      reporter: requireText(draft.reporter, "кто сообщил"),
-      notes: null,
+      reporter: (requireText(draft.reporter, "кто сообщил"), String(draft.reporter)),
+      notes: draft.original || null,
       evidence: {
-        source: "owner:r3-connected-test",
+        source: "owner_form:v1:field_harvest",
         source_reference: draft.id,
-        raw_text: requireText(draft.original, "исходную формулировку"),
+        structured_original: ownerFormSource("field_harvest", draft, {
+          event_date: draft.date, original_greenhouse: place.name,
+          work_area_id: place.id, cut_count: draft.count,
+          field_weight_kg: draft.kg, reporter: draft.reporter,
+          notes: draft.original,
+        }),
       },
     };
     const result = await api.entityPost("/harvest/reports", body, draft.id);
@@ -1481,7 +1525,9 @@ async function submitForm(formEl, snapshot) {
     const p = data.inventory.products.find((p) => p.id === draft.product),
       location = data.inventory.locations.find((x) => x.id === draft.location);
     if (!p || !location)
-      throw Error("Выберите товар и отдельно настроенное место хранения.");
+      throw Object.assign(Error("Выберите товар и отдельно настроенное место хранения."), {field: !p ? "product" : "location"});
+    if (!draft.quantity) throw Object.assign(Error("Укажите количество прихода."), {field:"quantity"});
+    if (!draft.date) throw Object.assign(Error("Укажите дату прихода."), {field:"date"});
     const body = {
       kind: "receipt",
       event_date: draft.date,
@@ -1496,11 +1542,15 @@ async function submitForm(formEl, snapshot) {
           currency: null,
         },
       ],
-      notes: null,
+      notes: draft.original || null,
       evidence: {
-        source: "owner:r3-connected-test-receipt",
+        source: "owner_form:v1:inventory_receipt",
         locator: draft.id,
-        raw_text: requireText(draft.original, "исходную запись о приходе"),
+        structured_original: ownerFormSource("inventory_receipt", draft, {
+          event_date: draft.date, product_id: p.id, original_product_name: p.name,
+          location_id: location.id, quantity: draft.quantity, unit: p.base_unit,
+          notes: draft.original,
+        }),
         ...(draft.file || {}),
       },
     };
@@ -1617,7 +1667,7 @@ async function submitForm(formEl, snapshot) {
 }
 function openSheet(title, body) {
   sheetRoot.innerHTML = `<div class="focus-sheet" role="dialog" aria-modal="true" aria-label="${e(title)}"><article><div class="status-line"><h2>${e(title)}</h2>${btn(icon("close"), "close-sheet", "icon-button", "close-sheet", 'aria-label="Закрыть"')}</div>${body}</article></div>`;
-  sheetRoot.querySelector("input,textarea,select,button")?.focus();
+  sheetRoot.querySelector("input,textarea,select")?.focus();
 }
 function editFact(key) {
   let control,
@@ -1656,6 +1706,8 @@ function editFact(key) {
     );
   else if (key === "worker_id")
     control = select(fieldLabel(key), "value", data.workers.workers, value);
+  else if (key === "payment_purpose")
+    control = select("Оплата", "value", [{value:"expense",label:"Оплата действительно состоялась"}], value, "Подтвердите факт оплаты");
   else if (key === "currency")
     control = select(
       fieldLabel(key),
@@ -1995,3 +2047,15 @@ window.addEventListener("keydown", (event) => {
     shell(errorBox(error));
   }
 })();
+
+// Safari visual viewport shrinks with the software keyboard; keep focused sheets
+// within that visible region without moving or resetting the owner's draft.
+function updateVisibleViewport() {
+  const viewport = window.visualViewport;
+  if (!viewport) return;
+  document.documentElement.style.setProperty('--connected-visual-height', `${viewport.height}px`);
+  document.documentElement.style.setProperty('--connected-visual-top', `${viewport.offsetTop}px`);
+}
+window.visualViewport?.addEventListener('resize', updateVisibleViewport);
+window.visualViewport?.addEventListener('scroll', updateVisibleViewport);
+updateVisibleViewport();

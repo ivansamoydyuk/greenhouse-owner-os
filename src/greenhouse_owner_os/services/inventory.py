@@ -108,6 +108,10 @@ class InventoryService:
     def create(self,e,a,key,b):
         payload=b.model_dump(mode='json',exclude={'evidence','replacement_of_id','event_date','kind'});ev=b.evidence.model_dump(mode='json')
         def run(u):
+            if b.replacement_of_id and b.evidence.structured_original:
+                old=self._event(u,e,b.replacement_of_id)
+                if old['evidence']!=ev or old['source']!=b.evidence.source or old['locator']!=b.evidence.locator:
+                    raise ConflictError('Correction must retain the immutable original form evidence')
             for k,model in [('supplier_id',CounterpartyRow),('finance_obligation_id',ObligationRow)]:
                 if payload[k]:
                     r=u.session.get(model,UUID(payload[k]))

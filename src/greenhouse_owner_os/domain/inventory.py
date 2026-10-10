@@ -6,6 +6,7 @@ from typing import Literal
 from uuid import UUID
 from pydantic import Field,field_validator,model_validator
 from .commands import StrictModel
+from .owner_form_source import OwnerFormSource, validate_binding, form_decimal
 
 Unit=Literal['kg','L','piece','bag','container','package']
 class ValuationCurrencyInput(StrictModel):
@@ -79,6 +80,7 @@ class InventoryLine(StrictModel):
         return self
 
 class InventoryEvidence(StrictModel):
+    structured_original:OwnerFormSource|None=Field(default=None,exclude_if=lambda v:v is None)
     source:str=Field(default='owner_mobile:inventory',min_length=1,max_length=200)
     locator:str|None=Field(default=None,min_length=1,max_length=2000)
     raw_text:str|None=Field(default=None,max_length=10000)
@@ -94,6 +96,7 @@ class InventoryEvidence(StrictModel):
     verification:Literal['VERIFY','VERIFIED','HISTORY']='VERIFY'
     @model_validator(mode='after')
     def binary(self):
+        validate_binding(self,'inventory_receipt',self.locator)
         if self.filename and re.search(r'[/\\\x00-\x1f\x7f]',self.filename):raise ValueError('Unsafe filename')
         if self.file_base64:
             try:b=base64.b64decode(self.file_base64,validate=True)
@@ -112,6 +115,23 @@ class InventoryInput(StrictModel):
     notes:str|None=Field(default=None,max_length=2000)
     evidence:InventoryEvidence=Field(default_factory=InventoryEvidence)
     replacement_of_id:UUID|None=None
+
+    @model_validator(mode='after')
+    def original_matches(self):
+        original=self.evidence.structured_original
+        if original:
+            f=original.fields
+            if self.kind!='receipt' or len(self.lines)!=1:raise ValueError('Typed receipt source requires one initial physical receipt')
+            if self.replacement_of_id is not None:return self # Service verifies unchanged original against predecessor.
+            ln=self.lines[0]
+            expected=InventoryLine(product_id=f['product_id'] or None,original_product_name=f['original_product_name'],location_id=f['location_id'] or None,quantity=form_decimal(f['quantity']),unit=f['unit'] or None)
+            if ln.original_quantity not in (None,f['quantity']) or ln.original_unit not in (None,f['unit']):raise ValueError('Contradictory original unit or quantity')
+            keys=('product_id','original_product_name','location_id','quantity','unit')
+            if any(getattr(ln,k)!=getattr(expected,k) for k in keys) or (f['event_date'] or None)!=(self.event_date.isoformat() if self.event_date else None) or (f['notes'] or None)!=self.notes:
+                raise ValueError('Initial receipt differs from immutable form source')
+            if any(v is not None for v in (self.supplier_id,self.finance_obligation_id,self.method,ln.unit_cost,ln.currency,ln.destination_id,ln.greenhouse_id,ln.work_area_id)):
+                raise ValueError('Typed receipt does not assert additional accounting or location facts')
+        return self
 
 class InventoryPost(StrictModel):
     duplicate_reviewed:bool=False

@@ -5,6 +5,7 @@ from typing import Literal
 from uuid import UUID
 from pydantic import Field, field_validator, model_validator
 from .commands import StrictModel
+from .owner_form_source import OwnerFormSource, validate_binding, form_decimal
 
 class ExactModel(StrictModel):
     @field_validator('*', mode='before')
@@ -20,6 +21,7 @@ def quality(name):
     return {'grand':'FIRST','sera':'FIRST','yerli':'YERLI','ikinci':'SECOND','i̇kinci':'SECOND','2 inci':'SECOND'}.get(' '.join(name.casefold().split()),'VERIFY')
 
 class EvidenceInput(StrictModel):
+    structured_original: OwnerFormSource|None=Field(default=None,exclude_if=lambda v:v is None)
     existing_id: UUID|None=None
     source: str=Field(min_length=1,max_length=200)
     source_reference: str|None=Field(default=None,max_length=2000)
@@ -29,7 +31,8 @@ class EvidenceInput(StrictModel):
     file_base64: str|None=Field(default=None,max_length=7000000)
     @model_validator(mode='after')
     def supplied(self):
-        if not any((self.existing_id,self.source_reference,self.raw_text,self.file_base64)):raise ValueError('Original source is required')
+        validate_binding(self,'field_harvest',self.source_reference)
+        if not any((self.existing_id,self.source_reference,self.raw_text,self.file_base64,self.structured_original)):raise ValueError('Original source is required')
         if self.file_base64 and not (self.filename and self.mime_type):raise ValueError('Filename and file type required')
         return self
 
@@ -42,6 +45,16 @@ class ReportInput(ExactModel):
     reporter: str=Field(min_length=1,max_length=250)
     notes: str|None=Field(default=None,max_length=2000)
     evidence: EvidenceInput
+    @model_validator(mode='after')
+    def original_matches(self):
+        original=self.evidence.structured_original
+        if original:
+            f=original.fields
+            expected=dict(event_date=f['event_date'],original_greenhouse=f['original_greenhouse'],work_area_id=f['work_area_id'] or None,
+                cut_count=f['cut_count'] or None,field_weight_kg=form_decimal(f['field_weight_kg']),reporter=f['reporter'],notes=f['notes'] or None)
+            candidate=ReportInput.model_validate(dict(expected,evidence=dict(source='comparison',raw_text='comparison')))
+            if candidate.model_dump(exclude={'evidence'})!=self.model_dump(exclude={'evidence'}):raise ValueError('Initial report differs from immutable form source')
+        return self
 
 class BatchInput(StrictModel):
     event_date: date
@@ -97,6 +110,7 @@ class SettlementInput(ExactModel):
     replacement_of_id: UUID|None=None
     @model_validator(mode='after')
     def valid(self):
+        if self.evidence.structured_original is not None:raise ValueError('Field form evidence cannot originate a depot document')
         if self.due_date and self.due_date<self.event_date:raise ValueError('Due date precedes event')
         if self.batch_ids and not self.link_evidence:raise ValueError('Explicit matching evidence required')
         if len(set(self.batch_ids))!=len(self.batch_ids):raise ValueError('Repeated batch')

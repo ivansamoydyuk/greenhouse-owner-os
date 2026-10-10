@@ -3,6 +3,7 @@ from datetime import date,datetime
 from fastapi import Depends,Header,Response
 from pydantic import BaseModel,ConfigDict,Field
 from sqlalchemy import select
+from greenhouse_owner_os.domain.owner_form_source import OwnerFormSource,original_readback
 from greenhouse_owner_os.domain.harvest import ReportInput,BatchInput,SettlementInput,SettlementPost
 from greenhouse_owner_os.domain.commands import ReverseCommand
 from greenhouse_owner_os.domain.errors import NotFoundError
@@ -13,6 +14,7 @@ class HarvestEvidenceMetadata(BaseModel):
     # OpenAPI documentation only (responses.model, not response_model): retain
     # the read adapter's original SQL projection and serialization unchanged.
     model_config = ConfigDict(extra='forbid')
+    structured_original: OwnerFormSource | None = None
     id: UUID
     entity_id: UUID
     source: str
@@ -76,7 +78,7 @@ def mount_harvest(app,finance,actor_provider):
             row=u.session.execute(select(*columns,EvidenceRow.file_bytes.is_not(None).label('has_file')).where(
                 EvidenceRow.id==evidence_id,EvidenceRow.entity_id==entity_id)).mappings().one_or_none()
             if row is None:raise NotFoundError('original evidence not found')
-            result=dict(row)
+            result=original_readback(dict(row))
             result['original_url']=f'/v1/entities/{entity_id}/harvest/evidence/{evidence_id}' if result['has_file'] else None
             response.headers['Cache-Control']='private, no-store'
             return result

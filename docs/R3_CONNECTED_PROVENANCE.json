@@ -30,11 +30,11 @@
     },
     {
       "path": ".github/workflows/r3-connected-pilot.yml",
-      "origin": "CONNECTED_PILOT",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "236af63330804d62474930f8bf4d1ac9a882a409",
-      "sha256": "270977c23c40ffe381d7204d9be30f9dc8e8a6cae66d67c7466342b70f24c8f1",
-      "size": 8996
+      "git_blob": "1c25b299fb3d09b0c4e2d3a6fe399a0f2a67923e",
+      "sha256": "1658c1928590b8a11425f0425a322576116161d184c3dbc8346007e0192c84d0",
+      "size": 11222
     },
     {
       "path": ".gitignore",
@@ -51,6 +51,14 @@
       "git_blob": "e1a91137af3e0c7c35dc18d0aad8c8db3f45a957",
       "sha256": "eabfa49ca3df92cd83bf16f3b98755d8a85db47c14c82baf10dfac9ecd4f1803",
       "size": 15544
+    },
+    {
+      "path": "alembic.ini",
+      "origin": "G",
+      "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
+      "git_blob": "34bde029800c8c53253bdfd928a9ae635de52976",
+      "sha256": "927efcb5b70eb721a21e3ef2eb7659ea6d097cf9f285d832574e742124d945f4",
+      "size": 625
     },
     {
       "path": "alembic/env.py",
@@ -261,14 +269,6 @@
       "size": 15752
     },
     {
-      "path": "alembic.ini",
-      "origin": "G",
-      "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
-      "git_blob": "34bde029800c8c53253bdfd928a9ae635de52976",
-      "sha256": "927efcb5b70eb721a21e3ef2eb7659ea6d097cf9f285d832574e742124d945f4",
-      "size": 625
-    },
-    {
       "path": "config/owner_finance_opening.json",
       "origin": "G",
       "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
@@ -293,6 +293,14 @@
       "size": 6079
     },
     {
+      "path": "docs/R3_CAPTURE_SOURCE_CONTRACT.md",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "b4c8a88480f3a712fdf3d5377b147e2a63fe6ed5",
+      "sha256": "071bacb069a5d9012818069ef8d84617c90dd8845bcf3d963788eb2d5ce2576c",
+      "size": 3820
+    },
+    {
       "path": "docs/R3_CONNECTED_TEST_PILOT.md",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
@@ -302,11 +310,11 @@
     },
     {
       "path": "openapi/owner_core_v1.yaml",
-      "origin": "CONNECTED_PILOT",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "6c7b65c03a67515b83fff1fe8395156343104c97",
-      "sha256": "e8cb08aabb7a61f6318b68c08ef313c546bac9769fa79a334ca4bbc232b3238f",
-      "size": 177748
+      "git_blob": "7d242ac32fbd40acac3d95a22c2733ac0fca3fee",
+      "sha256": "6242f45920903dea6d1be3356e7714fd529945f4ffbc830d5abc3837f765898b",
+      "size": 179216
     },
     {
       "path": "package-lock.json",
@@ -366,19 +374,19 @@
     },
     {
       "path": "prototype/owner-r3/connected-adapter.js",
-      "origin": "CONNECTED_PILOT",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "e5a90ccbb8420e1b034a4759e5e7d05207076240",
-      "sha256": "681f82a38d113b934386caa522f10c92941a988ab78c8ec7dc800d74d0306273",
-      "size": 15658
+      "git_blob": "83efe7568376a7610f66fcc77324ca540b1cc630",
+      "sha256": "2a141f3bf8e0e5b14fa91290c62fec74c5cb15400a649bb8742b48117522d53b",
+      "size": 16632
     },
     {
       "path": "prototype/owner-r3/connected.css",
-      "origin": "CONNECTED_PILOT",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "5df3e85deff00f0afbd158c46d2141c419aa789f",
-      "sha256": "5d3eb55481a06a35854c978d8af7eb3f8743240e18f95bc20dd4ee71d1f6257b",
-      "size": 4720
+      "git_blob": "f53827096ad89cfc4834e0c6b4d1cf49b906c0c7",
+      "sha256": "fa247378297b421c15c55429c517b2389dbb39a97567255e612397610b7647e7",
+      "size": 5893
     },
     {
       "path": "prototype/owner-r3/connected.html",
@@ -390,11 +398,11 @@
     },
     {
       "path": "prototype/owner-r3/connected.js",
-      "origin": "CONNECTED_PILOT",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "53ab754c2e1e874cd52433bf2d3c1ab39636be28",
-      "sha256": "e4c2ac42d4c9fadeadc6ca23cf72638bee4850842f781cef112c07e0ff8b51a0",
-      "size": 94414
+      "git_blob": "f628b3290f622e99521d21bdfafa976027a17402",
+      "sha256": "52aa56a1f78df2a0de2858bf6b92059f040119c2806cc66d7326c536df777f87",
+      "size": 100273
     },
     {
       "path": "prototype/owner-r3/daily-demo.js",
@@ -541,6 +549,14 @@
       "size": 1071
     },
     {
+      "path": "scripts/r3_capture_baseline_fixture.py",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "0bdc3687792b9c83bb4e6f0ca0376e9be916493d",
+      "sha256": "e3fb9f987d0e35a480a33e3363fd4c139cfa06c5f2eebab839981dad5acea4d2",
+      "size": 2309
+    },
+    {
       "path": "scripts/r3_connected_preview_access.py",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
@@ -558,11 +574,11 @@
     },
     {
       "path": "scripts/r3_connected_sql_evidence.py",
-      "origin": "CONNECTED_PILOT",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "acc5bbe3d5f16c77df00db1d894def2eb0bb3621",
-      "sha256": "49c3bc06b779504e5d02f2640a82903d59f40081c4572d7d3d463fa5c6c90581",
-      "size": 38523
+      "git_blob": "b3ccd0e4616c1f44840071e78730eb8c9237fc61",
+      "sha256": "f9aec5036a3b814715f9568035f36971e8f7789d61c0a9554222966cb332974b",
+      "size": 39220
     },
     {
       "path": "scripts/r3_preview.mjs",
@@ -678,11 +694,11 @@
     },
     {
       "path": "src/greenhouse_owner_os/api/harvest.py",
-      "origin": "CONNECTED_PILOT",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "72ee6ded0431a7ef314e449602ff7a2275314d0c",
-      "sha256": "ba3269cd3946cdd7a75e85b4e8cb9fa6ead2238ae310d6359d7b59e2159cdd64",
-      "size": 5829
+      "git_blob": "731b27f4debc3be30b49795192aca498651af5de",
+      "sha256": "9ea93063fab814b9e75f35fc878beefb2c7ab573b80ec55a461190cdd819a587",
+      "size": 5994
     },
     {
       "path": "src/greenhouse_owner_os/api/inbox.py",
@@ -766,11 +782,11 @@
     },
     {
       "path": "src/greenhouse_owner_os/domain/harvest.py",
-      "origin": "G",
-      "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
-      "git_blob": "42a085e8f957b1583f4732cb3e6c1cf780e5626c",
-      "sha256": "bae3965e5ba0f6fcb7cb15930e42e6b27933be90b0213d144d84ce7971d12bd7",
-      "size": 5910
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "1a4d801d92b62607efbab94fa90f6db06c6f0bfb",
+      "sha256": "3cdd91e4f6934080ef746e25c0aa453d7ccaabc59f9671a55fb8e3d64f6c33cf",
+      "size": 7075
     },
     {
       "path": "src/greenhouse_owner_os/domain/history.py",
@@ -782,11 +798,11 @@
     },
     {
       "path": "src/greenhouse_owner_os/domain/inventory.py",
-      "origin": "G",
-      "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
-      "git_blob": "08fda8159599b487d8771cd1d06c7faa17920306",
-      "sha256": "57784d47bea839daf6e2b23701cc30dd750e5053fad9c378708228d8973e5a3d",
-      "size": 5535
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "6e1481636e2cb129fdac93fbaf0e0f4d7f6d1cde",
+      "sha256": "14cf4664bcb38f336bd47eb2f5f6ea5878474e3c36a6f3a9e2efa1ee47627088",
+      "size": 7289
     },
     {
       "path": "src/greenhouse_owner_os/domain/opening.py",
@@ -798,11 +814,19 @@
     },
     {
       "path": "src/greenhouse_owner_os/domain/owner_capture.py",
-      "origin": "G",
-      "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
-      "git_blob": "8ec9038e8d82a7d62040021fe7ae47bf10d8fbec",
-      "sha256": "d100d3755e876ee3d39d581075ee7b7a5595c790f0c185b0f31c932f3c0b8352",
-      "size": 6858
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "0eb404c754fe93e468521fb89f172e0778f46ee9",
+      "sha256": "1310e4035509966ae568b48d625c481db87192a714c2ce9680c37ad9295b1197",
+      "size": 6963
+    },
+    {
+      "path": "src/greenhouse_owner_os/domain/owner_form_source.py",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "be13743f58d870745378bf82d17e25531cf8b103",
+      "sha256": "e75be5d72df5ea60b8ae96a0852a72dee63d4a180e3212baad9e7745a9d7f44c",
+      "size": 3133
     },
     {
       "path": "src/greenhouse_owner_os/domain/references.py",
@@ -966,11 +990,11 @@
     },
     {
       "path": "src/greenhouse_owner_os/services/harvest.py",
-      "origin": "H",
-      "remote_ref": "56d24fc8e4d0d9cee72f44bb01fafd451f83c714",
-      "git_blob": "30939cd04f859ef46355903d4bb6e866ad226767",
-      "sha256": "e4f7dd79b0fa5217115553bff129b83bbd5a8d5c31884ed871ed80fa810474a1",
-      "size": 34485
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "fbe531f571bdaafbc4b885fd9996db0cbc04b25c",
+      "sha256": "ee21643464872017f3db35b351b092db6e854cdb6f18f62b1c3fb74a84aabaf0",
+      "size": 34931
     },
     {
       "path": "src/greenhouse_owner_os/services/harvest_capture.py",
@@ -998,11 +1022,11 @@
     },
     {
       "path": "src/greenhouse_owner_os/services/inventory.py",
-      "origin": "G",
-      "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
-      "git_blob": "9afe68b26ff396cfcb18603411d5edf26ee4b83d",
-      "sha256": "a5961088ad55f86d61d7e7e5f580f15576ea0985b45ec221d3446c79e095ffd5",
-      "size": 21377
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "cad8875806eb486127ba378cdeb51c1c4049a52a",
+      "sha256": "a09b336617d3e367252d7d8978c0fce63120b1b1493d732d17f52a96cd8eeeda",
+      "size": 21722
     },
     {
       "path": "src/greenhouse_owner_os/services/inventory_capture.py",
@@ -1030,19 +1054,19 @@
     },
     {
       "path": "src/greenhouse_owner_os/services/owner_capture.py",
-      "origin": "G",
-      "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
-      "git_blob": "10bc7643d920261483fb06415eda81aca3586e55",
-      "sha256": "f33d44db060143f7f94311e90704bfefa2d9ae90e1da57ef41ec48eb3c338bcb",
-      "size": 55380
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "91fde4f8ce2f0b500b58c150735e0ccb22d2f17b",
+      "sha256": "0ed07784b5adb7353330463a688b6c8ebcb48aa48f464b07073928aa05b9693d",
+      "size": 56934
     },
     {
       "path": "src/greenhouse_owner_os/services/owner_preparation.py",
-      "origin": "G",
-      "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
-      "git_blob": "2fc28219b9dbc426b1809761fff3fd94b96fcfe9",
-      "sha256": "1ed2ad745ef5e398aa8c1c45a8f6e214d639e640113120e4677cd22bd8e17e38",
-      "size": 34650
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "d182085588768ee4463c1913f594bba2e2872d7b",
+      "sha256": "76b6ef812a0b6f0d9b36a37fe0f7c100ad286a7be35f24b83580f0710be2e90e",
+      "size": 35644
     },
     {
       "path": "src/greenhouse_owner_os/services/owner_recovery.py",
@@ -1118,11 +1142,11 @@
     },
     {
       "path": "src/greenhouse_owner_os/synthetic_pilot.py",
-      "origin": "CONNECTED_PILOT",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
       "remote_ref": null,
-      "git_blob": "bd22661db4c0e50f720d15b13fc3c040b06b54f2",
-      "sha256": "039148cd9b75d34b13d473a8fdede5ffc5bb273a780a7321afcf380524017425",
-      "size": 9407
+      "git_blob": "02f9b665c0c3d1185bce483521a85bf7bb52b5ce",
+      "sha256": "7143e13fe70d208e9c048077e73b394fc596562323f7c6b64e468e3967a6fa32",
+      "size": 9424
     },
     {
       "path": "src/greenhouse_owner_os/web/app.js",
@@ -1533,6 +1557,22 @@
       "size": 13891
     },
     {
+      "path": "tests/e2e/r3-capture-before.mjs",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "3051d005fd0b68f17b2be938e77cfd601a77b903",
+      "sha256": "8b9ca225d8e5960a6ff8df450a6a5535e06dc39bb48e0009bb95f79ed16d2871",
+      "size": 4605
+    },
+    {
+      "path": "tests/e2e/r3-capture-friction.mjs",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "a20ef1a1edb4da4913c39de8e4ee414ca646d4f9",
+      "sha256": "5558287e5742273a6f9e5c148859d7baa60cfab4c1f815cd6e7ce409776e7a4a",
+      "size": 11216
+    },
+    {
       "path": "tests/e2e/r3-connected.mjs",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
@@ -1757,6 +1797,14 @@
       "size": 7077
     },
     {
+      "path": "tests/frontend/owner-r3-capture-friction.test.mjs",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "29f20a8994bd9dff77ebc9a07c8a4af2259824fe",
+      "sha256": "715ca0ef1ad4f5015860f3ed0a0b0697707e60a15ec26340f8fa9ca69c5c3fcd",
+      "size": 2521
+    },
+    {
       "path": "tests/frontend/owner-r3-connected.test.mjs",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
@@ -1875,6 +1923,14 @@
       "git_blob": "0bc7c5a4bce9ce8e335ad49a77409d670bce2586",
       "sha256": "03f9dba2db5e163cfe83ccd303d15964e1c2cf6f05e87690ace36b3c6e22ae4f",
       "size": 15402
+    },
+    {
+      "path": "tests/integration/test_postgres_capture_friction.py",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "e52036634509551b8adac08d7673255a8eccdc46",
+      "sha256": "b66f00ef3d73f28858a1f455b42741faff628438b5a7bd4d5ec0b85747ec84c8",
+      "size": 9144
     },
     {
       "path": "tests/integration/test_postgres_cash.py",
@@ -2413,6 +2469,14 @@
       "size": 4288
     },
     {
+      "path": "tests/unit/test_owner_form_source.py",
+      "origin": "CAPTURE_FRICTION_CORRECTION",
+      "remote_ref": null,
+      "git_blob": "de8e8d2b73eb5a7ba1d4ff90107cdf3642d0ba70",
+      "sha256": "5d6c62c67d8d807eb0639676eddfb2df90ef5f73a08b17f0fe074f9997fb17c4",
+      "size": 5116
+    },
+    {
       "path": "tests/unit/test_owner_ocr.py",
       "origin": "G",
       "remote_ref": "cd413215a59eed156260fc104ab5f01b082f830a",
@@ -2476,5 +2540,7 @@
       "sha256": "632870c3368ed73ab719298785a086fcccfcb1b1a2d6d2193675b013f4a5be73",
       "size": 2819
     }
-  ]
+  ],
+  "correction_base": "296833f0ed4eca252dcbbda3bff4dc9797423d9d",
+  "correction_scope": "Three owner capture friction cases; typed immutable owner form originals; no migration"
 }

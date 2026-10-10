@@ -4177,6 +4177,10 @@ components:
             proposal; summary includes no original bytes or raw text.
     HarvestEvidenceMetadata:
       properties:
+        structured_original:
+          anyOf:
+          - $ref: '#/components/schemas/OwnerFormSource'
+          - type: 'null'
         id:
           type: string
           format: uuid
@@ -4198,8 +4202,8 @@ components:
           - type: string
           - type: 'null'
           title: Raw Text
-          description: Exact immutable original text or source-associated caption; never synthesized from
-            prepared report fields.
+          description: Exact immutable original text or source-associated caption; never
+            synthesized from prepared report fields.
         filename:
           anyOf:
           - type: string
@@ -4231,8 +4235,9 @@ components:
           - type: 'null'
           format: uri-reference
           title: Original Url
-          description: Same-origin existing /v1/entities/{entity_id}/harvest/evidence/{evidence_id} binary
-            route when has_file is true; otherwise null. Never a source-provided URL.
+          description: Same-origin existing /v1/entities/{entity_id}/harvest/evidence/{evidence_id}
+            binary route when has_file is true; otherwise null. Never a source-provided
+            URL.
       additionalProperties: false
       type: object
       required:
@@ -5434,6 +5439,10 @@ components:
       title: BatchInput
     EvidenceInput:
       properties:
+        structured_original:
+          anyOf:
+          - $ref: '#/components/schemas/OwnerFormSource'
+          - type: 'null'
         existing_id:
           anyOf:
           - type: string
@@ -5921,6 +5930,10 @@ components:
       title: ConversionInput
     InventoryEvidence:
       properties:
+        structured_original:
+          anyOf:
+          - $ref: '#/components/schemas/OwnerFormSource'
+          - type: 'null'
         source:
           type: string
           maxLength: 200
@@ -6757,6 +6770,12 @@ components:
       title: ReportInput
     CaptureSource:
       properties:
+        capture_context:
+          anyOf:
+          - type: string
+            const: quick_expense
+          - type: 'null'
+          title: Capture Context
         client_capture_id:
           type: string
           format: uuid
@@ -6935,3 +6954,43 @@ components:
       description: Business validation failed; no partial effect committed
     NotFound:
       description: Resource not found
+    OwnerFormSource:
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+          title: Schema Version
+        form_kind:
+          type: string
+          enum:
+          - field_harvest
+          - inventory_receipt
+          title: Form Kind
+        form_id:
+          type: string
+          format: uuid
+          title: Form Id
+        captured_at:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Captured At
+        timezone:
+          type: string
+          const: Europe/Istanbul
+          title: Timezone
+        fields:
+          additionalProperties:
+            type: string
+          type: object
+          title: Fields
+      additionalProperties: false
+      type: object
+      required:
+      - schema_version
+      - form_kind
+      - form_id
+      - captured_at
+      - timezone
+      - fields
+      title: OwnerFormSource

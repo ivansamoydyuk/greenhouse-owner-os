@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select,text
 from greenhouse_owner_os.domain.errors import ValidationError,ConflictError,NotFoundError
 from greenhouse_owner_os.domain.harvest import quality,line_amount
+from greenhouse_owner_os.domain.owner_form_source import encode_original,original_readback
 from greenhouse_owner_os.domain.cash import AdvanceApplicationCommand
 from greenhouse_owner_os.domain.finance import Obligation,ObligationDirection,RecordStatus
 from greenhouse_owner_os.domain.commands import CreatePaymentCommand,AttributionInput,ReverseCommand
@@ -29,7 +30,7 @@ def harvest_json(v):
     if isinstance(v,list):return [harvest_json(x) for x in v]
     return json_value(v)
 
-def row_dict(r):return {c.name:harvest_json(getattr(r,c.name)) for c in r.__table__.columns if c.name!='file_bytes'}
+def row_dict(r):return original_readback({c.name:harvest_json(getattr(r,c.name)) for c in r.__table__.columns if c.name!='file_bytes'})
 
 def root(area):return area.parent_id or area.id
 
@@ -72,13 +73,14 @@ class HarvestService:
             r=u.session.get(EvidenceRow,body.existing_id)
             if not r or r.entity_id!=e:raise ValidationError('existing evidence scope mismatch')
             return r
+        stored_text=encode_original(body.structured_original) if body.structured_original else body.raw_text
         raw=None
         if body.file_base64:
             try:raw=base64.b64decode(body.file_base64,validate=True)
             except ValueError:raise ValidationError('invalid file encoding')
             signatures={'application/pdf':b'%PDF-','image/png':b'\x89PNG\r\n\x1a\n','image/jpeg':b'\xff\xd8\xff'}
             if not raw.startswith(signatures[body.mime_type]) or len(raw)>5242880:raise ValidationError('file type or size invalid; maximum 5 MB')
-        fingerprint=hashlib.sha256(raw if raw is not None else (body.raw_text if body.raw_text is not None else body.source_reference).encode()).hexdigest()
+        fingerprint=hashlib.sha256(raw if raw is not None else (stored_text if stored_text is not None else body.source_reference).encode()).hexdigest()
         binary_identity=raw is not None
         if source_item_id is not None:
             # The immutable Inbox retains the original (including large PDFs).
@@ -100,7 +102,7 @@ class HarvestService:
         if stable:
             existing=u.session.scalar(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.source==body.source,EvidenceRow.source_reference==body.source_reference))
             if existing:
-                if existing.raw_text!=body.raw_text or existing.file_bytes!=raw:
+                if existing.raw_text!=stored_text or existing.file_bytes!=raw:
                     raise ConflictError('stable evidence source content changed; original retained')
                 return existing
         if (source_item_id is not None and (binary_identity or not distinct_source_reviewed)) or (raw is not None and (not stable or body.source in ('owner_mobile:manual','inbox:manual'))):
@@ -110,7 +112,7 @@ class HarvestService:
             existing=u.session.scalar(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_(None),EvidenceRow.fingerprint==fingerprint).order_by(EvidenceRow.received_at,EvidenceRow.id).limit(1))
             if existing and existing.source_reference is not None:raise ConflictError('possible duplicate text source; provide the original source reference or explicitly reuse its evidence')
             if existing:return existing
-        r=EvidenceRow(id=uuid4(),entity_id=e,created_by=actor,fingerprint=fingerprint,file_bytes=raw,**body.model_dump(exclude={'file_base64','existing_id'}))
+        r=EvidenceRow(id=uuid4(),entity_id=e,created_by=actor,fingerprint=fingerprint,file_bytes=raw,**dict(body.model_dump(exclude={'file_base64','existing_id','structured_original','raw_text'}),raw_text=stored_text))
         u.session.add(r);u.session.flush();return r
     def report(self,e,actor,key,body):
         def run(u):
@@ -147,6 +149,7 @@ class HarvestService:
             cp=u.session.get(CounterpartyRow,body.depot_id)
             if not cp or cp.entity_id!=e or cp.counterparty_type not in ('depot','customer','both'):raise ValidationError('select an existing depot/customer counterparty')
             evidence=self._evidence(u,e,actor,body.evidence,source_item_id,distinct_source_reviewed)
+            if evidence.source=='owner_form:v1:field_harvest':raise ValidationError('Field report original is not depot receipt evidence; attach a separate depot original')
             # Serialize all lifecycle creation for this immutable evidence, including
             # existing-id corrections and retries after reversal.
             u.session.scalar(select(EvidenceRow).where(EvidenceRow.id==evidence.id).with_for_update())
