@@ -314,9 +314,9 @@ def attest(uow, result, proof=None):
         report = one('''SELECT r.*,e.raw_text,e.fingerprint,e.file_bytes FROM harvest.worker_reports r
             JOIN harvest.evidence e ON e.id=r.evidence_id AND e.entity_id=r.entity_id WHERE r.entity_id=:e AND r.id=:id''', id=uid(item['report_id']))
         from greenhouse_owner_os.domain.owner_form_source import decode_original
-        original = decode_original('owner_form:v1:field_harvest', report['raw_text'])
-        require(original is not None and original['fields']['notes'] == item['field_original']
-                and original['fields']['cut_count'] == '7' and original['fields']['field_weight_kg'] == '70'
+        typed_original = decode_original('owner_form:v1:field_harvest', report['raw_text'])
+        require(typed_original is not None and typed_original['fields']['notes'] == item['field_original']
+                and typed_original['fields']['cut_count'] == '7' and typed_original['fields']['field_weight_kg'] == '70'
                 and report['cut_count'] == 7 and report['field_weight_kg'] == 70
                 and report['fingerprint'] == digest(report['raw_text']) and report['file_bytes'] is None
                 and report['created_by'] == owner, 'Field original/count/weight mismatch')
