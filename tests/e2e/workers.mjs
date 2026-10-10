@@ -54,19 +54,51 @@ await finish(worker,assignments[0]);await page.locator('#refresh').click();await
 await finish(second,assignments[1]);await page.locator('#sheet .close').click();await page.locator('#refresh').click();await page.locator('[data-task="'+multi.id+'"]').first().click();await page.locator('#task-complete').click();await page.getByLabel('Решение / причина').fill('TEST both reviewed');await page.getByRole('button',{name:'Подтвердить решение',exact:true}).click();await page.getByRole('heading',{name:multi.title,exact:true}).waitFor();assert.equal((await send(prefix+'/tasks/'+multi.id)).status,'completed');
 const now=await send(prefix+'/finance-overview');assert.deepEqual(now.balances,initial.balances);assert.deepEqual((await send(prefix+'/inventory')).stock,stock.stock);assert.equal((await send(prefix+'/harvest')).reports.length,harvest.reports.length);
 await page.locator('#sheet .close').click();
-// Force an older reload to finish while a newer snapshot is still loading.
-let releaseInventory,releaseTasks,inventoryEntered,tasksEntered;
+// Deliver an actual older Inventory response while the newer Tasks response
+// stays held. A fenced reload stops here; it must not request an obsolete Inbox.
+let releaseInventory,releaseTasks,inventoryEntered,tasksEntered,oldInventoryRequest;
 const inventoryHeld=new Promise(r=>inventoryEntered=r),tasksHeld=new Promise(r=>tasksEntered=r);
 const inventoryGate=new Promise(r=>releaseInventory=r),tasksGate=new Promise(r=>releaseTasks=r);
 let inventories=0,taskReads=0;
-await page.route('**/inventory',async route=>{if(++inventories===1){inventoryEntered();await inventoryGate;}await route.continue();});
-await page.route('**/tasks',async route=>{if(++taskReads===2){tasksEntered();await tasksGate;}await route.continue();});
-await page.locator('#refresh').click();await inventoryHeld;
-await page.locator('#nav [data-page=overview]').click();await tasksHeld;
-const firstInbox=page.waitForResponse(r=>r.url().includes('/inbox?'));
-releaseInventory();await (await firstInbox).finished();await page.waitForTimeout(100);releaseTasks();
-await page.waitForFunction(()=>document.querySelector('#app').getAttribute('aria-busy')==='false');
-await page.unroute('**/inventory');await page.unroute('**/tasks');
+const downstream=[];
+const observeDownstream=request=>{const path=new URL(request.url()).pathname;if([prefix+'/harvest',prefix+'/inbox'].includes(path))downstream.push(path);};
+page.on('request',observeDownstream);
+await page.route('**/inventory',async route=>{
+ if(++inventories===1){oldInventoryRequest=route.request();const response=await route.fetch();assert.equal(response.status(),200);inventoryEntered();await inventoryGate;await route.fulfill({response});}
+ else await route.continue();
+});
+await page.route('**/tasks',async route=>{
+ if(++taskReads===2){const response=await route.fetch();assert.equal(response.status(),200);tasksEntered();await tasksGate;await route.fulfill({response});}
+ else await route.continue();
+});
+try{
+ await page.locator('#refresh').click();await inventoryHeld;
+ const priorMain=await page.locator('#app').innerHTML();
+ await page.locator('#nav [data-page=overview]').click();await tasksHeld;
+ assert.equal(await page.locator('#app').getAttribute('aria-busy'),'true');
+ assert.equal(await page.locator('#app').evaluate(node=>node.inert),true);
+ const deliveredInventory=page.waitForResponse(response=>response.request()===oldInventoryRequest);
+ releaseInventory();const oldResponse=await deliveredInventory;assert.equal(oldResponse.status(),200);await oldResponse.finished();
+ // Allow the real fetch/json continuation and rendering opportunity to run;
+ // synchronization uses the delivered response, not a request correctly skipped.
+ await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ assert.equal(await page.locator('#app').getAttribute('aria-busy'),'true','Obsolete completion must not clear the newer loading state');
+ assert.equal(await page.locator('#app').evaluate(node=>node.inert),true,'Newer loading surface must remain inert');
+ assert.equal(await page.locator('#refresh').getAttribute('aria-busy'),'true');
+ assert.equal(await page.locator('#app').innerHTML(),priorMain,'Obsolete completion must not publish a partial or stale replacement');
+ assert.deepEqual(downstream,[],'Obsolete reload must stop after Inventory, before Harvest or Inbox');
+ releaseTasks();await page.waitForFunction(()=>document.querySelector('#app').getAttribute('aria-busy')==='false');
+ await page.locator('#app').getByRole('heading',{name:'Финансы',exact:true}).waitFor();
+ assert.equal(await page.locator('#app').evaluate(node=>node.inert),false);
+ assert.equal(await page.locator('#refresh').getAttribute('aria-busy'),'false');
+ assert.equal(new URL(page.url()).hash,'#overview');
+ assert.equal(await page.locator('#nav [data-page=overview]').getAttribute('aria-current'),'page');
+ assert.equal(inventories,2);assert.equal(taskReads,2);
+ assert.deepEqual(downstream,[prefix+'/harvest',prefix+'/inbox'],'Only the newer complete snapshot reads downstream modules');
+}finally{
+ releaseInventory();releaseTasks();page.off('request',observeDownstream);
+ await page.unroute('**/inventory');await page.unroute('**/tasks');
+}
 assert.deepEqual(await page.evaluate(()=>window.uiFaults),[],'caught technical UI errors must fail the browser gate');
 for(const width of [320,390,768,1280]){await page.setViewportSize({width,height:844});await navigateOwner(page,'tasks');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.waitForFunction(()=>document.querySelector('#app').getAttribute('aria-busy')==='false');await page.screenshot({path:`artifacts/workers-${width}.png`,fullPage:true});}
 assert.ok(await wp.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await wp.screenshot({path:'artifacts/worker-mobile.png',fullPage:true});assert.deepEqual(await page.evaluate(()=>window.uiFaults),[]);assert.deepEqual(errors,[]);console.log('PASS Workers E2E: owner creation/assignment, worker language/ack/start/report, owner complete/reopen, recurrence, capture, domain boundaries, 320/390/768/1280, no runtime errors');await browser.close();

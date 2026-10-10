@@ -11,8 +11,33 @@ export async function pendingStore(){
   return new Promise((resolve,reject)=>{const request=indexedDB.open(dbName,1);request.onupgradeneeded=()=>request.result.createObjectStore('sources',{keyPath:'key'});request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(Error('Не удалось сохранить на телефоне. Оставьте окно открытым и повторите.'));});
 }
 export async function pendingWrite(value){const db=await pendingStore();return new Promise((resolve,reject)=>{const tx=db.transaction('sources','readwrite');tx.objectStore('sources').put(value);tx.oncomplete=()=>{db.close();resolve();};tx.onerror=tx.onabort=()=>{db.close();reject(Error('Память телефона недоступна или заполнена. Источник ещё не сохранён.'));};});}
-async function pendingList(scope){const db=await pendingStore();return new Promise((resolve,reject)=>{const tx=db.transaction('sources');const r=tx.objectStore('sources').getAll();r.onsuccess=()=>resolve(r.result.filter(x=>x.scope===scope));r.onerror=()=>reject(Error('Очередь телефона недоступна'));tx.oncomplete=()=>db.close();});}
-async function pendingDelete(key){const db=await pendingStore();return new Promise((resolve,reject)=>{const tx=db.transaction('sources','readwrite');tx.objectStore('sources').delete(key);tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(Error('Не удалось обновить очередь телефона'));});}
+async function pendingList(scope){const db=await pendingStore();return new Promise((resolve,reject)=>{const tx=db.transaction('sources');const r=tx.objectStore('sources').getAll();r.onsuccess=()=>resolve(r.result.filter(x=>x.scope===scope).sort((a,b)=>(a.body.captured_at||'').localeCompare(b.body.captured_at||'')||a.key.localeCompare(b.key)));r.onerror=()=>reject(Error('Очередь телефона недоступна'));tx.oncomplete=()=>db.close();});}
+async function pendingDelete(key,isCurrent=()=>true){const db=await pendingStore();if(!isCurrent()){db.close();return;}return new Promise((resolve,reject)=>{const tx=db.transaction('sources','readwrite');tx.objectStore('sources').delete(key);tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(Error('Не удалось обновить очередь телефона'));});}
+// The upload can outlive a logout or an explicit local deletion. Update only a
+// still-present original, in the same transaction that reads it; never recreate.
+async function pendingFailure(record,upload_error,isCurrent){
+  const db=await pendingStore();if(!isCurrent()){db.close();return false;}
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction('sources','readwrite'),store=tx.objectStore('sources'),request=store.getAll();let written=false;
+    request.onsuccess=()=>{const current=request.result.find(r=>r.key===record.key);if(isCurrent()&&current&&JSON.stringify(current.body)===JSON.stringify(record.body)){store.put({...current,upload_error});written=true;}};
+    tx.oncomplete=()=>{db.close();resolve(written);};tx.onerror=tx.onabort=()=>{db.close();reject(Error('Не удалось сохранить причину ошибки. Оригинал остаётся в локальной очереди.'));};
+  });
+}
+// Only source-local validation is safe to bypass. Unknown failures pause the
+// pass: a lost response may already have durably saved this exact UUID/body.
+export function sourceUploadError(error){
+  const status=Number.isInteger(error.status)?error.status:null;
+  const kind=[400,413,415,422].includes(status)?'validation':status===401?'auth':status===403?'access':'retry';
+  return {kind,status,message:error.message||'Не удалось отправить источник.'};
+}
+export function sourceUploadMessage(error){
+  const reason=`${error.status?`HTTP ${error.status} · `:''}${error.message}`;
+  if(error.kind==='validation')return `Источник не принят: ${reason} Оригинал сохранён на телефоне; откройте «Копии на телефоне» для экспорта или явного повтора. Другие источники отправляются отдельно.`;
+  if(error.kind==='auth')return `Отправка приостановлена: ${reason} Оригинал сохранён на телефоне; войдите снова.`;
+  if(error.kind==='access')return `Отправка приостановлена: ${reason} Проверьте доступ. Оригинал сохранён на телефоне.`;
+  return `Отправка приостановлена: ${reason} Оригинал сохранён на телефоне. Повтор сохранит тот же источник.`;
+}
+
 function fileData(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(Error('Не удалось прочитать файл'));r.readAsDataURL(file);});}
 
 export function receiptEffectTotal(lines){const cents=lines.reduce((sum,l)=>{const [whole,fraction='']=String(l.confirmed_amount??lineAmount(l.net_weight_kg,l.unit_price)).split('.');return sum+BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'));},0n);return `${cents/100n}.${String(cents%100n).padStart(2,'0')}`;}
@@ -154,10 +179,10 @@ export function proposalCard(p,data={}){
   return `<article class="card queue-card ${p.reminder_eligible?'overdue':''}" data-proposal="${e(p.id)}"><div class="queue-card-head"><small>${e(titles[kind]||kind)} · ${e(statuses[p.state]||p.state)}</small>${p.reminder_eligible?'<span class="badge">Старше 36 часов</span>':''}</div><h2>${e(title)}</h2>${value?`<p class="queue-card-value">${e(value)}</p>`:''}<p class="queue-card-context">${[...new Set(context)].map(e).join(' · ')}</p><p class="queue-card-effect" data-effect="${e(kind)}">${e(effects[kind]||'Нужна ручная проверка')}</p>${warnings.length?`<p class="queue-card-warning">${warnings.slice(0,2).map(e).join(' · ')}${warnings.length>2?` · Ещё ${warnings.length-2} уточнения в проверке`:''}</p>`:''}<div class="queue-card-actions"><button type="button" class="primary" data-r2-open="${e(p.id)}" aria-label="${primaryLabel}: проверить ${e(title)}">${primaryLabel}</button><button type="button" class="secondary" data-r2-edit="${e(p.id)}">Исправить</button><button type="button" class="secondary" data-r2-later="${e(p.id)}">Позже</button></div><details><summary>Источник и подробности</summary><p class="note">${e(label)}. Перед подтверждением откроется полная актуальная проверка.</p><button type="button" data-r2-evidence="${e(p.id)}">Оригинал, детали и отклонение</button></details></article>`;
 }
 
-export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,navigate}){
-  let syncing=null,sessionGeneration=0,viewGeneration=0,pollTimer,queueTimer,disposeCapture=null,onCaptureSynced=null;
+export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,navigate,getOwnerId=()=>getData()?.owner?.owner_id}){
+  let syncing=null,sessionGeneration=0,viewGeneration=0,pollTimer,queueTimer,disposeCapture=null,onCaptureSynced=null,onCaptureError=null;
   const $=s=>document.querySelector(s),root=()=>`/v1/entities/${getEntity()}/owner`,home=()=>getData()?.owner;
-  const scope=()=>home()?`${getEntity()}:${home().owner_id}`:null;
+  const scope=()=>getEntity()&&getOwnerId()?`${getEntity()}:${getOwnerId()}`:null;
   const session=()=>({generation:sessionGeneration,scope:scope(),root:root()});
   const sameSession=t=>!!t.scope&&t.generation===sessionGeneration&&t.scope===scope();
   const snapshot=()=>({...session(),view:viewGeneration,anchor:$('#sheet-content')?.firstElementChild,open:!!$('#sheet')?.open});
@@ -204,12 +229,13 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
     sync().catch(()=>{});
     $('#owner-local')?.addEventListener('click',guard(localSources));
   }
-  async function pendingBadge(){const t=session(),node=$('#owner-pending-state');if(!t.scope)return;const list=await pendingList(t.scope);if(sameSession(t)&&node&&node===$('#owner-pending-state'))node.textContent=list.length?`На телефоне, ещё не в системе: ${list.length}`:'Неотправленных источников нет';}
+  async function pendingBadge(){const t=session(),node=$('#owner-pending-state');if(!t.scope)return;const list=await pendingList(t.scope);if(sameSession(t)&&node&&node===$('#owner-pending-state'))node.textContent=list.length?`На телефоне, ещё не в системе: ${list.length}${list.some(r=>r.upload_error)?' · есть ошибки отправки, откройте копии на телефоне':''}`:'Неотправленных источников нет';}
   async function localSources(){
     const t=begin();if(!t.scope)return;const records=await pendingList(t.scope);
-    if(!show(t,'Ещё не в системе',`<p class="note">Эти оригиналы сохранены только в этом браузере. Экспортируйте копию перед очисткой памяти. Удаление не создаёт бизнес-действие.</p>${records.map((r,i)=>`<article class="card"><h3>${e(r.body.text||r.body.filename||'Источник')}</h3><small>${e(displayDate(r.body.captured_at))}</small><div class="actions"><button data-local-export="${i}">Экспорт копии</button><button class="danger" data-local-delete="${i}">Удалить с телефона</button></div></article>`).join('')||'<p>Неотправленных источников нет</p>'}`))return;
+    if(!show(t,'Ещё не в системе',`<p class="note">Эти оригиналы сохранены только в этом браузере. Экспортируйте копию перед очисткой памяти. Удаление не создаёт бизнес-действие.</p>${records.map((r,i)=>`<article class="card"><h3>${e(r.body.text||r.body.filename||'Источник')}</h3><small>${e(displayDate(r.body.captured_at))}</small>${r.upload_error?`<p class="bad" role="status">${e(sourceUploadMessage(r.upload_error))}</p>`:''}<div class="actions">${r.upload_error?.kind==='validation'?`<button data-local-retry="${i}">Повторить этот источник</button>`:''}<button data-local-export="${i}">Экспорт копии</button><button class="danger" data-local-delete="${i}">Удалить с телефона</button></div></article>`).join('')||'<p>Неотправленных источников нет</p>'}`))return;
     document.querySelectorAll('[data-local-export]').forEach(b=>b.onclick=()=>{if(!active(t))return;const record=records[Number(b.dataset.localExport)],url=URL.createObjectURL(new Blob([JSON.stringify(record.body,null,2)],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download=`capture-${record.body.client_capture_id}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
-    document.querySelectorAll('[data-local-delete]').forEach(b=>b.onclick=guard(async()=>{if(!active(t)||!window.confirm('Удалить оригинал только с телефона? В системе его может ещё не быть. Сначала сохраните экспорт копии.'))return;await pendingDelete(records[Number(b.dataset.localDelete)].key);if(!active(t))return;await pendingBadge();if(active(t))await localSources();}));
+    document.querySelectorAll('[data-local-retry]').forEach(b=>b.onclick=guard(async()=>{if(!active(t))return;b.disabled=true;try{await sync({retryKey:records[Number(b.dataset.localRetry)].key});}finally{if(active(t))await localSources();}}));
+    document.querySelectorAll('[data-local-delete]').forEach(b=>b.onclick=guard(async()=>{if(!active(t)||!window.confirm('Удалить оригинал только с телефона? В системе его может ещё не быть. Сначала сохраните экспорт копии.'))return;await pendingDelete(records[Number(b.dataset.localDelete)].key,()=>active(t));if(!active(t))return;await pendingBadge();if(active(t))await localSources();}));
   }
   async function sources(offset=0){
     const t=begin();if(!t.scope)return;const r=await api(t.root+`/captures?offset=${offset}`);
@@ -219,19 +245,33 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
     document.querySelectorAll('[data-source-proposal]').forEach(b=>b.onclick=guard(()=>{if(active(t))return review(b.dataset.sourceProposal);}));
     document.querySelectorAll('[data-source-retry]').forEach(b=>b.onclick=guard(async()=>{if(!active(t))return;b.disabled=true;try{await api(t.root+`/captures/${b.dataset.sourceRetry}/retry-preparation`,{});if(!active(t))return;notice('Оригинал сохранён. Запрошена отдельная подготовка.');await sources(offset);}finally{if(active(t))b.disabled=false;}}));
   }
-  async function sync(){
-    const t=session();if(!t.scope||!navigator.onLine)return;
-    // Every caller waits for the same session's in-flight upload, rather than
-    // mistaking a busy queue for completed durable acknowledgement.
-    if(syncing?.generation===t.generation&&syncing.scope===t.scope)return syncing.promise;
+  function sync({retryKey=null}={}){
+    const t=session();if(!t.scope||!navigator.onLine)return Promise.resolve();
+    // Concurrent callers share a pass. An explicit per-source retry waits for
+    // that pass before starting its own; it never changes original identity.
+    if(syncing?.generation===t.generation&&syncing.scope===t.scope){
+      const retry=()=>{if(sameSession(t))return sync({retryKey});};
+      return retryKey?syncing.promise.then(retry,retry):syncing.promise;
+    }
     const job={...t};syncing=job;
     job.promise=(async()=>{try{for(const record of await pendingList(t.scope)){
       if(!sameSession(t))return;
-      const r=await api(t.root+'/captures',record.body);
-      if(!sameSession(t))return;
-      if(!r.server_saved||r.client_capture_id!==record.body.client_capture_id)throw Error('Система не подтвердила сохранение источника');
-      await pendingDelete(record.key);if(!sameSession(t))return;onCaptureSynced?.(record.body.client_capture_id);notice('Сохранено в системе. Действия ещё не подтверждены.');
-    }if(sameSession(t))await pendingBadge();}finally{if(syncing===job)syncing=null;}})();
+      if(retryKey&&record.key!==retryKey)continue;
+      if(record.upload_error?.kind==='validation'&&record.key!==retryKey)continue;
+      try{
+        const r=await api(t.root+'/captures',record.body,{isCurrent:()=>sameSession(t)});
+        if(!sameSession(t))return;
+        if(r?.server_saved!==true||r.client_capture_id!==record.body.client_capture_id)throw Error('Система не подтвердила сохранение источника');
+      }catch(error){
+        if(!sameSession(t))return;
+        const upload_error=sourceUploadError(error);
+        const kept=await pendingFailure(record,upload_error,()=>sameSession(t));if(!sameSession(t))return;
+        if(kept)onCaptureError?.(record.body.client_capture_id,upload_error);
+        if(upload_error.kind==='validation')continue;
+        throw error;
+      }
+      await pendingDelete(record.key,()=>sameSession(t));if(!sameSession(t))return;onCaptureSynced?.(record.body.client_capture_id);notice('Сохранено в системе. Действия ещё не подтверждены.');
+    }}finally{if(syncing===job)syncing=null;if(sameSession(t))await pendingBadge();}})();
     return job.promise;
   }
   function capture(mode='text'){
@@ -246,7 +286,7 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
     // cannot modify text after abort/end, a restart, navigation or account switch.
     const stopRecognition=()=>{speechGeneration++;const wasFinishing=finishing;finishing=false;const submit=form.querySelector('[type=submit]');if(wasFinishing&&submit&&!saved&&!saving)submit.disabled=false;if(recognition){const old=recognition;recognition=null;old.onresult=null;old.onerror=null;old.onend=null;old.onstart=null;old.onaudiostart=null;try{old.abort();}catch{}}};
     const stopPreview=()=>{readingVersion++;if(reader){reader.onload=null;reader.onerror=null;if(reader.readyState===1)reader.abort();reader=null;}};
-    disposeCapture=()=>{stopRecognition();stopPreview();onCaptureSynced=null;};
+    disposeCapture=()=>{stopRecognition();stopPreview();onCaptureSynced=null;onCaptureError=null;};
     const fallback=()=>{stopRecognition();voiceState('Диктовка браузера недоступна','fallback');$('#r2-input-help').textContent='На iPhone нажмите микрофон на клавиатуре или введите текст.';textInput.focus?.();};
     const startRecognition=()=>{
       if(!active(t)||saved||saving||recognition)return;
@@ -316,17 +356,19 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
         saved=true;textInput.value=frozenText;statusText('Сохранено на телефоне.','local');
         form.elements.text.disabled=true;fileInput.disabled=true;dictate.disabled=true;$('#r2-voice-stop').disabled=true;$('#r2-voice-done').disabled=true;document.querySelectorAll('[data-capture-mode]').forEach(b=>b.disabled=true);button.textContent='Сохранено на телефоне';
         onCaptureSynced=id=>{if(id===body.client_capture_id){statusText('Сохранено в системе; действия ещё не подтверждены.','server');button.textContent='Сохранено в системе';}};
+        onCaptureError=(id,error)=>{if(id===body.client_capture_id)statusText(sourceUploadMessage(error),error.kind==='validation'?'failed':'pending');};
         if(!navigator.onLine){statusText('Сохранено на телефоне. В системе ещё нет; отправим при восстановлении связи и открытом приложении.','pending');return;}
         statusText('Сохранено на телефоне. Отправляем в систему…','uploading');
         try{
           await sync();if(!active(t))return;
           // The awaited upload may have snapshotted the queue before this
           // capture was committed. Start a fresh pass for its durable record.
-          if((await pendingList(t.scope)).some(r=>r.body.client_capture_id===body.client_capture_id)){if(!active(t))return;await sync();}
-        }catch{statusText('Сохранено на телефоне. Отправим при восстановлении связи и открытом приложении.','pending');return;}
+          if((await pendingList(t.scope)).some(r=>r.body.client_capture_id===body.client_capture_id&&!r.upload_error)){if(!active(t))return;await sync();}
+        }catch(error){statusText(sourceUploadMessage(sourceUploadError(error)),'pending');return;}
         if(!active(t))return;
         // A concurrently running sync may have started before this source was saved.
-        if((await pendingList(t.scope)).some(r=>r.body.client_capture_id===body.client_capture_id)){statusText('На телефоне. Отправка ожидается; повторите с главного экрана.','pending');return;}
+        const local=(await pendingList(t.scope)).find(r=>r.body.client_capture_id===body.client_capture_id);
+        if(local){statusText(local.upload_error?sourceUploadMessage(local.upload_error):'На телефоне. Отправка ожидается; повторите с главного экрана.',local.upload_error?.kind==='validation'?'failed':'pending');return;}
         if(!active(t))return;$('#sheet').close();await reload();if(sameSession(t))pollTimer=setTimeout(()=>{if(sameSession(t))reload().catch(()=>{});},1500);
       }catch(err){statusText(err.message,saved?'pending':'failed');}finally{saving=false;if(active(t))freezeCapture(saved);button.disabled=saved;}
     };
@@ -446,5 +488,5 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
   }
   window.addEventListener('online',guard(sync));document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')sync().catch(()=>{});});
   function logout(){sessionGeneration++;invalidate();clearTimeout(pollTimer);clearTimeout(queueTimer);if($('#owner-capture-bar'))$('#owner-capture-bar').hidden=true;document.body.classList.remove('has-owner-capture');}
-  return {render,bind,mount,capture,queue,sync,logout,invalidateView:invalidate};
+  return {render,bind,mount,capture,queue,sync,logout,localSources,invalidateView:invalidate};
 }
