@@ -4661,6 +4661,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /worker/tasks/{task_id}/responses:
+    post:
+      summary: Worker Response
+      operationId: worker_response_v1_worker_tasks__task_id__responses_post
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Task Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerResponseInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerResponseResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -7132,6 +7169,13 @@ components:
       title: RuleInput
     TaskInput:
       properties:
+        execution_contract:
+          type: string
+          enum:
+          - R1
+          - R2_RECEIVED_REPORT
+          title: Execution Contract
+          default: R1
         owner_language:
           type: string
           enum:
@@ -9861,6 +9905,124 @@ components:
       - pending_invoice_actions
       - linked_documents
       title: PurchaseReceipt
+    WorkerResponseInput:
+      properties:
+        client_response_id:
+          type: string
+          format: uuid
+          title: Client Response Id
+        assignment_id:
+          type: string
+          format: uuid
+          title: Assignment Id
+        expected_cycle:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Cycle
+        response:
+          type: string
+          enum:
+          - RECEIVED
+          - DONE
+          - PROBLEM
+          title: Response
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        button_label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Button Label
+        original_language:
+          type: string
+          enum:
+          - ru
+          - tr
+          - fa
+          - uz
+          title: Original Language
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Comment
+      additionalProperties: false
+      type: object
+      required:
+      - client_response_id
+      - assignment_id
+      - expected_cycle
+      - response
+      - captured_at
+      - button_label
+      - original_language
+      title: WorkerResponseInput
+    WorkerResponseResult:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        client_response_id:
+          type: string
+          format: uuid
+          title: Client Response Id
+        task_id:
+          type: string
+          format: uuid
+          title: Task Id
+        assignment_id:
+          type: string
+          format: uuid
+          title: Assignment Id
+        cycle:
+          type: integer
+          title: Cycle
+        execution_contract:
+          type: string
+          const: R2_RECEIVED_REPORT
+          title: Execution Contract
+          default: R2_RECEIVED_REPORT
+        response:
+          type: string
+          enum:
+          - RECEIVED
+          - DONE
+          - PROBLEM
+          title: Response
+        action_id:
+          type: string
+          format: uuid
+          title: Action Id
+        report_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Report Id
+        task_version:
+          type: integer
+          title: Task Version
+        task_status:
+          type: string
+          title: Task Status
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - client_response_id
+      - task_id
+      - assignment_id
+      - cycle
+      - response
+      - action_id
+      - report_id
+      - task_version
+      - task_status
+      title: WorkerResponseResult
   responses:
     Conflict:
       description: Version or idempotency conflict

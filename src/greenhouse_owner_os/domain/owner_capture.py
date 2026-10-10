@@ -70,6 +70,7 @@ class StockProposal(StrictModel):
     separate_event_reviewed: bool = False
 
 class TaskProposal(StrictModel):
+    execution_contract:Literal['R1','R2_RECEIVED_REPORT']|None=Field(default=None,exclude_if=lambda v:v is None)
     title: str | None = Field(default=None, min_length=1, max_length=200)
     original_instruction: str | None = Field(default=None, max_length=10000)
     greenhouse_id: UUID | None = None

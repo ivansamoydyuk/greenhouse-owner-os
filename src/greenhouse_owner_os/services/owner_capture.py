@@ -227,6 +227,9 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
         result=prepare_quick_expense(raw,today=s['day']) if s.get('capture_context')=='quick_expense' and not s['binary'] else None
         if result is None:result=prepare_owner_source(raw,today=s['day'],refs=references,binary=bool(s['binary']),pages=out.get('pages',[]))
         for kind,payload,provenance in result:
+            if kind=='WORKER_TASK':
+                payload['execution_contract']='R2_RECEIVED_REPORT'
+                provenance['execution_contract']={'category':'CONTEXT DEFAULT','basis':'worker_execution_contract_r2_v1'}
             if kind!='DEPOT_RECEIPT' or not payload.get('depot_id'):continue
             learned=[]
             for idx,line in enumerate(payload['lines']):
@@ -520,7 +523,7 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
         if kind=='WORKER_TASK':
             from .workers import WorkersService
             from greenhouse_owner_os.domain.workers import TaskInput
-            d=WorkersService(factory).create(e,a,key,TaskInput(title=f['title'],original_instruction=f['original_instruction'],description=f['original_instruction'],greenhouse_id=f['greenhouse_id'],planned_date=f['planned_date'],source='owner:r2-action',locator=p['id'],source_timestamp=s.received_at))
+            d=WorkersService(factory).create(e,a,key,TaskInput(execution_contract=f.get('execution_contract') or 'R1',title=f['title'],original_instruction=f['original_instruction'],description=f['original_instruction'],greenhouse_id=f['greenhouse_id'],planned_date=f['planned_date'],source='owner:r2-action',locator=p['id'],source_timestamp=s.received_at))
             return dict(d,not_sent=True,prepared_assignment={k:f[k] for k in ('worker_id','language','rendered_text')}),dict(worker_task_id=d['id']),True
         if kind=='INVOICE_MATCH':
             r=rows(u,'INSERT INTO core.invoice_receipt_links(id,entity_id,inbox_id,proposal_id,receipt_id,finance_obligation_id,reviewed_by,note) VALUES(:id,:e,:s,:p,:r,:f,:a,:n) RETURNING *',id=uuid4(),e=e,s=p['inbox_id'],p=p['id'],r=f['receipt_id'],f=f['finance_obligation_id'],a=a,n=f['note'])[0]

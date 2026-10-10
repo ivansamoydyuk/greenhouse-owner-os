@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import Field,model_validator
 from .commands import StrictModel
 Language=Literal['ru','tr','fa','uz']
+ExecutionContract=Literal['R1','R2_RECEIVED_REPORT']
 class WorkerInput(StrictModel):
     display_name:str=Field(min_length=1,max_length=200)
     native_name:str|None=None
@@ -14,6 +15,7 @@ class WorkerInput(StrictModel):
     notes:str|None=None
     source:str=Field(min_length=1,max_length=200)
 class TaskInput(StrictModel):
+    execution_contract:ExecutionContract=Field(default='R1',exclude_if=lambda v:v=='R1')
     owner_language:Language='ru'
     title:str=Field(min_length=1,max_length=200)
     original_instruction:str=Field(min_length=1,max_length=10000)
@@ -95,3 +97,49 @@ class OccurrenceInput(StrictModel):
 class LinkInput(StrictModel):
     domain:Literal['inventory','harvest','finance','inbox']
     target_id:UUID
+
+
+class WorkerResponseInput(StrictModel):
+    client_response_id:UUID
+    assignment_id:UUID
+    expected_cycle:int=Field(gt=0)
+    response:Literal['RECEIVED','DONE','PROBLEM']
+    captured_at:datetime
+    button_label:str=Field(min_length=1,max_length=200)
+    original_language:Language
+    comment:str|None=Field(default=None,max_length=10000)
+    @model_validator(mode='after')
+    def source(self):
+        if self.captured_at.tzinfo is None:raise ValueError('Response timestamp must include timezone')
+        if not self.button_label.strip():raise ValueError('Exact visible button label required')
+        return self
+
+class WorkerResponseResult(StrictModel):
+    id:UUID
+    client_response_id:UUID
+    task_id:UUID
+    assignment_id:UUID
+    cycle:int
+    execution_contract:Literal['R2_RECEIVED_REPORT']='R2_RECEIVED_REPORT'
+    response:Literal['RECEIVED','DONE','PROBLEM']
+    action_id:UUID
+    report_id:UUID|None
+    task_version:int
+    task_status:str
+
+class WorkerResponseHistory(StrictModel):
+    client_response_id:UUID
+    task_id:UUID
+    assignment_id:UUID
+    worker_id:UUID
+    cycle:int
+    execution_contract:Literal['R2_RECEIVED_REPORT']='R2_RECEIVED_REPORT'
+    response:Literal['RECEIVED','DONE','PROBLEM']
+    source_kind:Literal['UI_ACTION']='UI_ACTION'
+    button_label:str
+    comment:str|None
+    original_language:Language
+    captured_at:datetime
+    received_at:datetime
+    action_id:UUID
+    report_id:UUID|None

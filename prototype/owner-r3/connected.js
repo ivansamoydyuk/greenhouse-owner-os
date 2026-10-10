@@ -241,7 +241,7 @@ function home() {
   if (!h) return unavailable("Главная");
   const f = h.finance,
     s = h.season || [];
-  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") + btn("Повторить загрузку разделов", "refresh", "secondary") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Деньги и результат</h2>${link("Открыть",lastFinanceRoute,"section-link")}</div><p class="note">Счета, движения, учтённые затраты и теплицы</p>`)}${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", lastHarvestRoute, "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес по ADET</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} ADET</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Workers R1 · внешняя отправка недоступна.</p></div></div>`;
+  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") + btn("Повторить загрузку разделов", "refresh", "secondary") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Деньги и результат</h2>${link("Открыть",lastFinanceRoute,"section-link")}</div><p class="note">Счета, движения, учтённые затраты и теплицы</p>`)}${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", lastHarvestRoute, "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес по ADET</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} ADET</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Поручения работникам · внешняя отправка недоступна.</p></div></div>`;
 }
 function reviewList() {
   return (
@@ -972,7 +972,7 @@ function personalList(list) {
           "Задачи сохраняются после подтверждения Capture.",
         ),
     ) +
-    `<p class="note">Показано ${list.items.length} из ${list.total}. Workers R1 ведутся отдельно.</p><div class="page-actions">${list.offset > 0 ? link("Назад", `tasks/${list.state}/${Math.max(0, list.offset - list.limit)}`, "btn secondary") : ""}${list.next_offset != null ? link("Следующие", `tasks/${list.state}/${list.next_offset}`, "btn secondary") : ""}</div>`
+    `<p class="note">Показано ${list.items.length} из ${list.total}. Поручения работникам ведутся отдельно.</p><div class="page-actions">${list.offset > 0 ? link("Назад", `tasks/${list.state}/${Math.max(0, list.offset - list.limit)}`, "btn secondary") : ""}${list.next_offset != null ? link("Следующие", `tasks/${list.state}/${list.next_offset}`, "btn secondary") : ""}</div>`
   );
 }
 function personalDetail(t) {
@@ -1019,7 +1019,7 @@ function workers() {
   const w = data.workers;
   if (!w) return unavailable("Работники");
   return (
-    Header("Работники", "Workers R1 · CONNECTED TEST") +
+    Header("Работники", "Получение и отчёт · CONNECTED TEST") +
     notice(
       "Назначение и внутренний жизненный цикл сохраняются в TEST. Внешняя отправка, Telegram и новое понимание Dari: NOT AVAILABLE.",
     ) +
@@ -1028,13 +1028,13 @@ function workers() {
       `<h2>Поручения</h2>${taskRows(w.tasks, true) || "<p>Пока нет задач.</p>"}`,
     ) +
     panel(
-      `<h2>Работники TEST</h2>${w.workers.map((x) => `<div class="list-row"><strong>${e(x.display_name)}</strong><small>${e(x.language)} · ${x.active ? "активен" : "неактивен"}</small></div>`).join("")}`,
+      `<h2>Работники TEST</h2>${w.workers.map((x) => `<div class="list-row"><strong>${e(x.display_name)}</strong><small>${e(x.language)} · ${x.active ? "активен" : "неактивен"}</small>${x.active ? btn("TEST-вход работника", "worker-session:" + x.id, "secondary") : ""}</div>`).join("")}`,
     )
   );
 }
 function workerForm() {
   return (
-    Header("Поручение работнику", "Создать черновик Workers R1", true) +
+    Header("Поручение работнику", "Получено → результат → проверка владельца", true) +
     panel(
       form(
         "worker",
@@ -1051,7 +1051,7 @@ function workerForm() {
 }
 function workerDetail(t) {
   return (
-    Header(t.title, `Workers R1 · ${statuses[t.status] || t.status}`, true) +
+    Header(t.title, `${t.execution_contract === "R2_RECEIVED_REPORT" ? "Получение и отчёт" : "Поручение R1"} · ${statuses[t.status] || t.status}`, true) +
     panel(
       `<h2>Исходное поручение</h2><p class="original-text">${e(t.original_instruction)}</p>${facts(
         [
@@ -1075,7 +1075,8 @@ function workerDetail(t) {
               ["Проверенный текст", a.rendered_text],
               ["Язык", a.language],
               ["Отправка", a.delivery_state || "not_sent"],
-              ["Подтверждение", a.acknowledged_at || "Не подтверждено"],
+              ["Получение", a.acknowledged_at || "Пока не получено"],
+              ["Цикл назначения", a.cycle],
             ]),
           )
           .join("") || "<p>Не назначено.</p>"
@@ -1105,7 +1106,7 @@ function workerDetail(t) {
       }`,
     ) +
     panel(
-      `<h2>Отчёты</h2>${t.reports.map((r) => `<div class="list-row"><strong>${e(r.claim)} · ${e(r.state)}</strong><p class="original-text">${e(r.original_text)}</p>${r.state === "submitted" ? btn("Проверить отчёт", "review-report:" + r.id) : ""}</div>`).join("") || "<p>Отчётов пока нет.</p>"}<div id="action-error" class="form-error" role="alert"></div><div class="page-actions">${t.status === "reported" ? btn("Завершить после проверки", "worker-action:complete", "primary") : ""}${["completed", "cancelled"].includes(t.status) ? btn("Вернуть в работу", "worker-action:reopen") : btn("Отменить поручение", "worker-action:cancel")}</div><details><summary>История жизненного цикла</summary>${(
+      `<h2>Отчёты</h2>${t.execution_contract === "R2_RECEIVED_REPORT" ? `<details><summary>Исходные ответы работников</summary>${(t.response_history || []).map(x => `<div class="list-row"><strong>${e(x.button_label)}</strong><p class="original-text">${e(x.comment || "")}</p><small>Цикл ${e(x.cycle)} · ${e(x.captured_at)} · выбор кнопки сохранён</small></div>`).join("") || "<p>Пока нет ответов.</p>"}</details>` : ""}${t.reports.map((r) => `<div class="list-row"><strong>${e(r.claim)} · ${e(r.state)}</strong><p class="original-text">${e(r.original_text)}</p>${r.state === "submitted" ? btn("Проверить отчёт", "review-report:" + r.id) : ""}</div>`).join("") || "<p>Отчётов пока нет.</p>"}<div id="action-error" class="form-error" role="alert"></div><div class="page-actions">${t.can_complete ? btn("Завершить после проверки", "worker-action:complete", "primary") : t.status === "reported" ? '<button type="button" class="btn primary" disabled>Ожидаются результаты и проверка проблем</button>' : ""}${["reported", "completed", "cancelled"].includes(t.status) ? btn("Вернуть в работу", "worker-action:reopen") : ""}${!["completed", "cancelled"].includes(t.status) ? btn("Отменить поручение", "worker-action:cancel") : ""}</div><details><summary>История жизненного цикла</summary>${(
         t.actions || []
       )
         .map((a) =>
@@ -1127,7 +1128,7 @@ function more() {
         ["Финансы", "finance"],
         ["Урожай / Депо", "harvest"],
         ["Склад", "inventory"],
-        ["Работники R1", "workers"],
+        ["Работники", "workers"],
         ["Источники", "sources"],
       ]
         .map(([l, r]) => link(e(l) + " " + icon("arrow"), r, "btn secondary"))
@@ -1787,6 +1788,7 @@ async function submitForm(formEl, snapshot) {
         planned_date: draft.date || null,
         owner_language: "ru",
         category: "general",
+        execution_contract: "R2_RECEIVED_REPORT",
         source: "owner:r3-connected-test",
         locator: draft.id,
       },
@@ -1811,7 +1813,7 @@ async function submitForm(formEl, snapshot) {
         language: v.language,
         translation_source:
           v.language === "ru" ? "original" : "owner_reviewed_translation",
-        translation_version: "manual-r1",
+        translation_version: current.execution_contract === "R2_RECEIVED_REPORT" ? "manual-r2" : "manual-r1",
         rendering_reviewed: true,
       },
       current.id + ":assign:" + current.version + ":" + w.id,
@@ -1855,7 +1857,7 @@ async function submitForm(formEl, snapshot) {
       body.locator,
     );
     sheetRoot.innerHTML = "";
-    await finish(route, "Действие Workers R1 сохранено.");
+    await finish(route, "Действие поручения сохранено.");
   }
 }
 function openSheet(title, body) {
@@ -2094,6 +2096,15 @@ document.addEventListener("click", (event) => {
     sheetRoot.innerHTML = "";
     return;
   }
+  if (name === "worker-session") return action(async () => {
+    const stamp=api.generation,scope=api.scope,origin=route;
+    const worker=data.workers?.workers.find(w=>w.id===arg&&w.active);
+    if(!worker)throw Error("Работник недоступен в текущем хозяйстве.");
+    const session=await api.request("/preview/workers/"+worker.id+"/session",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+    if(stamp!==api.generation||scope!==api.scope||route!==origin)return;
+    const until=new Date(Date.now()+session.expires_in*1000).toLocaleString("ru-RU",{timeZone:"Europe/Istanbul"});
+    openSheet("TEST-вход: "+worker.display_name,`<p>Откройте <a href="/worker" target="_blank" rel="noopener">страницу работника</a> в отдельном окне и вставьте временный ключ.</p><label>Ключ работника<textarea id="worker-test-key" readonly autocomplete="off">${e(session.token)}</textarea></label><p>До ${e(until)} по Стамбулу, пока работает TEST. Только синтетические поручения. Ключ не отправлен работнику.</p>`);
+  },button);
   if (name.startsWith("capture-")) return go("capture/" + name.slice(8));
   if (name === 'invoice-edit') {
     const p=current.payable;if(!p||!['amount','currency','event_date','counterparty_id','description','due_date'].includes(arg))return;

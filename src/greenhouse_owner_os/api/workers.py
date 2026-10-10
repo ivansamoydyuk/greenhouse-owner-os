@@ -1,7 +1,7 @@
 """Owner and worker APIs use separate identity providers."""
 from uuid import UUID
 from fastapi import Depends,Header,HTTPException
-from greenhouse_owner_os.domain.workers import WorkerInput,TaskInput,AssignmentInput,ActionInput,ReportInput,RuleInput,OccurrenceInput,LinkInput
+from greenhouse_owner_os.domain.workers import WorkerInput,TaskInput,AssignmentInput,ActionInput,ReportInput,RuleInput,OccurrenceInput,LinkInput,WorkerResponseInput,WorkerResponseResult
 from greenhouse_owner_os.domain.commands import StrictModel
 from greenhouse_owner_os.services.workers import WorkersService
 class ActiveInput(StrictModel):active:bool
@@ -42,3 +42,7 @@ def mount_workers(app,finance,owner_provider,worker_provider=None):
     @app.post('/v1/worker/tasks/{task_id}/reports',status_code=201)
     def worker_report(task_id:UUID,body:ReportInput,key:str=Header(alias='Idempotency-Key'),identity=Depends(worker_provider)):
         e,w,a=identity;return service.report(e,a,key,task_id,w,body)
+
+    @app.post('/v1/worker/tasks/{task_id}/responses',response_model=WorkerResponseResult)
+    def worker_response(task_id:UUID,body:WorkerResponseInput,key:str=Header(alias='Idempotency-Key'),identity=Depends(worker_provider)):
+        e,w,a=identity;return service.respond(e,a,key,task_id,w,body)
