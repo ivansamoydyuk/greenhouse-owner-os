@@ -254,7 +254,10 @@ export async function runDailyJourneys({browser, engine, newPage, click, fill, r
   await journey('arrival, consumption, transfer and UNKNOWN stock share one inventory without finance effects', async page => {
     await inventory(page); const initial = await stateOf(page), money = financeOf(initial);
     const post = async (kind, stockId, quantity, toPlace) => {
-      await go(page, `inventory-${kind}`); await select(page, 'stockId', stockId); await fill(page, 'daily-quantity', quantity);
+      await go(page, `inventory-${kind}`);
+      if(kind==='arrival'){const row=(await stateOf(page)).stock.find(r=>r.id===stockId);await select(page,'productId',row.productId);await select(page,'locationId',row.locationId);}
+      else await select(page, 'stockId', stockId);
+      await fill(page, 'daily-quantity', quantity);
       if (toPlace) await select(page, 'toPlace', toPlace);
       const before = await stateOf(page), action = await saveAction(page);
       assert.deepEqual((await stateOf(page)).stock, before.stock, 'Saving an inventory source does not post physical movement');

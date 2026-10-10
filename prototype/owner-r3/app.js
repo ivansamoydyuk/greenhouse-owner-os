@@ -2,8 +2,8 @@ import {ensureRefinement,beginSettlement,updateSettlement,settlementFill,confirm
 import {counterpartySettlementAction,settlementValues,settlementForm,settlementReview,monthlyHarvest,reportDetail,receiptLinkForm,receiptLinkReview} from "./refinement-ui.js";
 import {ensureFertilizer} from "./fertilizer-demo.js";
 import {renderFertilizer,fertilizerTaskRows,handleFertilizerEvent,refreshFertilizerView} from "./fertilizer-ui.js";
-import {ensureDaily,projectDaily,harvestRows as dailyHarvestRows,overview,createAction,updateAction,confirmAction,syncLegacyConfirmation} from "./daily-demo.js";
-import {contextualActions,financeOverview,quickForm,dailyReview,depotList,depotDetail,reconcile,dailyMovementList,invoiceNotice} from "./daily-ui.js";
+import {ensureDaily,projectDaily,harvestRows as dailyHarvestRows,overview,ensureReceiptDraft,createProduct,createAction,updateAction,confirmAction,syncLegacyConfirmation} from "./daily-demo.js";
+import {contextualActions,financeOverview,quickForm,productSuggestions,dailyReview,depotList,depotDetail,reconcile,dailyMovementList,invoiceNotice} from "./daily-ui.js";
 import {
   SCENARIO_TEXT,
   RECOVERY_TEXT,
@@ -69,6 +69,7 @@ let state = loadState(localStorage),
   fileReadAttempt = 0,
   unsavedCaptureId = null;
 const sheetDrafts = new Map();
+const receiptFileReads = new Map();
 const app = document.querySelector("#app"),
   sheetRoot = document.querySelector("#sheet-root");
 const workerName = (id) =>
@@ -432,7 +433,8 @@ function render({ focus = false } = {}) {
       html = renderFertilizer(state,parts[1],parts[2]);
       break;
     case "quick":
-      html = quickForm(state, parts[1] || "expense",parts[2]);
+      if(parts[1]==="inventory-arrival") {const key=parts[2]||parts[1],had=state.dailyDrafts[key]?.requestId;ensureReceiptDraft(state,key,state.daily.actions.find(a=>a.id===parts[2]));if(!had)save();}
+      html = quickForm(state, parts[1] || "expense",parts[2],{fileReading:receiptFileReads.has(parts[2]||parts[1])});
       break;
     case "daily":
       html = dailyReview(state,parts[1]);
@@ -808,6 +810,12 @@ document.addEventListener("input", (ev) => {
     const form=el.closest("#settlement-form");
     updateSettlement(state,form.dataset.settlementId,settlementValues(form));save();return;
   }
+  if(el.dataset.productField) {
+    const form=el.closest("#daily-form"),draft=ensureReceiptDraft(state,form.dataset.key);
+    draft.productDraft[el.dataset.productField]=el.value;save();
+    if(el.dataset.productField==="name")document.querySelector('[data-testid="receipt-product-suggestions"]').innerHTML=productSuggestions(state,el.value);
+    return;
+  }
   if(el.closest("#daily-form") && el.name) {
     const form=el.closest("#daily-form"),key=form.dataset.key;
     state.dailyDrafts[key]??={};state.dailyDrafts[key][el.name]=el.type === "checkbox" ? el.checked : el.value;
@@ -859,6 +867,24 @@ document.addEventListener("change", async (ev) => {
   if (el.closest("#settlement-form")) {
     const form=el.closest("#settlement-form");
     updateSettlement(state,form.dataset.settlementId,settlementValues(form));save();return;
+  }
+  if(el.closest("#daily-form")?.dataset.kind==="inventory-arrival"&&el.name) {
+    const form=el.closest("#daily-form"),draft=ensureReceiptDraft(state,form.dataset.key);
+    if(form.dataset.kind==="inventory-arrival") {draft[el.name]=el.value;if(el.name==="date")draft.dateAssumed=false;save();if(el.name==="productId"){render();document.querySelector('[data-testid="daily-productId"]')?.focus({preventScroll:true});}return;}
+  }
+  if(el.id==="receipt-file") {
+    const f=el.files?.[0];if(!f)return;
+    if(!["image/jpeg","image/png","image/webp","application/pdf"].includes(f.type)){toast("Выберите фото JPEG, PNG, WebP или PDF.");return;}
+    if(f.size>512*1024){toast("Для локального DEMO выберите файл до 512 КБ. Предыдущий источник сохранён.");return;}
+    const form=el.closest("#daily-form"),key=form.dataset.key,draft=ensureReceiptDraft(state,key),requestId=draft.requestId,attempt=++fileReadAttempt;
+    receiptFileReads.set(key,attempt);render();
+    try {
+      const url=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(f);});
+      if(receiptFileReads.get(key)!==attempt||state.dailyDrafts[key]!==draft||draft.requestId!==requestId)return;
+      draft.sourceFile={name:f.name,kind:f.type==="application/pdf"?"pdf":"image",url};save();
+    }catch{toast("Файл не прочитан. Черновик и предыдущий источник сохранены.");}
+    finally {if(receiptFileReads.get(key)===attempt){receiptFileReads.delete(key);if(document.querySelector('#daily-form')?.dataset.key===key)render();}}
+    return;
   }
   if (!["photo-file", "pdf-file", "video-file"].includes(el.id)) return;
   const f = el.files?.[0];
@@ -944,9 +970,25 @@ document.addEventListener("click", async (ev) => {
     state.dailyDrafts.worker={...(existing?.worker===id?existing:{}),worker:id,workerLocked:true,place:existing?.worker===id?existing.place:worker.place};
     save(); navigate("quick/worker"); return;
   }
+  if(action.startsWith("receipt-product-")) {
+    const form=document.querySelector('#daily-form');if(!form)return;
+    const draft=ensureReceiptDraft(state,form.dataset.key);
+    try {
+      if(action==="receipt-product-open") {draft.productCreating=true;if(!draft.productDraft||state.daily.products.some(p=>p.requestId===draft.productDraft.requestId))draft.productDraft={requestId:`product-request-${state.daily.nextId++}`,name:'',baseUnit:''};}
+      else if(action==="receipt-product-cancel")draft.productCreating=false;
+      else if(action==="receipt-product-create") {const product=createProduct(state,draft.productDraft);draft.productId=product.id;draft.productCreating=false;}
+      else if(action.startsWith('receipt-product-use:')) {const id=action.slice('receipt-product-use:'.length);if(!state.daily.products.some(p=>p.id===id&&p.ownerId===state.daily.ownerId))return;draft.productId=id;draft.productCreating=false;}
+      save();render();document.querySelector(draft.productCreating?'[data-testid="receipt-product-name"]':'[data-testid="daily-productId"]')?.focus({preventScroll:true});
+    }catch(error){const message=document.querySelector('[data-testid="receipt-product-error"]');if(message){message.hidden=false;message.textContent=error.message;}else toast(error.message);}
+    return;
+  }
   if(action === "daily-save") {
-    const form=document.querySelector("#daily-form"),kind=form.dataset.kind;
-    const values=Object.fromEntries(new FormData(form));
+    const form=document.querySelector("#daily-form");if(!form)return;const kind=form.dataset.kind;
+    if(receiptFileReads.has(form.dataset.key)){toast('Дождитесь сохранения выбранного источника.');return;}
+    const saved=state.dailyDrafts[form.dataset.key]||{};
+    const values={...saved,...Object.fromEntries(new FormData(form))};
+    delete values.productDraft;delete values.productCreating;
+    if(kind==='inventory-arrival'&&saved.productCreating){toast('Завершите создание товара или нажмите «Отмена».');return;}
     values.dateAssumed=state.dailyDrafts[form.dataset.key]?.dateAssumed!==false;
     try {
       if(kind==="worker") {
@@ -964,7 +1006,11 @@ document.addEventListener("click", async (ev) => {
         delete state.dailyDrafts[form.dataset.key];save();navigate("task/"+id);return;
       }
       const a=form.dataset.editId?updateAction(state,form.dataset.editId,values):createAction(state,kind,values);
-      delete state.dailyDrafts[form.dataset.key];save();navigate("daily/"+a.id);
+      if(kind==='inventory-arrival') {
+        // Persist action and its request together before retiring the editable draft.
+        if(!save()){toast('Приход сохранён только в памяти. Повторите сохранение; не закрывайте вкладку.');return;}
+        delete state.dailyDrafts[form.dataset.key];save();navigate("daily/"+a.id);
+      } else {delete state.dailyDrafts[form.dataset.key];save();navigate("daily/"+a.id);}
     } catch(error) {const message=document.querySelector("#daily-form-error");message.hidden=false;message.textContent=error.message==="EMPTY_SOURCE"?"Добавьте сообщение или факты события.":error.message;}
     return;
   }

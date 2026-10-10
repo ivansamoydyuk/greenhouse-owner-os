@@ -144,9 +144,68 @@ export function createDailyDemo() {
     legacyApplied:[],
   };
 }
+// Additive catalog migration: storage configuration is independent of existing balances.
+// These are configured synthetic owner locations, never inferred from a new stock row.
+export const STOCK_OWNER = 'demo-owner';
+export const PRODUCT_UNITS = Object.freeze({kg:'кг',L:'л',piece:'шт.'});
+const productKey = value => clean(value).normalize('NFKC').toLocaleLowerCase('ru').replace(/\s+/g,' ');
+export function ensureStockCatalog(d) {
+  d.ownerId ??= STOCK_OWNER;
+  d.storageLocations ??= [
+    {id:'stock-location-imamli',name:'İmamlı',greenhouseId:'imamli'},
+    {id:'stock-location-ozvadi',name:'Özvadi',greenhouseId:'ozvadi'},
+    {id:'stock-location-yesiloz',name:'Yeşilöz',greenhouseId:'yesiloz'},
+  ].map(location=>({...location,ownerId:d.ownerId,configured:true,synthetic:true}));
+  d.products ??= [];
+  for(const row of d.inventory) {
+    let product=d.products.find(p=>p.id===row.productId);
+    if(!product)product=d.products.find(p=>p.ownerId===d.ownerId&&productKey(p.name)===productKey(row.name)&&p.unit===row.unit);
+    if(!product){
+      const baseUnit=Object.entries(PRODUCT_UNITS).find(([,label])=>label===row.unit)?.[0]||null;
+      product={id:row.id==='kno3-sun'?'kno3':row.id,ownerId:d.ownerId,name:row.name,baseUnit,unit:row.unit,category:row.category,aliases:[],synthetic:true,legacy:!baseUnit};
+      d.products.push(product);
+    }
+    row.productId ??= product.id;
+    const location=d.storageLocations.find(l=>l.ownerId===d.ownerId&&l.name===row.place);
+    if(location){row.locationId ??= location.id;row.greenhouseId ??= location.greenhouseId;}
+  }
+  return d;
+}
+export function receiptSelection(d,input) {
+  ensureStockCatalog(d);
+  // Old saved drafts/actions keep their original stockId and gain explicit references.
+  const legacy=d.inventory.find(row=>row.id===input.stockId);
+  if(!Object.hasOwn(input,'productId')&&legacy)input.productId=legacy.productId;
+  if(!Object.hasOwn(input,'locationId')&&legacy)input.locationId=legacy.locationId;
+  return {product:d.products.find(p=>p.id===input.productId&&p.ownerId===d.ownerId),
+    location:d.storageLocations.find(l=>l.id===input.locationId&&l.ownerId===d.ownerId&&l.configured)};
+}
+export function ensureReceiptDraft(state,key='inventory-arrival',action=null) {
+  const d=ensureDaily(state);state.dailyDrafts??={};
+  const draft=state.dailyDrafts[key]??={...(action?clone(action.input):{})};
+  draft.requestId ??= action?.requestId||`receipt-request-${d.nextId++}`;
+  receiptSelection(d,draft);return draft;
+}
+export function similarProducts(state,name) {
+  const d=ensureDaily(state),key=productKey(name);if(!key)return [];
+  return d.products.filter(p=>p.ownerId===d.ownerId&&[p.name,...(p.aliases||[])].some(n=>{
+    const normalized=productKey(n);return normalized===key||(key.length>=3&&(normalized.includes(key)||key.includes(normalized)));
+  }));
+}
+export function createProduct(state,{requestId,name,baseUnit}) {
+  const d=ensureDaily(state);name=clean(name);
+  if(!requestId)throw Error('Нет идентификатора черновика. Откройте добавление товара ещё раз.');
+  const prior=d.products.find(p=>p.requestId===requestId);
+  if(prior){if(prior.name!==name||prior.baseUnit!==baseUnit)throw Error('Товар уже сохранён с другими данными. Выберите его в списке.');return prior;}
+  if(!name||name.length>160)throw Error('Укажите название товара: от 1 до 160 символов.');
+  if(!Object.hasOwn(PRODUCT_UNITS,baseUnit))throw Error('Выберите базовую единицу товара.');
+  if(d.products.some(p=>p.ownerId===d.ownerId&&[p.name,...(p.aliases||[])].some(n=>productKey(n)===productKey(name))))throw Error('Такое название уже есть. Выберите существующий товар ниже.');
+  const product={id:`product-${requestId}`,requestId,ownerId:d.ownerId,name,baseUnit,unit:PRODUCT_UNITS[baseUnit],category:'Удобрения',aliases:[],synthetic:true,source:{kind:'owner-entry',label:'Товар создан вручную в DEMO'}};
+  d.products.push(product);d.revision++;return product;
+}
 export function ensureDaily(state) {
   if (!state.daily || state.daily.version !== DAILY_VERSION) state.daily = createDailyDemo();
-  return state.daily;
+  return ensureStockCatalog(state.daily);
 }
 function dailyOf(state) { return state.daily || state; }
 function remaining(d, obligation, asOf = null) {
@@ -237,7 +296,9 @@ function validate(d, kind, input) {
     if(clean(input.rollingAlacak))try{input.rollingAlacakMinor=/^0(?:[.,]0{1,2})?$/.test(clean(input.rollingAlacak))?0:toMinor(input.rollingAlacak);}catch{errors.push('Проверьте Alacak');}
   }
   if(kind.startsWith('inventory-')) {
-    const stock=d.inventory.find(r=>r.id===input.stockId);need(!!stock,'Выберите материал и место');
+    const stock=d.inventory.find(r=>r.id===input.stockId);
+    if(kind==='inventory-arrival'){const {product,location}=receiptSelection(d,input);need(!!product,'Выберите товар');need(!!location,'Выберите настроенный склад владельца');if(product)input.unit=product.unit;}
+    else need(!!stock,'Выберите материал и место');
     try{input.quantityMinor=quantityMinor(input.quantity);}catch{errors.push('Укажите количество в единице выбранного материала');}
     if(stock&&kind!=='inventory-arrival')need(stock.quantityMinor!=null&&stock.quantityMinor>=input.quantityMinor,'Нужен известный достаточный остаток');
     if(kind==='inventory-transfer')need(!!clean(input.toPlace)&&input.toPlace!==stock?.place,'Выберите другое место назначения');
@@ -252,27 +313,36 @@ const ACTION_KINDS=['expense','payment','obligation','harvest','depot','inventor
 export function createAction(state,kind,values={}) {
   if(!ACTION_KINDS.includes(kind))throw Error('UNKNOWN_ACTION');
   if(kind==='expense' && !['raw','purpose','amount','party'].some(key=>clean(values[key])))throw Error('Добавьте исходное сообщение или назначение и сумму расхода.');
-  const d=ensureDaily(state),id=`daily-action-${d.nextId++}`;
+  const d=ensureDaily(state);
+  if(kind==='inventory-arrival'&&values.requestId){const existing=d.actions.find(a=>a.kind===kind&&a.requestId===values.requestId);if(existing){const same=Object.entries(values).every(([k,v])=>JSON.stringify(existing.input[k])===JSON.stringify(v));if(!same)throw Error('Этот приход уже сохранён. Откройте его в «Проверке» для уточнения.');return existing;}}
+  const id=`daily-action-${d.nextId++}`;
   const input={...clone(values),date:values.date||DEMO_TODAY,dateAssumed:values.dateAssumed??!values.date};
   const raw=clean(values.raw)||[values.purpose,values.amount,values.currency].filter(Boolean).join(' ')||`Ручной DEMO ввод: ${kind}`;
   const src=source(`source-${id}`,input.date,raw,{provenance:'owner-entry',
-    structuredOriginal:clone(input), eventDateOriginal:clean(values.date)||null, eventDateCandidate:input.date,
+    structuredOriginal:clone(input), file:clone(values.sourceFile||null), comment:clean(values.comment), eventDateOriginal:clean(values.date)||null, eventDateCandidate:input.date,
     dateAssumed:input.dateAssumed, capturedAt:new Date().toISOString(), captureClock:'browser-local-capture'});
   d.sources.push(src);
   const clarifications=validate(d,kind,input);
-  const action={id,kind,input,sourceId:src.id,status:'pending',revision:1,clarifications,canConfirm:clarifications.length===0,
+  const action={id,kind,input,requestId:kind==='inventory-arrival'?values.requestId||id:null,sourceId:src.id,status:'pending',revision:1,clarifications,canConfirm:clarifications.length===0,
     provenance:'manual-candidate',dateAssumed:input.dateAssumed,postsCash:kind==='payment'};
   d.actions.unshift(action);d.revision++;return action;
 }
 export function updateAction(state,id,patch) {
   const d=ensureDaily(state),a=d.actions.find(a=>a.id===id);
   if(!a||a.status!=='pending')throw Error('READ_ONLY');
+  if(a.kind==='inventory-arrival'&&Object.hasOwn(patch,'stockId')&&!Object.hasOwn(patch,'productId')&&!Object.hasOwn(patch,'locationId')){delete a.input.productId;delete a.input.locationId;}
   a.input={...a.input,...clone(patch)};a.revision++;a.clarifications=validate(d,a.kind,a.input);a.canConfirm=!a.clarifications.length;
   // Original source deliberately remains unchanged by a correction.
   a.provenance='owner-correction';d.revision++;return a;
 }
 function addInventory(d,a) {
-  const i=a.input,row=d.inventory.find(r=>r.id===i.stockId),quantity=i.quantityMinor/1000;
+  const i=a.input,quantity=i.quantityMinor/1000;
+  let row=d.inventory.find(r=>r.id===i.stockId);
+  if(a.kind==='inventory-arrival'){
+    const {product,location}=receiptSelection(d,i);
+    row=d.inventory.find(r=>r.productId===product.id&&r.locationId===location.id);
+    if(!row){row={...stockRow(`stock-${a.id}`,product.name,null,product.unit,location.name),productId:product.id,locationId:location.id,greenhouseId:location.greenhouseId,category:product.category};d.inventory.push(row);}
+  }
   const change=(target,delta,suffix,label)=>{
     if(target.quantityMinor!=null){target.quantityMinor=exact(target.quantityMinor+delta);target.quantity=target.quantityMinor/1000;}
     target.movements.push({id:`${a.id}-${suffix}`,kind:a.kind.replace('inventory-',''),label,quantity:delta/1000,quantityMinor:delta,date:i.date,sourceId:a.sourceId,transferId:a.kind==='inventory-transfer'?a.id:null});
@@ -284,7 +354,7 @@ function addInventory(d,a) {
     if(!target){target=stockRow(`stock-${a.id}`,row.name,null,row.unit,i.toPlace);target.category=row.category;d.inventory.push(target);}
     change(row,-i.quantityMinor,'out',`Перемещение в ${i.toPlace}`);change(target,i.quantityMinor,'in',`Перемещение из ${row.place}`);
   }
-  return {stockId:row.id,quantity};
+  return {stockId:row.id,productId:row.productId,locationId:row.locationId,quantity};
 }
 export function confirmAction(state,id,revision) {
   const d=ensureDaily(state),a=d.actions.find(a=>a.id===id);

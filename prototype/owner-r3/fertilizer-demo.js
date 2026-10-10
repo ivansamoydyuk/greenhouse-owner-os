@@ -49,9 +49,9 @@ export function fertilizerProducts(state) {
   const inventory = state.daily?.inventory || state.stock || [];
   return [
     ...inventory.filter((row) => row.category === 'Удобрения').map((row) => ({
-      id: row.id, productId: row.id === 'kno3-sun' ? 'kno3' : row.id,
-      name: row.name, unit: canonicalUnit(row.unit), stockLocationId: `stock-location-${SOURCE_GREENHOUSES[row.id] || row.id}`,
-      place: row.place, greenhouseId: SOURCE_GREENHOUSES[row.id] || null,
+      id: row.id, productId: row.productId || (row.id === 'kno3-sun' ? 'kno3' : row.id),
+      name: row.name, unit: canonicalUnit(row.unit), stockLocationId: row.locationId || `stock-location-${SOURCE_GREENHOUSES[row.id] || row.id}`,
+      place: row.place, greenhouseId: row.greenhouseId || SOURCE_GREENHOUSES[row.id] || null,
       quantity: row.quantity == null ? null : String(row.quantity), synthetic: true, provenance: 'existing-demo-stock',
     })),
     { id: 'demo-multilex', productId: 'demo-multilex', name: 'Multilex', unit: 'L', stockLocationId: 'demo-central', place: 'DEMO центральный склад', greenhouseId: null, quantity: '125', synthetic: true, provenance: 'synthetic-fixture' },

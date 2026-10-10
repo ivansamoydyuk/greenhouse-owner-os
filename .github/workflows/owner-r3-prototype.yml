@@ -87,6 +87,7 @@ jobs:
             !artifacts/owner-r3-evidence/chromium-*-daily-*.png
             !artifacts/owner-r3-evidence/chromium-*-refinement-*.png
             !artifacts/owner-r3-evidence/chromium-*-fertilizer-*.png
+            !artifacts/owner-r3-evidence/chromium-*-stock-receipt-*.png
           overwrite: true
           retention-days: 14
           if-no-files-found: warn
@@ -99,6 +100,7 @@ jobs:
             !artifacts/owner-r3-evidence/webkit-*-daily-*.png
             !artifacts/owner-r3-evidence/webkit-*-refinement-*.png
             !artifacts/owner-r3-evidence/webkit-*-fertilizer-*.png
+            !artifacts/owner-r3-evidence/webkit-*-stock-receipt-*.png
           overwrite: true
           retention-days: 14
           if-no-files-found: warn
@@ -124,6 +126,14 @@ jobs:
         with:
           name: owner-r3-fertilizer-${{ github.event.pull_request.head.sha || github.sha }}
           path: artifacts/owner-r3-evidence/*-fertilizer-*.png
+          overwrite: true
+          retention-days: 14
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-r3-stock-receipt-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/owner-r3-evidence/*-stock-receipt-*.png
           overwrite: true
           retention-days: 14
           if-no-files-found: warn

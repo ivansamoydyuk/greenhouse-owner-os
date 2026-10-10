@@ -4,6 +4,7 @@ import {chromium,webkit} from 'playwright';
 import fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
+import {runStockReceiptJourneys} from './owner-r3-stock-receipt.mjs';
 import {runDailyJourneys} from './owner-r3-daily.mjs';
 import {runRefinementJourneys} from './owner-r3-refinement.mjs';
 import {runFertilizerJourneys} from './owner-r3-fertilizer.mjs';
@@ -458,6 +459,7 @@ async function main(browser,engine){
   }catch(error){await captureFailure(page);throw error;}finally{await context.close();}
   await correctionJourneys(browser,engine);
   await moneyRegressions(browser,engine);
+  await runStockReceiptJourneys({browser,engine,newPage,click,fill,ready,route,screenshot,layout,report,correctionJourney,correctionReload});
   await runDailyJourneys({browser,engine,newPage,click,fill,ready,route,screenshot,layout,report,correctionJourney,correctionReload});
   await runRefinementJourneys({browser,engine,newPage,click,fill,ready,route,screenshot,layout,report,correctionJourney,correctionReload});
   await runFertilizerJourneys({browser,engine,newPage,click,fill,ready,route,screenshot,layout,report,correctionJourney,correctionReload});
@@ -574,6 +576,9 @@ try{
     const browser=await type.launch({headless:true});
     try{await main(browser,engine);}finally{await browser.close();}
   }
+  assert.equal(report.stock_receipt_journeys.length,12,'Six stock receipt journeys in both engines');
+  assert.ok(report.stock_receipt_journeys.every(item=>item.status==='PASS'));
+  assert.equal(report.stock_receipt_layouts.length,42,'Three receipt layout groups at seven widths in both engines');
   assert.equal(report.refinement_journeys.length,14,'Seven refinement journeys in both engines');
   assert.ok(report.refinement_journeys.every(item=>item.status==='PASS'));
   assert.equal(report.refinement_layout_checks.length,56,'Four refinement pages by seven widths by two engines');
@@ -605,6 +610,7 @@ try{
   process.exitCode=1;
 }finally{
   report.finished_at=new Date().toISOString();
+  await fs.writeFile(path.join(artifacts,'stock-receipt-metrics.json'),JSON.stringify({feature_sha:expectedSha,journeys:report.stock_receipt_journeys,layouts:report.stock_receipt_layouts,limitations:['Native iPhone keyboard/picker remain unverified; attachments use real browser file-input APIs with synthetic PNG bytes.']},null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'daily-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Trusted DOM clicks from Home, with explicit radial expansion counted. Both engines, eleven additive daily journeys, 98 daily screen/width cases.',journeys:report.daily_journeys,layouts:report.daily_layout_checks},null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'refinement-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Seven trusted browser journeys in each engine: contextual settlements, monthly history, durable report-context evidence and explicit link review, contextual worker and storage recovery. Native picker/camera are not measured.',journeys:report.refinement_journeys,layouts:report.refinement_layout_checks},null,2)+'\n');
   await fs.writeFile(path.join(artifacts,'fertilizer-journey-metrics.json'),JSON.stringify({feature_sha:expectedSha,method:'Four trusted browser journeys per engine: per-da multi-component, normal CURRENT topology with unknown mappings acknowledged, separate preparations/overrides, and seven-width builder/review with reload and zero stock/finance effects.',journeys:report.fertilizer_journeys,layouts:report.fertilizer_layout_checks},null,2)+'\n');
@@ -615,10 +621,10 @@ try{
   const artifactFiles=await fs.readdir(artifacts), manifest=[];
   for(const file of artifactFiles.filter(f=>/\.(png|json|txt)$/.test(f)&&f!=='evidence-manifest.json')){
     const bytes=await fs.readFile(path.join(artifacts,file));
-    manifest.push({file,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),part:file.endsWith('.png')?(file.includes('-fertilizer-')?'fertilizer':file.includes('-refinement-')?'refinement':file.includes('-daily-')?'daily':file.startsWith('chromium-')?'chromium-core':file.startsWith('webkit-')?'webkit-core':'metadata'):'metadata'});
+    manifest.push({file,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),part:file.endsWith('.png')?(file.includes('-stock-receipt-')?'stock-receipt':file.includes('-fertilizer-')?'fertilizer':file.includes('-refinement-')?'refinement':file.includes('-daily-')?'daily':file.startsWith('chromium-')?'chromium-core':file.startsWith('webkit-')?'webkit-core':'metadata'):'metadata'});
   }
-  await fs.writeFile(path.join(artifacts,'evidence-manifest.json'),JSON.stringify({feature_sha:expectedSha,parts:['chromium-core','webkit-core','daily','refinement','fertilizer','metadata'],files:manifest},null,2)+'\n');
-  for(const part of ['chromium-core','webkit-core','daily','refinement','fertilizer','metadata'])assert.ok(manifest.filter(f=>f.part===part).reduce((n,f)=>n+f.bytes,0)<25*1024*1024,`Evidence ${part} must fit the supported artifact transfer limit`);
+  await fs.writeFile(path.join(artifacts,'evidence-manifest.json'),JSON.stringify({feature_sha:expectedSha,parts:['chromium-core','webkit-core','daily','refinement','fertilizer','stock-receipt','metadata'],files:manifest},null,2)+'\n');
+  for(const part of ['chromium-core','webkit-core','daily','refinement','fertilizer','stock-receipt','metadata'])assert.ok(manifest.filter(f=>f.part===part).reduce((n,f)=>n+f.bytes,0)<25*1024*1024,`Evidence ${part} must fit the supported artifact transfer limit`);
   console.log(`R3 browser ${report.status}: ${report.screenshots.length} screenshots, ${report.journeys.length}/8 measured journeys, SHA ${expectedSha}`);
   console.log(`R3 correction evidence: ${report.correction_journeys.length}/20 added both-engine journeys; ${report.money_regressions.length}/112 money/font cases`);
   console.log(`R3 owner-B evidence: ${report.refinement_journeys?.length||0}/14 contextual journeys; ${report.fertilizer_journeys?.length||0}/8 fertilizer journeys`);

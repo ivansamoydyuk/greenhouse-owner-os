@@ -1862,3 +1862,15 @@ main { padding-bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
 /* Leave headroom for the visible, unchecked-review reminder without reducing text or targets. */
 .fertilizer-review .fertilizer-packet .part-calculation { padding-block: 8px; margin-block: 6px; }
 .fertilizer-review .fertilizer-packet .calculation-line { padding-block: 3px; }
+
+/* Bounded stock receipt: independent catalog/location and inline creation. */
+.receipt-product-section { margin-bottom: 18px; }
+.receipt-product-editor { margin-top: 12px; padding: 14px; border: 1px solid var(--line,#dce5de); border-radius: 14px; background: #f7f9f5; }
+.receipt-product-editor h2 { margin: 0 0 14px; }
+.receipt-product-buttons { display: grid; gap: 8px; }
+.receipt-selection,.receipt-unit { overflow-wrap: anywhere; }
+.receipt-selection { margin: -6px 0 12px; color: var(--muted,#627169); font-size: 14px; }
+.receipt-unit { display: flex; align-items: center; min-height: 48px; padding: 12px 0; }
+.receipt-source-file { margin: 12px 0; overflow-wrap: anywhere; }
+.receipt-source-file img { display: block; max-width: 100%; max-height: 240px; object-fit: contain; margin: 8px auto; border-radius: 10px; }
+.receipt-product-editor .btn { white-space: normal; overflow-wrap: anywhere; }
