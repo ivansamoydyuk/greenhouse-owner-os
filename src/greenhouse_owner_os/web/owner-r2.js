@@ -182,18 +182,21 @@ export function proposalCard(p,data={}){
 }
 
 export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,navigate,getOwnerId=()=>getData()?.owner?.owner_id}){
-  let syncing=null,sessionGeneration=0,viewGeneration=0,pollTimer,queueTimer,disposeCapture=null,onCaptureSynced=null,onCaptureError=null;
+  let syncing=null,sessionGeneration=0,viewGeneration=0,pollGeneration=0,pollTimer,queueTimer,disposeCapture=null,onCaptureSynced=null,onCaptureError=null;
   const $=s=>document.querySelector(s),root=()=>`/v1/entities/${getEntity()}/owner`,home=()=>getData()?.owner;
   const scope=()=>getEntity()&&getOwnerId()?`${getEntity()}:${getOwnerId()}`:null;
   const session=()=>({generation:sessionGeneration,scope:scope(),root:root()});
   const sameSession=t=>!!t.scope&&t.generation===sessionGeneration&&t.scope===scope();
   const snapshot=()=>({...session(),view:viewGeneration,anchor:$('#sheet-content')?.firstElementChild,open:!!$('#sheet')?.open});
   const active=t=>sameSession(t)&&t.view===viewGeneration&&t.anchor===$('#sheet-content')?.firstElementChild&&t.open===!!$('#sheet')?.open;
-  const invalidate=()=>{viewGeneration++;clearTimeout(queueTimer);disposeCapture?.();disposeCapture=null;};
+  const invalidate=(preserveCapturePoll=false)=>{viewGeneration++;if(preserveCapturePoll!==true){pollGeneration++;clearTimeout(pollTimer);}clearTimeout(queueTimer);disposeCapture?.();disposeCapture=null;};
   const begin=()=>{invalidate();return snapshot();};
   const show=(t,title,html)=>{if(!active(t))return false;openSheet(title,html);t.anchor=$('#sheet-content')?.firstElementChild;t.open=!!$('#sheet')?.open;return true;};
   const guard=fn=>async(...args)=>{let t=snapshot();try{const work=fn(...args);t=snapshot();await work;}catch(err){if(active(t))notice(err.message);}};
-  $('#sheet')?.addEventListener('close',invalidate);
+  // A successful capture closes its own dialog before refreshing preparation.
+  // That close event may arrive later; new views/navigation cancel the poll,
+  // but the capture's own delayed close must not cancel its current refresh.
+  $('#sheet')?.addEventListener('close',()=>invalidate(true));
   $('#sheet')?.addEventListener('cancel',invalidate);
   window.addEventListener('popstate',invalidate);
   window.addEventListener('hashchange',invalidate);
@@ -371,7 +374,11 @@ export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,
         // A concurrently running sync may have started before this source was saved.
         const local=(await pendingList(t.scope)).find(r=>r.body.client_capture_id===body.client_capture_id);
         if(local){statusText(local.upload_error?sourceUploadMessage(local.upload_error):'На телефоне. Отправка ожидается; повторите с главного экрана.',local.upload_error?.kind==='validation'?'failed':'pending');return;}
-        if(!active(t))return;$('#sheet').close();await reload();if(sameSession(t))pollTimer=setTimeout(()=>{if(sameSession(t))reload().catch(()=>{});},1500);
+        if(!active(t))return;
+        const capturePoll=pollGeneration;
+        $('#sheet').close();await reload();
+        const pollCurrent=()=>sameSession(t)&&capturePoll===pollGeneration&&navigator.onLine;
+        if(pollCurrent())pollTimer=setTimeout(()=>{if(pollCurrent())reload().catch(()=>{});},1500);
       }catch(err){statusText(err.message,saved?'pending':'failed');}finally{saving=false;if(active(t))freezeCapture(saved);button.disabled=saved;}
     };
     if(mode==='voice_transcript')startRecognition();else if(mode==='text')textInput.focus?.();
