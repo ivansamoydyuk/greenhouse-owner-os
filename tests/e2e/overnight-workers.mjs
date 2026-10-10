@@ -1,3 +1,4 @@
+import {freshRoute} from './helpers/fresh-route.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +9,7 @@ const result={sha:process.env.OWNER_PREVIEW_FEATURE_SHA,status:'RUNNING',records
 try{for(const [engine,type] of [['chromium',chromium],['webkit',webkit]]){
  const browser=await type.launch(),context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();active=page;page.on('pageerror',e=>result.errors.push(String(e)));
  const ready=async prefix=>page.waitForFunction(p=>location.hash.slice(1).startsWith(p)&&document.querySelector('#main')?.dataset.renderedRoute===location.hash.slice(1),prefix);
- const goto=async hash=>{await page.goto(base+'/r3/connected.html#'+hash);await ready(hash);};
+ const goto=hash=>freshRoute(page,base,hash,ready);
  const read=async url=>{const r=await context.request.get(base+url);assert.equal(r.status(),200,await r.text());return r.json();};
  const seed=async(url,body,key)=>{const r=await context.request.post(base+url,{data:body,headers:{'Idempotency-Key':'stage-c-'+engine+'-'+key,Origin:base}});assert.ok([200,201].includes(r.status()),await r.text());return r.json();};
  const click=async name=>{const x=page.getByRole('button',{name,exact:true});await x.scrollIntoViewIfNeeded();await x.click();};

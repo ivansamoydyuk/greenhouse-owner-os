@@ -1,3 +1,4 @@
+import {freshRoute} from './helpers/fresh-route.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -10,7 +11,7 @@ try {for(const [engine,type] of [['chromium',chromium],['webkit',webkit]]) {
  const browser=await type.launch();const context=await browser.newContext({viewport:{width:390,height:844}});const page=await context.newPage();
  page.on('pageerror',e=>result.errors.push(String(e)));
  const ready=prefix=>page.waitForFunction(p=>location.hash.slice(1).startsWith(p)&&document.querySelector('#main')?.dataset.renderedRoute===location.hash.slice(1),prefix);
- const goto=async hash=>{await page.goto(base+'/r3/connected.html#'+hash);await ready(hash);};
+ const goto=hash=>freshRoute(page,base,hash,ready);
  const click=async text=>{const b=page.getByRole('button',{name:text,exact:true});await b.scrollIntoViewIfNeeded();await b.click();};
  const get=async url=>{const r=await context.request.get(base+url);assert.equal(r.status(),200,await r.text());return r.json();};
  const post=async(url,body,key)=>{const r=await context.request.post(base+url,{data:body,headers:{'Idempotency-Key':`overnight-finance-${engine}-${key}`,'Origin':base}});assert.ok([200,201].includes(r.status()),await r.text());return r.json();};

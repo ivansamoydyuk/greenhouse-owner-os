@@ -71,6 +71,15 @@ jobs:
         run: node tests/e2e/r3-connected.mjs
       - name: Prove SQL effects and reconciliation
         run: python scripts/r3_connected_sql_evidence.py artifacts/r3-connected/browser-results.json artifacts/r3-connected/sql-evidence.json
+      - name: Overnight Stage C worker received and report journey
+        if: github.ref_name == '09-owner-overnight-connected-program'
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/overnight-workers
+        run: |
+          python scripts/overnight_workers_sql_evidence.py --before artifacts/overnight-workers/before-snapshot.json
+          node tests/e2e/overnight-workers.mjs
+          python scripts/overnight_workers_sql_evidence.py artifacts/overnight-workers/workers-results.json artifacts/overnight-workers/sql-evidence.json artifacts/overnight-workers/before-snapshot.json
       - name: Three owner capture cases on the candidate
         if: github.ref_name == '06-owner-r3-capture-friction' || github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program'
         env:
@@ -104,15 +113,6 @@ jobs:
         run: |
           node tests/e2e/overnight-purchases.mjs
           python scripts/overnight_purchases_sql_evidence.py artifacts/overnight-purchases/purchases-results.json artifacts/overnight-purchases/sql-evidence.json
-      - name: Overnight Stage C worker received and report journey
-        if: github.ref_name == '09-owner-overnight-connected-program'
-        env:
-          PREVIEW_URL: http://127.0.0.1:4173
-          E2E_ARTIFACTS: artifacts/overnight-workers
-        run: |
-          python scripts/overnight_workers_sql_evidence.py --before artifacts/overnight-workers/before-snapshot.json
-          node tests/e2e/overnight-workers.mjs
-          python scripts/overnight_workers_sql_evidence.py artifacts/overnight-workers/workers-results.json artifacts/overnight-workers/sql-evidence.json artifacts/overnight-workers/before-snapshot.json
       - name: Capture owned runtime diagnostics
         if: always()
         run: |
