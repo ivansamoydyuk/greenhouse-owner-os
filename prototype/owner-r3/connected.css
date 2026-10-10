@@ -219,7 +219,7 @@
 }
 .connected .confirmation-bar {
   position: sticky;
-  bottom: 0;
+  bottom: calc(90px + env(safe-area-inset-bottom, 0px));
   background: #fafbf7;
   padding: 14px 0 max(14px, env(safe-area-inset-bottom));
   z-index: 2;
@@ -227,6 +227,9 @@
 .connected .stack {
   display: grid;
   gap: 14px;
+}
+.connected .focus-sheet .confirmation-bar {
+  bottom: 0;
 }
 .connected .confirmation-bar .btn {
   width: 100%;

@@ -12,6 +12,7 @@ import {
   totalByCurrency,
   CAPABILITIES,
   canRecoverSourceExpense,
+  submissionSnapshot,
 } from "../../prototype/owner-r3/connected-adapter.js";
 class Store {
   constructor() {
@@ -411,5 +412,70 @@ test("explicit server conflict keeps immutable request but is not an uncertain p
   await assert.rejects(
     api.mutate("/confirm", { expected_version: 2 }, "one"),
     /Предыдущая отправка/,
+  );
+});
+
+test("submitted facts are isolated from live edits across file and store awaits", async () => {
+  const live = {
+    draft: { id: "intent", text: "clicked original", allocation_a: "100.00" },
+    current: {
+      id: "shown",
+      version: 3,
+      revision: { payload: { amount: "100.00" } },
+    },
+    route: "capture/text",
+  };
+  const fields = { text: "clicked original", allocation_a: "100.00" };
+  const file = { name: "clicked.png" };
+  const snapshot = submissionSnapshot(live, fields, file);
+  let release;
+  const paused = new Promise((resolve) => {
+    release = resolve;
+  });
+  const sent = (async () => {
+    await paused;
+    Object.assign(snapshot.draft, snapshot.fields);
+    return {
+      text: snapshot.draft.text,
+      amount: snapshot.draft.allocation_a,
+      version: snapshot.current.version,
+      file: snapshot.file.name,
+      route: snapshot.route,
+    };
+  })();
+  live.draft.text = "later different original";
+  live.draft.allocation_a = "999.00";
+  live.current.version = 4;
+  live.current.revision.payload.amount = "999.00";
+  live.route = "another/record";
+  fields.text = "later form value";
+  release();
+  assert.deepEqual(await sent, {
+    text: "clicked original",
+    amount: "100.00",
+    version: 3,
+    file: "clicked.png",
+    route: "capture/text",
+  });
+  assert.equal(snapshot.current.revision.payload.amount, "100.00");
+});
+
+test("form submission captures values before making its form inert and render readiness is published", () => {
+  const source = fs.readFileSync(
+    new URL("../../prototype/owner-r3/connected.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /const snapshot = submissionSnapshot\([\s\S]*?values\(formEl\)[\s\S]*?action\(\(\) => submitForm/,
+  );
+  assert.match(
+    source,
+    /const previousInert = node\?\.inert;[\s\S]*?node\.inert = true/,
+  );
+  assert.match(source, /node\.inert = previousInert/);
+  assert.match(
+    source,
+    /if \(token !== epoch\) return;\n    shell\(body\);\n    document.querySelector\("#main"\)\.dataset.renderedRoute = route/,
   );
 });

@@ -19,6 +19,7 @@ import {
   fileSource,
   CAPABILITIES,
   canRecoverSourceExpense,
+  submissionSnapshot,
 } from "./connected-adapter.js";
 import {
   proposalSummary,
@@ -1122,6 +1123,7 @@ async function render() {
         link("На главную", "home", "btn primary");
     if (token !== epoch) return;
     shell(body);
+    document.querySelector("#main").dataset.renderedRoute = route;
     document.querySelector("#main")?.focus({ preventScroll: true });
   } catch (error) {
     if (token === epoch) shell(errorBox(error));
@@ -1141,6 +1143,8 @@ async function action(run, node = null) {
   if (busy) return;
   busy = true;
   activeActionRoute = route;
+  const previousInert = node?.inert;
+  if (node) node.inert = true;
   const buttons = [...document.querySelectorAll("button")];
   buttons.forEach((b) => {
     b.dataset.wasDisabled = b.disabled ? "1" : "0";
@@ -1167,19 +1171,17 @@ async function action(run, node = null) {
   } finally {
     busy = false;
     activeActionRoute = null;
+    if (node) node.inert = previousInert;
     buttons.forEach((b) => {
       b.disabled = b.dataset.wasDisabled === "1";
       delete b.dataset.wasDisabled;
     });
   }
 }
-async function saveDraft(form, snapshot) {
-  const { draft, route } = snapshot;
+async function saveDraft(snapshot) {
+  const { draft, route, fields, file } = snapshot;
   if (!draft) return;
-  const v = values(form);
-  delete v.file;
-  Object.assign(draft, v);
-  const file = form.querySelector("[name=file]")?.files?.[0];
+  Object.assign(draft, fields);
   if (file) draft.file = await fileSource(file);
   await api.draft(route, draft);
 }
@@ -1212,9 +1214,9 @@ async function submitForm(formEl, snapshot) {
   const submittedDraft = draft,
     submittedCurrent = current;
   const name = formEl.dataset.form,
-    v = values(formEl),
+    v = snapshot.fields,
     savedRoute = route;
-  if (draft) await saveDraft(formEl, snapshot);
+  if (draft) await saveDraft(snapshot);
   if (name === "capture") {
     const kind = route.split("/")[1],
       body = {
@@ -1638,7 +1640,11 @@ document.addEventListener("submit", (event) => {
   const formEl = event.target.closest("[data-form]");
   if (!formEl) return;
   event.preventDefault();
-  const snapshot = { draft, current, route };
+  const snapshot = submissionSnapshot(
+    { draft, current, route },
+    values(formEl),
+    formEl.querySelector("[name=file]")?.files?.[0] || null,
+  );
   action(() => submitForm(formEl, snapshot), formEl);
 });
 document.addEventListener("input", (event) => {

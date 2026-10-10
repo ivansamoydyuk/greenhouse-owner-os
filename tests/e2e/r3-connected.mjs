@@ -65,16 +65,11 @@ async function snap(page, name) {
 }
 async function route(page, hash) {
   await page.goto(base + "/r3/connected.html#" + hash);
-  await page.waitForSelector("#main");
-  await page
-    .getByText("Читаем сохранённые данные…", { exact: true })
-    .waitFor({ state: "hidden" });
+  await waitRenderedRoute(page, hash);
 }
 async function nav(page, hash) {
   await page.locator(`a[href="#${hash}"]`).first().click();
-  await page
-    .getByText("Читаем сохранённые данные…", { exact: true })
-    .waitFor({ state: "hidden" });
+  await waitRenderedRoute(page, hash);
 }
 async function click(page, text) {
   await page.getByRole("button", { name: text, exact: true }).click();
@@ -85,19 +80,37 @@ async function fill(page, name, value) {
 async function select(page, name, value) {
   await page.locator(`[name="${name}"]`).selectOption(String(value));
 }
+async function waitRenderedRoute(page, prefix) {
+  await page.waitForFunction((expected) => {
+    const hash = location.hash.slice(1) || "home";
+    return (
+      hash.startsWith(expected) &&
+      document.querySelector("#main")?.dataset.renderedRoute === hash
+    );
+  }, prefix);
+}
 async function waitHash(page, starts) {
-  await page.waitForFunction(
-    (prefix) => location.hash.startsWith("#" + prefix),
-    starts,
-  );
-  await page
-    .getByText("Читаем сохранённые данные…", { exact: true })
-    .waitFor({ state: "hidden" });
+  await waitRenderedRoute(page, starts);
 }
 async function edit(page, action, value, selectValue = false) {
   await page.locator(`[data-action="edit:${action}"]`).click();
   if (selectValue) await select(page, "value", value);
   else await fill(page, "value", value);
+  const save = page.getByRole("button", {
+    name: "Сохранить факт",
+    exact: true,
+  });
+  await save.scrollIntoViewIfNeeded();
+  assert.equal(
+    await save.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return el.contains(
+        document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2),
+      );
+    }),
+    true,
+    "focused fact save must be reachable above the footer",
+  );
   await click(page, "Сохранить факт");
   await page.locator(".focus-sheet").waitFor({ state: "hidden" });
   await page
@@ -209,7 +222,11 @@ try {
     await staleReview
       .getByRole("button", { name: "Подтвердить действие в TEST", exact: true })
       .waitFor();
+    await page.setViewportSize({ width: 320, height: 568 });
     await edit(page, "amount", "126.00");
+    await snap(page, engine + "-320-expense-review-reachable");
+    await layout(page, "320-expense-review");
+    await page.setViewportSize({ width: 390, height: 844 });
     proposal = await read(
       context,
       root + "/owner/confirmations/" + proposalId + "/preview",

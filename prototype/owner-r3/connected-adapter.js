@@ -16,6 +16,23 @@ export const canRecoverSourceExpense = (source) =>
   source.job?.state === "FAILED" &&
   source.job.attempts >= 3;
 
+/** Capture the facts visible at submit, before file reads or durable-store awaits. */
+export function submissionSnapshot(
+  { draft, current, route },
+  fields,
+  file = null,
+) {
+  const submittedFields = { ...fields };
+  delete submittedFields.file;
+  return {
+    draft: structuredClone(draft),
+    current: structuredClone(current),
+    route,
+    fields: submittedFields,
+    file,
+  };
+}
+
 export const canonical = (value) =>
   JSON.stringify(value, (_, v) =>
     v && typeof v === "object" && !Array.isArray(v)
