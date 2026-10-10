@@ -1,7 +1,7 @@
 import {
   e,
   icon,
-  btn,
+  btn as visualButton,
   link,
   Header,
   Navigation,
@@ -27,9 +27,16 @@ import {
   displayMetric,
 } from "/assets/owner-r2.js";
 import { money, displayDate, localDay } from "/assets/core.js";
+import {
+  expenseContext,
+  expenseEffectText,
+} from "/assets/owner-expense-recovery.js";
 const app = document.querySelector("#app"),
   sheetRoot = document.querySelector("#sheet-root");
 document.body.classList.add("connected");
+// Action controls are never implicit form submissions. submit() is explicit.
+const btn = (...args) =>
+  visualButton(...args).replace("<button ", '<button type="button" ');
 let activeActionRoute = null;
 let config = null,
   route = location.hash.slice(1) || "home",
@@ -287,6 +294,55 @@ function sourceDetail(s) {
     )
   );
 }
+function compactExpenseReview(p) {
+  const f = p.revision.payload;
+  const basis = p.revision.basis || {};
+  const reviewedName = (table, id, empty) => {
+    if (!id) return empty;
+    const saved = basis[`${table}:${id}`];
+    return (
+      saved?.original_name || saved?.name || saved?.display_name || refName(id)
+    );
+  };
+  const distribution = f.attributions?.length
+    ? f.attributions
+        .map(
+          (a) =>
+            `${reviewedName("core.work_areas", a.work_area_id, "Теплица не указана")} · ${money(a.amount, f.currency)}`,
+        )
+        .join("; ")
+    : "Общий расход · без указанной теплицы";
+  const effect =
+    expenseEffectText(p) ||
+    (p.state === "REJECTED"
+      ? "Предложение отклонено. Расход по нему не подтверждён."
+      : "После подтверждения: запишет оплаченный расход и спишет деньги с выбранного счёта. Долг и аванс не создаются.");
+  return panel(
+    `${stateTag(p.current_effect?.status || p.state)}<h2>${e(f.description || "За что: нужно уточнить")}</h2><strong class="exact-value">${e(f.amount == null ? "Сумма не указана" : money(f.amount, f.currency || "Валюта не указана"))}</strong>${facts(
+      [
+        ["Дата", displayDate(f.event_date, "Не указана")],
+        [
+          "Счёт",
+          reviewedName(
+            "finance.money_accounts",
+            f.money_account_id,
+            "Не выбран",
+          ),
+        ],
+        [
+          "Контрагент",
+          reviewedName(
+            "core.counterparties",
+            f.counterparty_id,
+            "Не указан · необязательно",
+          ),
+        ],
+        ["Распределение", distribution],
+      ],
+    )}${notice(effect)}${(p.revision.missing || []).map((m) => `<p class="form-error">${e(m)}</p>`).join("")}`,
+    "compact-expense-review",
+  );
+}
 function proposalDetail(p) {
   const done = ["POSTED", "CONFIRMED_NONPOSTING"].includes(p.state),
     context = {
@@ -303,7 +359,9 @@ function proposalDetail(p) {
     panel(
       `<span class="eyebrow">ОРИГИНАЛ · неизменяемый</span><p class="original-text" data-testid="source-original">${e(p.source.text || "Текст отсутствует")}</p>${p.source.has_file ? `<a class="btn secondary" href="${entityPath("/owner/captures/" + p.source.id + "/original")}" target="_blank" rel="noopener">${e(p.source.filename || "Открыть исходный файл")}</a>` : ""}`,
     ) +
-    proposalSummary(p, context, false) +
+    (p.action_type === "DIRECT_EXPENSE"
+      ? compactExpenseReview(p)
+      : proposalSummary(p, context, false)) +
     (!done && p.state !== "REJECTED"
       ? panel(
           `<h2>Уточнить один факт</h2><div class="page-actions">${Object.keys(
@@ -315,6 +373,9 @@ function proposalDetail(p) {
               "",
             )}</div>${p.action_type === "UNRESOLVED" ? btn("Оформить прямой расход", "recover:" + p.id) : ""}`,
         )
+      : "") +
+    (p.action_type === "DIRECT_EXPENSE"
+      ? `<details class="review-provenance"><summary>Происхождение фактов и история подготовки</summary>${expenseContext(p)}<p class="note">Распределение прямого расхода по теплицам в этой карточке недоступно. Общая сумма и факт списания от этого не меняются.</p></details>`
       : "") +
     `<div class="form-error" role="alert" id="action-error"></div>${!done && p.state !== "REJECTED" ? `<div class="confirmation-bar">${btn("Подтвердить действие в TEST", "confirm-proposal", "primary full", "confirm-proposal", p.revision.missing?.length || p.action_type === "UNRESOLVED" ? "disabled" : "")}</div><div class="page-actions">${btn("Отложить", "defer-proposal")}${btn("Отклонить", "reject-proposal")}</div>` : done ? notice("Сервер подтвердил действие. Оригинал и версии сохранены.") : notice("Предложение отклонено. Оригинал и версии сохранены.")}<div class="page-actions">${link("Финансы", "finance", "btn secondary")}${link("К источнику", "source/" + p.source.id, "btn secondary")}</div>`
   );
@@ -828,7 +889,17 @@ function personalDetail(t) {
           "Теплица",
           areas().find((a) => a.id === t.greenhouse_id)?.name || "Не указана",
         ],
-        ["Категория", t.category || "Не указана"],
+        [
+          "Категория",
+          {
+            irrigation: "Полив",
+            general: "Общее дело",
+            harvest: "Урожай",
+            maintenance: "Обслуживание",
+          }[t.category] ||
+            t.category ||
+            "Не указана",
+        ],
       ])}<h2>Исходная формулировка</h2><p class="original-text">${e(t.original_instruction || t.note || "Не указана")}</p><div id="action-error" class="form-error" role="alert"></div>${btn(t.state === "DONE" ? "Вернуть в активные" : "Отметить готовой", "personal-state", "primary full")}<details><summary>История состояния</summary>${t.actions
         .map((a) =>
           facts([
@@ -1701,6 +1772,8 @@ document.addEventListener("change", (event) => {
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
+  // Also suppress defaults for shared navigation/action controls.
+  event.preventDefault();
   const command = button.dataset.action;
   const [name, ...rest] = command.split(":"),
     arg = rest.join(":");

@@ -479,3 +479,43 @@ test("form submission captures values before making its form inert and render re
     /if \(token !== epoch\) return;\n    shell\(body\);\n    document.querySelector\("#main"\)\.dataset.renderedRoute = route/,
   );
 });
+
+test("connected expense review keeps facts and effects compact before optional provenance", () => {
+  const source = fs.readFileSync(
+    new URL("../../prototype/owner-r3/connected.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /function compactExpenseReview/);
+  assert.match(source, /basis\[`\$\{table\}:\$\{id\}`\]/);
+  assert.match(source, /Общий расход · без указанной теплицы/);
+  assert.match(source, /Долг и аванс не создаются/);
+  assert.ok(
+    source.indexOf("Уточнить один факт") <
+      source.indexOf('<details class="review-provenance">'),
+  );
+  assert.match(source, /irrigation: "Полив"/);
+});
+
+test("connected data-action helpers suppress implicit browser form submission", () => {
+  const source = fs.readFileSync(
+    new URL("../../prototype/owner-r3/connected.js", import.meta.url),
+    "utf8",
+  );
+  const handler = source.slice(
+    source.indexOf('document.addEventListener("click"'),
+  );
+  assert.ok(
+    handler.indexOf("event.preventDefault()") <
+      handler.indexOf('if (name === "new-product")'),
+  );
+  assert.ok(
+    handler.indexOf("event.preventDefault()") <
+      handler.indexOf('if (name === "fill-allocation")'),
+  );
+  assert.match(source, /type="submit"/);
+  assert.ok(
+    source.includes(
+      'visualButton(...args).replace("<button ", \'<button type="button" \'',
+    ),
+  );
+});

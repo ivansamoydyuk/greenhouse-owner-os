@@ -392,9 +392,9 @@
       "path": "prototype/owner-r3/connected.js",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "3eab6e9f736a402440a1515cb32f3d64af734855",
-      "sha256": "437cb901150e36d3084eba193338ac8640764469f02ac74ad7d82d37fe0c154b",
-      "size": 89682
+      "git_blob": "c5420727cd5900058c3bd2ebcf14ce61fd64fd1f",
+      "sha256": "d034c86c22fad8a8b58983e657cf7441d3b65159f1ce7fba8f4d8a77b9b9aede",
+      "size": 92933
     },
     {
       "path": "prototype/owner-r3/daily-demo.js",
@@ -1536,9 +1536,9 @@
       "path": "tests/e2e/r3-connected.mjs",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "f021fa2ffba40957619f7a2e39bcb031fa5c2a4e",
-      "sha256": "1ace49624524fb0a5d391bd75cdb9231d619b3a5c562b3df22cbe4eb82999dbd",
-      "size": 33676
+      "git_blob": "b82415924e8c5eba3f578053a40985605b0f43c0",
+      "sha256": "ba15a19968d0d1e609b8ba1d65e7f7c4286cfb6857129d99a8e6c1a912ca7d17",
+      "size": 35934
     },
     {
       "path": "tests/e2e/task-review-fixture.mjs",
@@ -1760,9 +1760,9 @@
       "path": "tests/frontend/owner-r3-connected.test.mjs",
       "origin": "CONNECTED_PILOT",
       "remote_ref": null,
-      "git_blob": "998a922fd06dc029e22c9765e85de4a4af74aede",
-      "sha256": "1555465efd47701aa61e8395b8afe7e4c09bda693093dca3dc0397efc99a9e34",
-      "size": 14459
+      "git_blob": "7234c9d6226d5e0e0afa132beb0bdc97756326cf",
+      "sha256": "47c61666e18d4c07fb09a9085c17b0923ebb18493dce204298078b1a7e2ff26a",
+      "size": 15879
     },
     {
       "path": "tests/frontend/owner-r3-daily-demo.test.mjs",

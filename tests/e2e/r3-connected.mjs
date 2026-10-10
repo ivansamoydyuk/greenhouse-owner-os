@@ -93,7 +93,17 @@ async function waitHash(page, starts) {
   await waitRenderedRoute(page, starts);
 }
 async function edit(page, action, value, selectValue = false) {
-  await page.locator(`[data-action="edit:${action}"]`).click();
+  const oldVersionLabel = await page
+    .locator(".page-header .muted")
+    .textContent();
+  const helperPosts = [];
+  const observe = (request) => {
+    if (request.method() === "POST") helperPosts.push(request.url());
+  };
+  page.on("request", observe);
+  const editButton = page.locator(`[data-action="edit:${action}"]`);
+  assert.equal(await editButton.getAttribute("type"), "button");
+  await editButton.click();
   if (selectValue) await select(page, "value", value);
   else await fill(page, "value", value);
   const save = page.getByRole("button", {
@@ -111,11 +121,23 @@ async function edit(page, action, value, selectValue = false) {
     true,
     "focused fact save must be reachable above the footer",
   );
+  assert.deepEqual(
+    helperPosts,
+    [],
+    "opening/editing a fact must not submit it",
+  );
+  page.off("request", observe);
   await click(page, "Сохранить факт");
   await page.locator(".focus-sheet").waitFor({ state: "hidden" });
-  await page
-    .getByText("Читаем сохранённые данные…", { exact: true })
-    .waitFor({ state: "hidden" });
+  await page.waitForFunction((previous) => {
+    const label = document.querySelector(".page-header .muted")?.textContent;
+    return (
+      label?.startsWith("Версия ") &&
+      label !== previous &&
+      document.querySelector("#main")?.dataset.renderedRoute ===
+        location.hash.slice(1)
+    );
+  }, oldVersionLabel);
 }
 async function layout(page, name) {
   const checks = await page.evaluate(() => ({
@@ -256,6 +278,19 @@ try {
       name: "two-tab stale confirmation rejected before any effect",
       pass: true,
     });
+    await page
+      .getByText("Общий расход · без указанной теплицы", { exact: true })
+      .waitFor();
+    assert.equal(
+      await page.locator(".compact-expense-review .exact-value").count(),
+      1,
+    );
+    assert.equal(await page.locator('[data-action^="edit:"]').count(), 6);
+    assert.equal(
+      await page.locator("details.review-provenance").getAttribute("open"),
+      null,
+    );
+    await page.getByText(/Долг и аванс не создаются/).waitFor();
     await snap(page, engine + "-390-expense-review");
     // Drop the response only AFTER the server has committed; retry actual button.
     let lost = false;
@@ -391,10 +426,25 @@ try {
     // D: inline product creation, independently configured warehouse, durable original, movement.
     await route(page, "inventory");
     await nav(page, "quick/receipt");
+    const helperPosts = [];
+    const observeHelperPost = (request) => {
+      if (request.method() === "POST") helperPosts.push(request.url());
+    };
+    page.on("request", observeHelperPost);
     await click(page, "Создать новый товар");
     const productName = `TEST ${engine} New Product <img src=x onerror=alert(1)>`;
     await fill(page, "name", productName);
     await select(page, "unit", "kg");
+    assert.deepEqual(
+      helperPosts,
+      [],
+      "opening inline product must not submit the receipt",
+    );
+    assert.equal(
+      await page.locator('[data-form="receipt"] .form-error').textContent(),
+      "",
+    );
+    page.off("request", observeHelperPost);
     await click(page, "Создать товар");
     await page.locator(".focus-sheet").waitFor({ state: "hidden" });
     let inv = await read(context, root + "/inventory");
@@ -679,7 +729,23 @@ try {
       .waitFor();
     await route(page, settleHash);
     await select(page, "account", fixture.money_accounts[0].id);
+    helperPosts.length = 0;
+    page.on("request", observeHelperPost);
     await click(page, "Весь остаток");
+    const beforeExplicitReview = await read(context, root + "/owner/home");
+    assert.deepEqual(
+      helperPosts,
+      [],
+      "fill-allocation must not create any payment",
+    );
+    assert.equal(new URL(page.url()).hash, "#" + settleHash);
+    assert.equal(
+      beforeExplicitReview.finance.obligations.find(
+        (o) => o.obligation_id === obligation.obligation_id,
+      ).remaining_amount,
+      direction === "payable" ? "1100.00" : "700.00",
+    );
+    page.off("request", observeHelperPost);
     await click(page, "Проверить оплату");
     await waitHash(page, "payment/");
     paymentId = page.url().split("#payment/")[1];
