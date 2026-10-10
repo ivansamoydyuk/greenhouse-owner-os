@@ -398,3 +398,28 @@
 
 /* Source facts remain readable even for long original labels and exact values. */
 .connected #main[data-rendered-route^="depot/"] .fact-row > * { min-width: 0; overflow-wrap: anywhere; }
+
+/* Connected Finance only: compact B-direction cards, exact amounts never clip. */
+.connected .money-tabs {display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 18px;}
+.connected .money-tab {min-height:44px;display:flex;align-items:center;padding:10px 14px;background:#eef4ed;border-radius:12px;font-weight:650;color:#385d43;}
+.connected .money-tab.active {background:#176442;color:#fff;}
+.connected .money-filters {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;margin-bottom:16px;}
+.connected .money-filters .form-error {grid-column:1/-1;}
+.connected .money-filters button {align-self:end;margin:16px 0;min-height:48px;}
+.connected .money-summary-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.connected .money-summary {display:flex;flex-direction:column;gap:10px;min-height:148px;}
+.connected .money-summary small {color:#607165;font-size:12px;}
+.connected .money-kpi {font-size:clamp(20px,3.2vw,30px);line-height:1.18;overflow-wrap:anywhere;}
+.connected .money-fact {display:flex;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px solid #e8ede4;}
+.connected .money-fact>div {flex:1;min-width:0;}
+.connected .money-fact strong {max-width:57%;text-align:right;overflow-wrap:anywhere;}
+.connected .money-fact small {display:block;margin-top:5px;color:#66766a;font-size:12px;}
+.connected .money-card details {margin-top:14px;}
+.connected .money-card summary {min-height:44px;padding:12px 0;cursor:pointer;font-weight:650;}
+.connected .money-event {padding:16px 0;border-bottom:1px solid #e3ebe0;}
+.connected .money-event h3 {margin:10px 0;overflow-wrap:anywhere;}
+.connected .money-event .card-header {align-items:flex-start;gap:12px;}
+.connected .money-event .card-header>* {min-width:0;overflow-wrap:anywhere;}
+.connected .money-event .page-actions {flex-wrap:wrap;}
+@media(max-width:360px){.connected .money-summary-grid{grid-template-columns:1fr}.connected .money-filters{gap:0 8px}.connected .money-tab{padding:10px;font-size:13px}.connected .money-fact{gap:8px}}
+@media(min-width:768px){.connected .money-filters{grid-template-columns:repeat(3,minmax(0,1fr));}.connected .money-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}

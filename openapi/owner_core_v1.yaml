@@ -8,6 +8,102 @@ info:
 servers:
 - url: /v1
 paths:
+  /entities/{entity_id}/finance/analytics:
+    get:
+      summary: Analytics
+      operationId: analytics_v1_entities__entity_id__finance_analytics_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: date_from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date From
+      - name: date_to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date To
+      - name: currency
+        in: query
+        required: false
+        schema:
+          type: string
+          default: TRY
+          title: Currency
+      - name: greenhouse_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+      - name: money_account_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Money Account Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceAnalytics'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/finance/analytics/documents/{obligation_id}:
+    get:
+      summary: Document
+      operationId: document_v1_entities__entity_id__finance_analytics_documents__obligation_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: obligation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Obligation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebtDocument'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /entities/{entity_id}/finance-overview:
     get:
       summary: Finance Overview
@@ -7435,6 +7531,1160 @@ components:
       - work_area_id
       - basis_count
       title: EstimateBasis
+    AnalyticsAccount:
+      properties:
+        money_account_id:
+          type: string
+          format: uuid
+          title: Money Account Id
+        name:
+          type: string
+          title: Name
+        account_type:
+          type: string
+          title: Account Type
+        currency:
+          type: string
+          title: Currency
+        active:
+          type: boolean
+          title: Active
+        current_balance:
+          type: string
+          title: Current Balance
+        opening_balance:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Opening Balance
+        incoming:
+          type: string
+          title: Incoming
+        outgoing:
+          type: string
+          title: Outgoing
+        net_change:
+          type: string
+          title: Net Change
+        closing_balance:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Closing Balance
+        opening_basis:
+          type: string
+          enum:
+          - ZERO_AT_CUTOVER_PLUS_PRIOR_JOURNAL
+          - UNKNOWN_BEFORE_CUTOVER
+          title: Opening Basis
+      additionalProperties: false
+      type: object
+      required:
+      - money_account_id
+      - name
+      - account_type
+      - currency
+      - active
+      - current_balance
+      - opening_balance
+      - incoming
+      - outgoing
+      - net_change
+      - closing_balance
+      - opening_basis
+      title: AnalyticsAccount
+    AnalyticsAllocation:
+      properties:
+        work_area_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Work Area Id
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        amount:
+          type: string
+          title: Amount
+        classification:
+          type: string
+          enum:
+          - EXACT
+          - GENERAL_VIRTUAL
+          - UNRESOLVED
+          - ESTIMATED
+          title: Classification
+        provenance:
+          type: string
+          title: Provenance
+        policy_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Id
+        policy_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Policy Version
+        estimate_revision_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Estimate Revision Id
+      additionalProperties: false
+      type: object
+      required:
+      - amount
+      - classification
+      - provenance
+      title: AnalyticsAllocation
+    AnalyticsArea:
+      properties:
+        greenhouse_id:
+          type: string
+          format: uuid
+          title: Greenhouse Id
+        name:
+          type: string
+          title: Name
+        revenue:
+          type: string
+          title: Revenue
+        operating_cost:
+          type: string
+          title: Operating Cost
+        operating_result:
+          type: string
+          title: Operating Result
+        exact_cost:
+          type: string
+          title: Exact Cost
+        virtual_general_cost:
+          type: string
+          title: Virtual General Cost
+        estimated_revenue:
+          type: string
+          title: Estimated Revenue
+        harvest_denominator:
+          $ref: '#/components/schemas/HarvestDenominator'
+        cost_per_kg:
+          $ref: '#/components/schemas/AnalyticsCostPerKg'
+      additionalProperties: false
+      type: object
+      required:
+      - greenhouse_id
+      - name
+      - revenue
+      - operating_cost
+      - operating_result
+      - exact_cost
+      - virtual_general_cost
+      - estimated_revenue
+      - harvest_denominator
+      - cost_per_kg
+      title: AnalyticsArea
+    AnalyticsAreaPolicy:
+      properties:
+        id:
+          type: string
+          const: ADR033-AREA-2026-10-01
+          title: Id
+          default: ADR033-AREA-2026-10-01
+        version:
+          type: integer
+          const: 1
+          title: Version
+          default: 1
+        effective_from:
+          type: string
+          format: date
+          title: Effective From
+          default: '2026-10-01'
+        effective_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effective To
+        algorithm:
+          type: string
+          const: largest-remainder-cent-v1
+          title: Algorithm
+          default: largest-remainder-cent-v1
+        status:
+          type: string
+          enum:
+          - AVAILABLE
+          - UNRESOLVED_REFERENCE
+          title: Status
+        targets:
+          items:
+            $ref: '#/components/schemas/AreaPolicyTarget'
+          type: array
+          title: Targets
+        affects_ledger:
+          type: boolean
+          const: false
+          title: Affects Ledger
+          default: false
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - targets
+      title: AnalyticsAreaPolicy
+    AnalyticsCostPerKg:
+      properties:
+        value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Value
+        known_finance_cost_per_kg:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Known Finance Cost Per Kg
+        currency:
+          type: string
+          title: Currency
+        classification:
+          type: string
+          enum:
+          - KNOWN_FINANCE_ONLY
+          - ESTIMATED_DENOMINATOR
+          - PARTIAL
+          - UNAVAILABLE
+          title: Classification
+        reason:
+          type: string
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - value
+      - known_finance_cost_per_kg
+      - currency
+      - classification
+      - reason
+      title: AnalyticsCostPerKg
+    AnalyticsCoverage:
+      properties:
+        complete_production_cost:
+          type: boolean
+          const: false
+          title: Complete Production Cost
+          default: false
+        financial_period_policy:
+          type: string
+          const: D05_OPEN_NOT_HISTORICAL_AS_OF
+          title: Financial Period Policy
+          default: D05_OPEN_NOT_HISTORICAL_AS_OF
+        inventory_cost_rows:
+          items:
+            $ref: '#/components/schemas/InventoryCostCoverage'
+          type: array
+          title: Inventory Cost Rows
+        unclassified_obligation_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Unclassified Obligation Ids
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        source_count:
+          type: integer
+          title: Source Count
+        economic_event_count:
+          type: integer
+          title: Economic Event Count
+        movement_count:
+          type: integer
+          title: Movement Count
+      additionalProperties: false
+      type: object
+      required:
+      - inventory_cost_rows
+      - unclassified_obligation_ids
+      - warnings
+      - source_count
+      - economic_event_count
+      - movement_count
+      title: AnalyticsCoverage
+    AnalyticsDebts:
+      properties:
+        receivable:
+          type: string
+          title: Receivable
+        payable:
+          type: string
+          title: Payable
+        parties:
+          items:
+            $ref: '#/components/schemas/DebtParty'
+          type: array
+          title: Parties
+        documents:
+          items:
+            $ref: '#/components/schemas/DebtDocument'
+          type: array
+          title: Documents
+        scope:
+          type: string
+          const: CURRENT_ENTITY_CURRENCY_ALL_DATES
+          title: Scope
+          default: CURRENT_ENTITY_CURRENCY_ALL_DATES
+      additionalProperties: false
+      type: object
+      required:
+      - receivable
+      - payable
+      - parties
+      - documents
+      title: AnalyticsDebts
+    AnalyticsEconomics:
+      properties:
+        revenue:
+          type: string
+          title: Revenue
+        operating_cost:
+          type: string
+          title: Operating Cost
+        operating_result:
+          type: string
+          title: Operating Result
+        exact_cost:
+          type: string
+          title: Exact Cost
+        virtual_general_cost:
+          type: string
+          title: Virtual General Cost
+        unresolved_cost:
+          type: string
+          title: Unresolved Cost
+        unallocated_revenue:
+          type: string
+          title: Unallocated Revenue
+        basis:
+          type: string
+          const: CURRENT_ACTIVE_POSTED_ECONOMIC_LEDGER
+          title: Basis
+          default: CURRENT_ACTIVE_POSTED_ECONOMIC_LEDGER
+        completeness:
+          type: string
+          enum:
+          - CONFIRMED_FINANCE_ONLY
+          - PARTIAL_SCOPE
+          title: Completeness
+      additionalProperties: false
+      type: object
+      required:
+      - revenue
+      - operating_cost
+      - operating_result
+      - exact_cost
+      - virtual_general_cost
+      - unresolved_cost
+      - unallocated_revenue
+      - completeness
+      title: AnalyticsEconomics
+    AnalyticsMovement:
+      properties:
+        posting_id:
+          type: string
+          format: uuid
+          title: Posting Id
+        money_account_id:
+          type: string
+          format: uuid
+          title: Money Account Id
+        account_name:
+          type: string
+          title: Account Name
+        currency:
+          type: string
+          title: Currency
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        direction:
+          type: string
+          enum:
+          - in
+          - out
+          title: Direction
+        amount:
+          type: string
+          title: Amount
+        signed_amount:
+          type: string
+          title: Signed Amount
+        reversal_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Reversal Of Id
+        source:
+          $ref: '#/components/schemas/AnalyticsSource'
+      additionalProperties: false
+      type: object
+      required:
+      - posting_id
+      - money_account_id
+      - account_name
+      - currency
+      - event_date
+      - direction
+      - amount
+      - signed_amount
+      - source
+      title: AnalyticsMovement
+    AnalyticsPeriod:
+      properties:
+        date_from:
+          type: string
+          format: date
+          title: Date From
+        date_to:
+          type: string
+          format: date
+          title: Date To
+        inclusive:
+          type: boolean
+          const: true
+          title: Inclusive
+          default: true
+      additionalProperties: false
+      type: object
+      required:
+      - date_from
+      - date_to
+      title: AnalyticsPeriod
+    AnalyticsSource:
+      properties:
+        kind:
+          type: string
+          title: Kind
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          title: Status
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        source_reference:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Reference
+        original_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Original Text
+        counterparty_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Counterparty Id
+        counterparty_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Counterparty Name
+        proposal_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Proposal Id
+        proposal_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Proposal Version
+        original_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Original Id
+        capture_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Capture Id
+        harvest_settlement_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Harvest Settlement Id
+        evidence_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Evidence Id
+        replacement_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Of Id
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - id
+      - status
+      title: AnalyticsSource
+    AreaPolicyTarget:
+      properties:
+        name:
+          type: string
+          title: Name
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        numerator:
+          type: integer
+          title: Numerator
+        denominator:
+          type: integer
+          const: 70
+          title: Denominator
+          default: 70
+        area_da:
+          type: string
+          title: Area Da
+        display_percentage:
+          type: string
+          title: Display Percentage
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - numerator
+      - area_da
+      - display_percentage
+      title: AreaPolicyTarget
+    AvailableAnalyticsAccount:
+      properties:
+        money_account_id:
+          type: string
+          format: uuid
+          title: Money Account Id
+        name:
+          type: string
+          title: Name
+        currency:
+          type: string
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - money_account_id
+      - name
+      - currency
+      title: AvailableAnalyticsAccount
+    CashTotals:
+      properties:
+        incoming:
+          type: string
+          title: Incoming
+        outgoing:
+          type: string
+          title: Outgoing
+        net_change:
+          type: string
+          title: Net Change
+      additionalProperties: false
+      type: object
+      required:
+      - incoming
+      - outgoing
+      - net_change
+      title: CashTotals
+    DebtDocument:
+      properties:
+        obligation_id:
+          type: string
+          format: uuid
+          title: Obligation Id
+        counterparty_id:
+          type: string
+          format: uuid
+          title: Counterparty Id
+        counterparty_name:
+          type: string
+          title: Counterparty Name
+        direction:
+          type: string
+          enum:
+          - payable
+          - receivable
+          title: Direction
+        currency:
+          type: string
+          title: Currency
+        original_amount:
+          type: string
+          title: Original Amount
+        allocated_amount:
+          type: string
+          title: Allocated Amount
+        remaining_amount:
+          type: string
+          title: Remaining Amount
+        status:
+          type: string
+          title: Status
+        settlement_status:
+          type: string
+          title: Settlement Status
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        due_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Due Date
+        overdue:
+          type: boolean
+          title: Overdue
+        obligation_class:
+          type: string
+          title: Obligation Class
+        economic_source:
+          type: string
+          title: Economic Source
+        opening:
+          type: boolean
+          title: Opening
+        opening_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Opening Date
+        opening_source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Opening Source
+        source:
+          $ref: '#/components/schemas/AnalyticsSource'
+        attributions:
+          items:
+            $ref: '#/components/schemas/AnalyticsAllocation'
+          type: array
+          title: Attributions
+        history:
+          items:
+            $ref: '#/components/schemas/DebtHistory'
+          type: array
+          title: History
+      additionalProperties: false
+      type: object
+      required:
+      - obligation_id
+      - counterparty_id
+      - counterparty_name
+      - direction
+      - currency
+      - original_amount
+      - allocated_amount
+      - remaining_amount
+      - status
+      - settlement_status
+      - event_date
+      - overdue
+      - obligation_class
+      - economic_source
+      - opening
+      - source
+      - attributions
+      - history
+      title: DebtDocument
+    DebtHistory:
+      properties:
+        kind:
+          type: string
+          enum:
+          - payment
+          - direct_settlement
+          - advance_application
+          title: Kind
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          title: Status
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        amount:
+          type: string
+          title: Amount
+        currency:
+          type: string
+          title: Currency
+        money_account_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Money Account Id
+        advance_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Advance Id
+        posting_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Posting Id
+        reversal_posting_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Reversal Posting Id
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - id
+      - status
+      - event_date
+      - amount
+      - currency
+      title: DebtHistory
+    DebtParty:
+      properties:
+        counterparty_id:
+          type: string
+          format: uuid
+          title: Counterparty Id
+        name:
+          type: string
+          title: Name
+        receivable:
+          type: string
+          title: Receivable
+        payable:
+          type: string
+          title: Payable
+        document_count:
+          type: integer
+          title: Document Count
+      additionalProperties: false
+      type: object
+      required:
+      - counterparty_id
+      - name
+      - receivable
+      - payable
+      - document_count
+      title: DebtParty
+    EconomicEvent:
+      properties:
+        posting_id:
+          type: string
+          format: uuid
+          title: Posting Id
+        entry_id:
+          type: string
+          format: uuid
+          title: Entry Id
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        currency:
+          type: string
+          title: Currency
+        classification:
+          type: string
+          enum:
+          - REVENUE
+          - OPERATING_COST
+          title: Classification
+        account_class:
+          type: string
+          title: Account Class
+        ledger_account_id:
+          type: string
+          format: uuid
+          title: Ledger Account Id
+        ledger_account_name:
+          type: string
+          title: Ledger Account Name
+        category:
+          type: string
+          const: UNKNOWN
+          title: Category
+          default: UNKNOWN
+        amount:
+          type: string
+          title: Amount
+        selected_amount:
+          type: string
+          title: Selected Amount
+        source_geography:
+          type: string
+          enum:
+          - EXACT
+          - GENERAL
+          - UNRESOLVED
+          - PARTIAL
+          - ESTIMATED
+          title: Source Geography
+        source:
+          $ref: '#/components/schemas/AnalyticsSource'
+        allocations:
+          items:
+            $ref: '#/components/schemas/AnalyticsAllocation'
+          type: array
+          title: Allocations
+      additionalProperties: false
+      type: object
+      required:
+      - posting_id
+      - entry_id
+      - event_date
+      - currency
+      - classification
+      - account_class
+      - ledger_account_id
+      - ledger_account_name
+      - amount
+      - selected_amount
+      - source_geography
+      - source
+      - allocations
+      title: EconomicEvent
+    FinanceAnalytics:
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+          title: Schema Version
+          default: 1
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        snapshot_at:
+          type: string
+          format: date-time
+          title: Snapshot At
+        currency:
+          type: string
+          title: Currency
+        period:
+          $ref: '#/components/schemas/AnalyticsPeriod'
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        money_account_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Money Account Id
+        cutover_date:
+          type: string
+          format: date
+          title: Cutover Date
+        finance_opening_policy:
+          type: string
+          title: Finance Opening Policy
+        cash_scope:
+          type: string
+          const: ENTITY_CURRENCY_ACCOUNT_NO_GREENHOUSE_ALLOCATION
+          title: Cash Scope
+          default: ENTITY_CURRENCY_ACCOUNT_NO_GREENHOUSE_ALLOCATION
+        accounts:
+          items:
+            $ref: '#/components/schemas/AnalyticsAccount'
+          type: array
+          title: Accounts
+        available_accounts:
+          items:
+            $ref: '#/components/schemas/AvailableAnalyticsAccount'
+          type: array
+          title: Available Accounts
+        cash_totals:
+          $ref: '#/components/schemas/CashTotals'
+        movements:
+          items:
+            $ref: '#/components/schemas/AnalyticsMovement'
+          type: array
+          title: Movements
+        debts:
+          $ref: '#/components/schemas/AnalyticsDebts'
+        economics:
+          $ref: '#/components/schemas/AnalyticsEconomics'
+        economic_events:
+          items:
+            $ref: '#/components/schemas/EconomicEvent'
+          type: array
+          title: Economic Events
+        areas:
+          items:
+            $ref: '#/components/schemas/AnalyticsArea'
+          type: array
+          title: Areas
+        harvest_denominator:
+          $ref: '#/components/schemas/HarvestDenominator'
+        cost_per_kg:
+          $ref: '#/components/schemas/AnalyticsCostPerKg'
+        allocation_policy:
+          $ref: '#/components/schemas/AnalyticsAreaPolicy'
+        coverage:
+          $ref: '#/components/schemas/AnalyticsCoverage'
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - snapshot_at
+      - currency
+      - period
+      - cutover_date
+      - finance_opening_policy
+      - accounts
+      - available_accounts
+      - cash_totals
+      - movements
+      - debts
+      - economics
+      - economic_events
+      - areas
+      - harvest_denominator
+      - cost_per_kg
+      - allocation_policy
+      - coverage
+      title: FinanceAnalytics
+    HarvestDenominator:
+      properties:
+        confirmed_kg:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Confirmed Kg
+        exact_kg:
+          type: string
+          title: Exact Kg
+        estimated_kg:
+          type: string
+          title: Estimated Kg
+        unallocated_kg:
+          type: string
+          title: Unallocated Kg
+        classification:
+          type: string
+          enum:
+          - EXACT
+          - ESTIMATED
+          - PARTIAL
+          - UNAVAILABLE
+          title: Classification
+        source_count:
+          type: integer
+          title: Source Count
+        stale_estimate_count:
+          type: integer
+          title: Stale Estimate Count
+        basis_incomplete:
+          type: boolean
+          title: Basis Incomplete
+        basis:
+          type: string
+          const: CURRENT_CONFIRMED_DEPOT_KG_SAME_PERIOD_SCOPE_ALL_CURRENCIES
+          title: Basis
+          default: CURRENT_CONFIRMED_DEPOT_KG_SAME_PERIOD_SCOPE_ALL_CURRENCIES
+        sources:
+          items:
+            $ref: '#/components/schemas/HarvestDenominatorSource'
+          type: array
+          title: Sources
+      additionalProperties: false
+      type: object
+      required:
+      - confirmed_kg
+      - exact_kg
+      - estimated_kg
+      - unallocated_kg
+      - classification
+      - source_count
+      - stale_estimate_count
+      - basis_incomplete
+      - sources
+      title: HarvestDenominator
+    HarvestDenominatorSource:
+      properties:
+        settlement_id:
+          type: string
+          format: uuid
+          title: Settlement Id
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        evidence_id:
+          type: string
+          format: uuid
+          title: Evidence Id
+        exact_kg:
+          type: string
+          title: Exact Kg
+        estimated_kg:
+          type: string
+          title: Estimated Kg
+        unallocated_kg:
+          type: string
+          title: Unallocated Kg
+        estimate_revision_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Estimate Revision Id
+        stale_estimate_revision_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Stale Estimate Revision Id
+        source_total_kg:
+          type: string
+          title: Source Total Kg
+        unknown_basis_count:
+          type: string
+          title: Unknown Basis Count
+      additionalProperties: false
+      type: object
+      required:
+      - settlement_id
+      - event_date
+      - evidence_id
+      - exact_kg
+      - estimated_kg
+      - unallocated_kg
+      - source_total_kg
+      - unknown_basis_count
+      title: HarvestDenominatorSource
+    InventoryCostCoverage:
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        product_name:
+          type: string
+          title: Product Name
+        kind:
+          type: string
+          title: Kind
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        base_unit:
+          type: string
+          title: Base Unit
+        quantity:
+          type: string
+          title: Quantity
+        uncosted_quantity:
+          type: string
+          title: Uncosted Quantity
+        known_cost:
+          type: string
+          title: Known Cost
+        currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Currency
+        finance_obligation_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Finance Obligation Ids
+        recognition:
+          type: string
+          enum:
+          - FINANCE_BASIS_ONLY
+          - UNRESOLVED_LINK_OR_TIMING
+          title: Recognition
+      additionalProperties: false
+      type: object
+      required:
+      - event_id
+      - product_id
+      - product_name
+      - kind
+      - event_date
+      - base_unit
+      - quantity
+      - uncosted_quantity
+      - known_cost
+      - finance_obligation_ids
+      - recognition
+      title: InventoryCostCoverage
+
   responses:
     Conflict:
       description: Version or idempotency conflict

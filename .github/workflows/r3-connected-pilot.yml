@@ -1,7 +1,7 @@
 name: R3 connected TEST pilot
 on:
   push:
-    branches: [06-owner-r3-connected-test-pilot, 06-owner-r3-capture-friction, 03-harvest-owner-journey-monthly]
+    branches: [06-owner-r3-connected-test-pilot, 06-owner-r3-capture-friction, 03-harvest-owner-journey-monthly, 09-owner-overnight-connected-program]
   workflow_dispatch:
 permissions:
   contents: read
@@ -72,7 +72,7 @@ jobs:
       - name: Prove SQL effects and reconciliation
         run: python scripts/r3_connected_sql_evidence.py artifacts/r3-connected/browser-results.json artifacts/r3-connected/sql-evidence.json
       - name: Three owner capture cases on the candidate
-        if: github.ref_name == '06-owner-r3-capture-friction' || github.ref_name == '03-harvest-owner-journey-monthly'
+        if: github.ref_name == '06-owner-r3-capture-friction' || github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/friction-after
@@ -80,7 +80,7 @@ jobs:
           node tests/e2e/r3-capture-friction.mjs
           python scripts/r3_capture_sql_evidence.py artifacts/friction-after/capture-friction-results.json artifacts/friction-after/sql-evidence.json
       - name: Complete Harvest owner journey and source accounting proof
-        if: github.ref_name == '03-harvest-owner-journey-monthly'
+        if: github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/harvest-journey
@@ -88,6 +88,14 @@ jobs:
           python scripts/harvest_journey_sql_evidence.py --before artifacts/harvest-journey/before-snapshot.json
           node tests/e2e/harvest-owner-journey.mjs
           python scripts/harvest_journey_sql_evidence.py artifacts/harvest-journey/harvest-journey-results.json artifacts/harvest-journey/sql-evidence.json artifacts/harvest-journey/before-snapshot.json
+      - name: Overnight Stage A money and financial analytics
+        if: github.ref_name == '09-owner-overnight-connected-program'
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/overnight-finance
+        run: |
+          node tests/e2e/overnight-finance.mjs
+          python scripts/overnight_finance_sql_evidence.py artifacts/overnight-finance/finance-results.json artifacts/overnight-finance/sql-evidence.json
       - name: Capture owned runtime diagnostics
         if: always()
         run: |
@@ -103,6 +111,7 @@ jobs:
             artifacts/friction-before/
             artifacts/friction-after/
             artifacts/harvest-journey/
+            artifacts/overnight-finance/
           retention-days: 14
           if-no-files-found: error
       - name: Preserve diagnostics and stop only owned runtime

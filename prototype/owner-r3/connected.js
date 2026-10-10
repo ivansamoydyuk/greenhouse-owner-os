@@ -1,3 +1,4 @@
+import { financeAnalyticsView, financeDocumentView, financeSelection, financeRoute, financeQuery } from "./finance-connected.js";
 import { monthlyHarvestView, harvestSelection, harvestQuery, harvestRoute } from "./harvest-connected.js";
 import {
   e,
@@ -47,6 +48,7 @@ const btn = (...args) =>
 let activeActionRoute = null;
 let estimateReview = null;
 let lastHarvestRoute = "harvest";
+let lastFinanceRoute = "money";
 const harvestScroll = new Map();
 let config = null,
   ready = false,
@@ -233,7 +235,7 @@ function home() {
   if (!h) return unavailable("Главная");
   const f = h.finance,
     s = h.season || [];
-  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") + btn("Повторить загрузку разделов", "refresh", "secondary") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", lastHarvestRoute, "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес по ADET</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} ADET</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Workers R1 · внешняя отправка недоступна.</p></div></div>`;
+  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") + btn("Повторить загрузку разделов", "refresh", "secondary") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Деньги и результат</h2>${link("Открыть",lastFinanceRoute,"section-link")}</div><p class="note">Счета, движения, учтённые затраты и теплицы</p>`)}${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", lastHarvestRoute, "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес по ADET</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} ADET</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Workers R1 · внешняя отправка недоступна.</p></div></div>`;
 }
 function reviewList() {
   return (
@@ -490,13 +492,13 @@ function finance(direction = "") {
       "Только подтверждённые TEST-документы",
       !!direction,
     ) +
-    `<div class="page-actions">${link("Мне должны", "finance/receivable", "btn secondary")}${link("Я должен", "finance/payable", "btn secondary")}</div>` +
+    `<div class="page-actions">${link("Деньги и аналитика", lastFinanceRoute, "btn primary")}${link("Мне должны", "finance/receivable", "btn secondary")}${link("Я должен", "finance/payable", "btn secondary")}</div>` +
     panel(
       `<h2>Счета</h2>${f.accounts
         .map((a) =>
           facts([
             ["Счёт", accountName(a)],
-            ["Остаток", money(a.balance ?? a.amount ?? "0.00", a.currency)],
+            ["Остаток", a.balance==null && a.amount==null ? "Неизвестно" : money(a.balance ?? a.amount, a.currency)],
           ]),
         )
         .join("")}`,
@@ -1157,6 +1159,22 @@ async function render() {
         draft = loaded;
       }
       body = captureForm(arg || "text");
+    } else if (page === "money") {
+      const filters=financeSelection(route,localDay());
+      const loaded=await api.entityGet("/finance/analytics?"+financeQuery(filters));
+      if(token!==epoch)return;
+      current={...loaded,selection:filters};
+      body=financeAnalyticsView(loaded,filters);
+      lastFinanceRoute=financeRoute(filters);
+      await api.draft("finance-navigation",{route:lastFinanceRoute});
+      if(token!==epoch)return;
+    } else if (page === "money-document") {
+      const loaded=await api.entityGet("/finance/analytics/documents/"+arg);
+      if(token!==epoch)return;
+      current=loaded;
+      let back=lastFinanceRoute;
+      try {const candidate=decodeURIComponent(arg2 || '');if(candidate.startsWith('money/'))back=candidate;}catch{}
+      body=financeDocumentView(loaded,back);
     } else if (page === "finance") body = finance(arg);
     else if (page === "settle") {
       if (!data.home) throw Error("Финансовые данные не загружены");
@@ -1301,7 +1319,7 @@ async function render() {
     shell(body);
     document.querySelector("#main").dataset.renderedRoute = route;
     document.querySelector("#main")?.focus({ preventScroll: true });
-    if(/^(harvest|report|depot)(\/|$)/.test(route) && harvestScroll.has(route))
+    if(/^(harvest|report|depot|money|money-document)(\/|$)/.test(route) && harvestScroll.has(route))
       window.scrollTo({top:harvestScroll.get(route),behavior:'instant'});
   } catch (error) {
     if (token === epoch) shell(errorBox(error));
@@ -1410,7 +1428,10 @@ async function submitForm(formEl, snapshot) {
     v = snapshot.fields,
     savedRoute = route;
   if (draft) await saveDraft(snapshot);
-  if (name === "harvest-filters") {
+  if (name === "finance-filters") {
+    if(!v.date_from || !v.date_to || v.date_from>v.date_to)throw Error("Проверьте даты: начало периода должно быть не позже окончания.");
+    go(financeRoute(current.selection,{date_from:v.date_from,date_to:v.date_to,currency:v.currency,greenhouse_id:v.greenhouse_id || null,money_account_id:v.currency!==current.selection.currency?null:(Object.hasOwn(v,"money_account_id")?(v.money_account_id || null):current.selection.money_account_id)}));
+  } else if (name === "harvest-filters") {
     go(harvestRoute(current.selection,{season_start_year:Number(v.season_start_year),greenhouse_id:v.greenhouse_id || null,currency:v.currency || current.selection.currency,allocation:v.allocation || "all",month:null}));
   } else if (name === "capture") {
     const kind = route.split("/")[1],
@@ -1937,7 +1958,7 @@ document.addEventListener("change", (event) => {
   }
 });
 document.addEventListener('click',event=>{
-  if(event.target.closest('a[href^="#"], [data-action="back"]') && /^(harvest|report|depot)(\/|$)/.test(route)) harvestScroll.set(route,scrollY);
+  if(event.target.closest('a[href^="#"], [data-action="back"]') && /^(harvest|report|depot|money|money-document)(\/|$)/.test(route)) harvestScroll.set(route,scrollY);
 },true);
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
@@ -2162,8 +2183,10 @@ window.addEventListener("keydown", (event) => {
     const generation = api.generation;
     await refreshData();
     const navigation=await api.readDraft("harvest-navigation");
+    const financeNavigation=await api.readDraft("finance-navigation");
     if (generation !== api.generation) return;
     lastHarvestRoute=navigation?.route || "harvest";
+    lastFinanceRoute=financeNavigation?.route || "money";
     ready = true;
     await render();
   } catch (error) {
