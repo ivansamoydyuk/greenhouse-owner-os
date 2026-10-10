@@ -671,3 +671,15 @@ test("delayed draft save retains clicked facts and former scope without leaking 
     text: "clicked original",
   });
 });
+test('readonly Harvest estimate previews accept changed basis without claiming effect identity', async()=>{
+ const calls=[],store=new Store(),a=create(async(path,options)=>{calls.push({path,options});return response({version:0,lines:[]});},store);
+ await a.harvestEstimatePreview('receipt',{expected_version:0,total_basis_count:'100'});
+ await a.harvestEstimatePreview('receipt',{expected_version:0,total_basis_count:'150'});
+ assert.equal(calls.length,2);assert.equal(store.m.size,0);assert.equal(calls[0].options.headers['Idempotency-Key'],undefined);
+ assert.notEqual(calls[0].options.body,calls[1].options.body);
+});
+test('readonly Harvest estimate rejects response from previous session', async()=>{
+ let resolve;const a=create(()=>new Promise(r=>{resolve=r;}));
+ const pending=a.harvestEstimatePreview('receipt',{expected_version:0});
+ a.generation++;resolve(response({lines:[]}));await assert.rejects(pending,/Сессия изменилась/);
+});

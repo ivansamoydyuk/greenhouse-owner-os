@@ -1,3 +1,4 @@
+import { monthlyHarvestView, harvestSelection, harvestQuery, harvestRoute } from "./harvest-connected.js";
 import {
   e,
   icon,
@@ -43,6 +44,8 @@ const displayMetric = (value) => legacyDisplayMetric(exactDecimalString(value));
 const btn = (...args) =>
   visualButton(...args).replace("<button ", '<button type="button" ');
 let activeActionRoute = null;
+let lastHarvestRoute = "harvest";
+const harvestScroll = new Map();
 let config = null,
   ready = false,
   route = location.hash.slice(1) || "home",
@@ -228,7 +231,7 @@ function home() {
   if (!h) return unavailable("Главная");
   const f = h.finance,
     s = h.season || [];
-  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") + btn("Повторить загрузку разделов", "refresh", "secondary") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", "harvest", "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес ветки</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} веток</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Workers R1 · внешняя отправка недоступна.</p></div></div>`;
+  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") + btn("Повторить загрузку разделов", "refresh", "secondary") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", lastHarvestRoute, "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес по ADET</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} ADET</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Workers R1 · внешняя отправка недоступна.</p></div></div>`;
 }
 function reviewList() {
   return (
@@ -398,8 +401,8 @@ function proposalDetail(p) {
     ) + `</details>` +
     (p.action_type === "DIRECT_EXPENSE"
       ? compactExpenseReview(p)
-      : proposalSummary(p, context, false)) +
-    (!done && p.state !== "REJECTED"
+      : p.action_type === "DEPOT_RECEIPT" ? compactDepotProposal(p) : proposalSummary(p, context, false)) +
+    (!done && p.state !== "REJECTED" && p.action_type !== "DEPOT_RECEIPT"
       ? panel(
           `<h2>Исправить или уточнить</h2><div class="page-actions fact-actions">${Object.keys(
             p.revision.payload,
@@ -697,49 +700,30 @@ function reportDetail(r) {
       )}${formOriginal(r.original_evidence)}<p class="note">Исходное полевое наблюдение неизменно. Документ депо остаётся отдельным.</p>${link("Фото / PDF чека депо", `attach-depot/${r.id}`, "btn primary full")}`,
     ) +
     panel(
-      `<h2>Связанные документы</h2>${linked.map((s) => link(`${e(refName(s.depot_id))} · ${e(money(s.total_amount, s.currency))}`, `depot/${s.id}`, "list-row")).join("") || "<p>Связь ещё не подтверждена.</p>"}${notice("Добавление файла прямо к неизменяемому полевому отчёту и поздняя связь уже проведённого чека: NOT AVAILABLE. Здесь создаётся новый документ депо с явной связью.")}`,
+      `<h2>Связанные документы</h2>${linked.map((s) => link(`${e(refName(s.depot_id))} · ${e(money(s.total_amount, s.currency))}`, `depot/${s.id}`, "list-row")).join("") || "<p>Связь ещё не подтверждена.</p>"}<p class="note">Поздняя связь и дополнительные оригиналы доступны в карточке документа депо. Исходная полевая запись не изменяется.</p>`,
     )
   );
 }
+function depotLineFields(index) {
+  const prefix=index ? `line_${index}_` : '';
+  const value=k=>draft[prefix+k] || '';
+  return `<fieldset class="depot-line"><legend>Строка ${index+1}</legend>${field("Качество дословно",prefix+"quality",value('quality'))}${select("Категория · решение владельца",prefix+"quality_category",[{value:'HIGHEST',label:'Высшее'},{value:'FIRST',label:'Первое'},{value:'SECOND',label:'Второе'}],value('quality_category'),'Нужно проверить')}<div class="field-grid">${field("Вес нетто, кг",prefix+"kg",value('kg'),'text','inputmode="decimal"')}${field("Цена за кг",prefix+"price",value('price'),'text','inputmode="decimal"')}${field("Сумма в документе · если есть",prefix+"stated_amount",value('stated_amount'),'text','inputmode="decimal"')}${field("ADET · если указан",prefix+"count",value('count'),'number','min="1" step="1"')}</div>${select("Использовать сумму",prefix+"confirmed_amount",[{value:'calculated',label:'Вес × цена'},{value:'stated',label:'Сумма документа'}],value('confirmed_amount') || 'calculated')}<details><summary>Дословная строка документа</summary>${field("Строка источника · необязательно",prefix+"source_line",value('source_line'))}</details>${index?btn('Убрать эту строку','remove-depot-line:'+index,'secondary'):''}</fieldset>`;
+}
 function depotForm(report) {
-  const parties = (data.home?.finance.references || []).filter(
-    (p) =>
-      p.kind === "counterparty" &&
-      (p.payload?.role === "depot" || p.role === "depot"),
-  );
-  const fallback = (data.home?.finance.references || []).filter(
-    (p) => p.kind === "counterparty",
-  );
-  return (
-    Header(
-      "Документ депо",
-      `Из полевого среза: ${report.original_greenhouse}`,
-      true,
-    ) +
-    panel(
-      form(
-        "depot",
-        `${notice("Оригинал чека сохранится в новом документе депо. OCR для сохранения не нужен. Полевой отчёт не изменяется.")}${fileField()}${draft.file?.filename ? notice("Копия файла на телефоне: " + draft.file.filename) : ""}${area("Отдельный комментарий владельца", "caption", draft.caption)}${select(
-          "Депо",
-          "depot",
-          (parties.length ? parties : fallback).map((p) => ({
-            id: p.id,
-            name: p.original_name || p.name,
-          })),
-          draft.depot,
-        )}${field("Дата чека", "date", draft.date || report.event_date, "date")}${field("Основание связи именно с этим срезом", "link_evidence", draft.link_evidence)}${field("Качество дословно из документа", "quality", draft.quality || "")}${field("Вес нетто, кг", "kg", draft.kg, "text", 'inputmode="decimal"')}${field("Цена, TRY/кг", "price", draft.price, "text", 'inputmode="decimal"')}${field("Сумма строки в документе, TRY · необязательно", "stated_amount", draft.stated_amount, "text", 'inputmode="decimal"')}${select(
-          "Сумма для подтверждения",
-          "confirmed_amount",
-          [
-            { value: "calculated", label: "Расчёт веса × цены" },
-            { value: "stated", label: "Явно указанная сумма документа" },
-          ],
-          draft.confirmed_amount || "calculated",
-        )}${field("ADET из чека · неизвестно если пусто", "count", draft.count, "number", 'min="1" step="1"')}${field("Строка документа дословно", "source_line", draft.source_line)}${notice("В этом ограниченном вводе одна строка чека в TRY. Многострочный чек: NOT AVAILABLE в форме R3, сохраните оригинал через Capture. Сумма строки вычисляется backend из указанного веса/цены; оплату не создаём.")}`,
-        "Сохранить черновик чека",
-      ),
-    )
-  );
+  const parties=(data.home?.finance.references || []).filter(p=>p.kind==='counterparty' && ['depot','customer','both'].includes(p.payload?.role || p.role));
+  const fallback=(data.home?.finance.references || []).filter(p=>p.kind==='counterparty');
+  const count=Number(draft.line_count || 1);
+  const candidates=(data.harvest?.reports || []).filter(r=>r.id!==report?.id);
+  return Header('Документ депо',report ? 'К срезу: '+report.original_greenhouse : 'Новый отдельный источник',true)+panel(form('depot',
+    `${draft.source_id?notice('Оригинал уже сохранён. Ручные поля — проверяемая расшифровка.'):fileField()}${draft.file?.filename?'<p class="note">Файл: '+e(draft.file.filename)+'</p>':''}${draft.source_id?'<p class=note>Комментарий оригинала: '+e(draft.caption || 'Не добавлен')+'</p>':area('Отдельный комментарий владельца','caption',draft.caption)}${select('Депо','depot',(parties.length?parties:fallback).map(p=>({id:p.id,name:p.original_name||p.name})),draft.depot)}<div class="field-grid">${field('Дата чека','date',draft.date || report?.event_date || localDay(),'date')}${select('Валюта','currency',['TRY','USD','EUR','UAH'].map(c=>({value:c,label:c})),draft.currency || 'TRY')}${field('Номер документа · если есть','document_number',draft.document_number)}${field('Срок оплаты · необязательно','due_date',draft.due_date,'date')}</div><details ${report?'open':''}><summary>Связь с полевыми срезами</summary>${report?'<p>'+e(report.original_greenhouse)+' · '+e(report.cut_count ?? 'UNKNOWN')+' веток</p>':''}${candidates.map(r=>`<label class="check-label"><input type="checkbox" name="report_${e(r.id)}" ${draft['report_'+r.id]==='on'?'checked':''}><span>${e(r.original_greenhouse)} · ${e(displayDate(r.event_date))} · ${e(r.cut_count ?? 'UNKNOWN')} веток</span></label>`).join('')}${field('Основание явной связи','link_evidence',draft.link_evidence)}</details><div class="depot-lines">${Array.from({length:count},(_,i)=>depotLineFields(i)).join('')}</div>${btn('Добавить строку качества','add-depot-line','secondary full')}<div class="field-grid">${field('Итого по документу · если указано','stated_total',draft.stated_total,'text','inputmode="decimal"')}${field('Alacak · сальдо из источника','alacak_value',draft.alacak_value,'text','inputmode="decimal"')}</div><p class="note">Категория подтверждается для этого документа и депо. Сохранённая строка качества не заменяется. Alacak не считается оплатой или суммой этой продажи.</p>`, 'Открыть короткую проверку'));
+}
+function qualityProvenance(depotId, mappings=[],reviews=[]) {
+  const unique=[...new Map(mappings.map(m=>[m.original_label+':'+m.version,m])).values()];
+  return `<details class="review-provenance"><summary>Происхождение классификации качества</summary><p>Депо: ${e(refName(depotId))}. Исходные обозначения сохранены отдельно.</p>${unique.length?unique.map(m=>`<p>Справочник этого депо · версия ${e(m.version)}: ${e(m.original_label)} → ${e({HIGHEST:'Высшее',FIRST:'Первое',SECOND:'Второе'}[m.quality] || m.quality)}. Доступное соответствие; текущую категорию проверяет владелец.</p>`).join(''):'<p>Предыдущая версия справочника не использована. Категория — отдельное решение владельца для этого документа, без создания общего правила.</p>'}${reviews.length?'<p>Сохранённая ревизия проверки документа: '+e([...new Set(reviews.map(r=>r.version))].join(', '))+'. Это версия проверки, не номер справочника.</p>':''}</details>`;
+}
+function compactDepotProposal(p) {
+  const f=p.revision.payload, arithmetic=p.revision.basis?.arithmetic || {};
+  return panel(`<h2>${e(refName(f.depot_id))}</h2>${facts([['Дата',displayDate(f.event_date)],['Валюта',f.currency],['Продажа и долг',arithmetic.total_amount==null?'Не рассчитано':money(arithmetic.total_amount,f.currency)],['Эффект','Деньги не получены.'],['Полевое количество',arithmetic.field_count==null?'Неизвестно':arithmetic.field_count+' веток'],['Количество документа',arithmetic.depot_count==null?'Неизвестно':arithmetic.depot_count+' ADET']])}${(f.lines||[]).map((l,i)=>`<div class="depot-review-line"><strong>${e(l.original_quality_name)} · ${e({HIGHEST:'Высшее',FIRST:'Первое',SECOND:'Второе'}[f.qualities?.[i]] || 'Категория неизвестна')}</strong><p>${e(displayQuantity(l.net_weight_kg))} кг × ${e(displayQuantity(l.unit_price))} ${e(f.currency)}/кг</p><p>Расчёт: ${e(arithmetic.lines?.[i]?.calculated_amount ?? 'Неизвестно')} · Подтверждаемая сумма: ${e(arithmetic.lines?.[i]?.selected_amount ?? 'Неизвестно')} ${e(f.currency)}</p><p>ADET: ${e(l.count ?? 'Не указан')} · Сумма документа: ${e(l.stated_amount ?? 'Не указана')}</p>${btn('Исправить строку '+(i+1),'edit-depot-line:'+i,'secondary')}</div>`).join('')}${arithmetic.count_discrepancy?notice('Расхождение: '+arithmetic.field_count+' веток по полю и '+arithmetic.depot_count+' ADET по документу. Ни одно значение не заменяется.','amber'):''}${arithmetic.stated_total_discrepancy?notice('Итог документа не совпадает с выбранной суммой строк. Проверьте оригинал.','amber'):''}<p class="note">Полевые ветки и ADET депо остаются независимыми значениями. Выбранных партий: ${f.batch_ids.length}.</p>${(p.revision.missing||[]).map(x=>'<p class="form-error">'+e(x)+'</p>').join('')}${!f.arithmetic_reviewed?btn('Арифметика и расхождения проверены','review-depot-arithmetic','primary full'):notice('Арифметика проверена владельцем')}${qualityProvenance(f.depot_id,p.revision.basis?.quality_mappings || [])}${link('Вернуться к данным документа','edit-depot/'+p.id,'btn secondary full')}`);
 }
 const issueNames = {
   count_discrepancy: "Полевое количество и ADET различаются",
@@ -772,7 +756,7 @@ function depotDetail(s) {
             ? "Долг ещё не создан"
             : money(s.remaining_amount, s.currency),
         ],
-      ])}<h2>Оригинал документа</h2>${s.evidence.filename ? `<a class="btn secondary" href="${entityPath("/harvest/evidence/" + s.evidence.id)}" target="_blank" rel="noopener">${e(s.evidence.filename)} · неизменённые байты</a>` : "<p>Файл не добавлен</p>"}<h3>Комментарий владельца · отдельно</h3><p class="original-text">${e(s.evidence.raw_text || "Не добавлен")}</p>`,
+      ])}<h2>Оригинал документа</h2>${s.evidence.filename || s.owner_source_id ? `<a class="btn secondary" href="${entityPath(s.owner_source_id ? "/owner/captures/"+s.owner_source_id+"/original" : "/harvest/evidence/" + s.evidence.id)}" target="_blank" rel="noopener">${e(s.evidence.filename || "Оригинальный документ")} · неизменённые байты</a>` : "<p>Файл не добавлен</p>"}<h3>Комментарий владельца · отдельно</h3><p class="original-text">${e(s.evidence.raw_text || "Не добавлен")}</p>`,
     ) +
     panel(
       `<h2>Срез и ADET</h2>${facts([
@@ -787,6 +771,8 @@ function depotDetail(s) {
         .map((l) =>
           facts([
             ["Оригинальное качество", l.original_quality_name],
+            ["Категория", s.owner_source_id ? ({HIGHEST:"Высшее",FIRST:"Первое",SECOND:"Второе"}[l.normalized_quality] || "Неизвестно") : "Историческая классификация · не пересмотрена"],
+            ["Основание качества", s.owner_source_id ? "Решение владельца для этого депо и документа" : "Legacy · непроверенное соответствие"],
             ["Вес", l.net_weight_kg + " кг"],
             ["Цена", money(l.unit_price, s.currency)],
             ["Сумма", money(l.amount, s.currency)],
@@ -795,7 +781,7 @@ function depotDetail(s) {
           ]),
         )
         .join("")}${facts([
-        ["Средний вес по ADET, кг/ветку", s.average_weight_kg ?? "UNKNOWN"],
+        ["Средний вес по ADET, кг/ADET", s.average_weight_kg ?? "UNKNOWN"],
         ["Известное количество", s.confirmed_count],
         ["Вес с количеством", s.confirmed_kg + " кг"],
         ["Покрытие", s.count_coverage_complete ? "Полное" : "Частичное"],
@@ -822,8 +808,22 @@ function depotDetail(s) {
         : notice(
             "Документ отменён обратным событием. Оригинал и история сохранены.",
           )) +
-    link("К урожаю", "harvest", "btn secondary")
+    (s.owner_source_id ? qualityProvenance(s.depot_id,(s.quality_reviews || []).flatMap(r=>r.basis?.quality_mappings || []),s.quality_reviews || []) : "") +
+    (s.status === "posted" ? journeyActions(s) : "") +
+    link("К урожаю", lastHarvestRoute, "btn secondary")
   );
+}
+function journeyActions(s) {
+  const j=s.journey || {version:0,attachments:[],estimates:[]};
+  return panel(`<h2>Связи и уточнения</h2><div class="page-actions">${link('Уточнить связь','depot-links/'+s.id,'btn secondary')}${link('Добавить оригинал','depot-attachment/'+s.id,'btn secondary')}${link('Распределить оценкой','depot-estimate/'+s.id,'btn secondary')}</div><p class="note">Новая версия сохраняет старые основания. Продажа и долг повторно не создаются. Финансовый период не пересчитывается.</p>${(j.attachments||[]).map(a=>`<a class="list-row" href="${entityPath('/harvest/evidence/'+a.evidence.id)}" target="_blank" rel="noopener">${e(a.evidence.filename || 'Дополнительный оригинал')} · ${e(a.reason)}</a>`).join('')}${j.current_estimate?'<p class="tag amber">Есть подтверждённая оценка · версия '+e(j.current_estimate.version)+'</p>':''}${(j.estimates||[]).some(x=>x.stale)?'<p class="note">Прежняя оценка устарела после изменения связи. Она не включена в показатели.</p>':''}<details><summary>История оснований · версия ${e(j.version)}</summary>${(j.link_history||[]).map(x=>'<p>'+e(x.created_at)+' · '+e(x.reason)+'</p>').join('')}${(j.estimates||[]).map(x=>'<p>Оценка '+e(x.version)+' · '+e(x.basis_description)+' · '+e(x.algorithm)+'</p>').join('')}</details>`);
+}
+function journeyForm(kind,s) {
+  const j=s.journey;
+  let body='';
+  if(kind==='links') body=`<h2>Явно выбранные партии</h2>${(data.harvest?.batches||[]).map(b=>`<label class="check-label"><input type="checkbox" name="batch_${e(b.id)}" ${draft['batch_'+b.id]==='on'?'checked':''}><span>${e(b.label)} · ${e(displayDate(b.event_date))}</span></label>`).join('')}<details><summary>Добавить ещё полевые срезы</summary>${(data.harvest?.reports||[]).map(r=>`<label class="check-label"><input type="checkbox" name="report_${e(r.id)}" ${draft['report_'+r.id]==='on'?'checked':''}><span>${e(r.original_greenhouse)} · ${e(displayDate(r.event_date))} · ${e(r.cut_count ?? 'UNKNOWN')} веток</span></label>`).join('')}</details><p class="note">Дата не доказывает связь. Снятие выбора создаёт новую версию связи; прежняя остаётся в истории.</p>`;
+  else if(kind==='attachment') body=`${fileField()}${draft.file?.filename?'<p>'+e(draft.file.filename)+'</p>':''}${area('Комментарий к новому оригиналу','caption',draft.caption)}`;
+  else body=`<p class="note">Это приближённое основание по веткам, не измеренный вес теплицы. Качества не получают выдуманное количество веток.</p>${areas().filter(a=>a.kind==='greenhouse').map(a=>field('Основание · '+a.name,'basis_'+a.id,draft['basis_'+a.id],'text','inputmode="decimal"')).join('')}${field('Всего веток в основании, включая нераспределённые','total_basis_count',draft.total_basis_count,'text','inputmode="decimal"')}${area('На чём основана пропорция','basis_description',draft.basis_description)}`;
+  return Header({links:'Связь поля и депо',attachment:'Дополнительный оригинал',estimate:'Оценка по теплицам'}[kind],refName(s.depot_id),true)+panel(form('journey-'+kind,body+area('Основание решения владельца','reason',draft.reason)+`<p class="note">Документ: ${e(displayDate(s.event_date))} · ${e(money(s.total_amount,s.currency))}. Уточнение не создаёт денег и не меняет итог документа.</p>`,kind==='estimate'?'Рассчитать и проверить':'Подтвердить '+(kind==='links'?'связь':'прикрепление')));
 }
 function inventory() {
   const v = data.inventory;
@@ -1170,7 +1170,16 @@ async function render() {
         current = loaded;
       }
       body = paymentDetail(current);
-    } else if (page === "harvest") body = harvest();
+    } else if (page === "harvest") {
+      const filters=harvestSelection(route,localDay());
+      const loaded=await api.entityGet("/harvest/monthly?"+harvestQuery(filters));
+      if(token!==epoch) return;
+      current={...loaded,selection:filters};
+      body=monthlyHarvestView(loaded,filters);
+      lastHarvestRoute=harvestRoute(filters);
+      await api.draft("harvest-navigation",{route:lastHarvestRoute});
+      if(token!==epoch) return;
+    }
     else if (page === "quick" && arg === "harvest") {
       {
         const loaded = await getDraft(route, { date: localDay() });
@@ -1179,7 +1188,7 @@ async function render() {
       }
       body = reportForm();
     } else if (page === "report") {
-      const report = data.harvest?.reports.find((r) => r.id === arg);
+      const report = await api.entityGet("/harvest/reports/"+arg);
       if (!report)
         throw Error("Срез не найден в загруженной истории. Обновите данные.");
       const evidence = await api.entityGet(
@@ -1189,19 +1198,44 @@ async function render() {
       current = { ...report, original_evidence: evidence };
       body = reportDetail(current);
     } else if (page === "attach-depot") {
-      current = data.harvest?.reports.find((r) => r.id === arg);
-      if (!current) throw Error("Полевой срез не найден.");
+      const report = arg === "new" ? null : await api.entityGet("/harvest/reports/"+arg);
+      if(token!==epoch) return;
+      current=report;
       {
-        const loaded = await getDraft(route, { date: current.event_date });
+        const loaded = await getDraft(route, { date: current?.event_date || localDay(), line_count: "1" });
         if (token !== epoch) return;
         draft = loaded;
       }
       body = depotForm(current);
+    } else if (page === "edit-depot") {
+      const proposal=await api.entityGet('/owner/confirmations/'+arg+'/preview');
+      const saved=await api.readDraft(route) || await api.readDraft('depot-editor:'+arg);
+      if(token!==epoch) return;
+      current=proposal;
+      draft=saved;
+      if(!draft?.id) {
+        const restored=await getDraft(route,{date:proposal.revision.payload.event_date,source_id:proposal.source.id,proposal_id:proposal.id,line_count:String(proposal.revision.payload.lines.length || 1)});
+        if(token!==epoch) return;
+        draft=restored;
+        const f=proposal.revision.payload;
+        Object.assign(draft,{depot:f.depot_id,currency:f.currency,link_evidence:f.link_evidence,stated_total:f.stated_total,alacak_value:f.alacak_value,due_date:f.due_date,document_number:f.document_number});
+        f.lines.forEach((l,i)=>{const pre=i?`line_${i}_`:'';Object.assign(draft,{[pre+'quality']:l.original_quality_name,[pre+'quality_category']:f.qualities[i],[pre+'kg']:l.net_weight_kg,[pre+'price']:l.unit_price,[pre+'stated_amount']:l.stated_amount,[pre+'count']:l.count,[pre+'source_line']:l.source_line});});
+      }
+      body=depotForm(null);
+    } else if (['depot-links','depot-estimate','depot-attachment'].includes(page)) {
+      const loaded=await api.entityGet('/harvest/settlements/'+arg);
+      const j=await api.entityGet('/harvest/settlements/'+arg+'/journey');
+      const initial={};for(const bid of j.batch_ids) initial['batch_'+bid]='on';
+      const d=await getDraft(route,initial);
+      if(token!==epoch) return;
+      current={...loaded,journey:j};draft=d;body=journeyForm(page.slice(6),current);
     } else if (page === "depot") {
       {
         const loaded = await api.entityGet("/harvest/settlements/" + arg);
         if (token !== epoch) return;
-        current = loaded;
+        const journey=await api.entityGet("/harvest/settlements/"+arg+"/journey");
+        if(token!==epoch) return;
+        current = {...loaded,journey};
       }
       body = depotDetail(current);
     } else if (page === "inventory") body = inventory();
@@ -1264,12 +1298,17 @@ async function render() {
     shell(body);
     document.querySelector("#main").dataset.renderedRoute = route;
     document.querySelector("#main")?.focus({ preventScroll: true });
+    if(/^(harvest|report|depot)(\/|$)/.test(route) && harvestScroll.has(route))
+      window.scrollTo({top:harvestScroll.get(route),behavior:'instant'});
   } catch (error) {
     if (token === epoch) shell(errorBox(error));
   }
 }
 function values(form) {
-  return Object.fromEntries(new FormData(form).entries());
+  const result=Object.fromEntries(new FormData(form).entries());
+  if(form.dataset.form==='depot' || form.dataset.form?.startsWith('journey-'))
+    for(const box of form.querySelectorAll('input[type=checkbox][name]')) result[box.name]=box.checked?'on':'';
+  return result;
 }
 function showError(error, node) {
   const target =
@@ -1368,7 +1407,9 @@ async function submitForm(formEl, snapshot) {
     v = snapshot.fields,
     savedRoute = route;
   if (draft) await saveDraft(snapshot);
-  if (name === "capture") {
+  if (name === "harvest-filters") {
+    go(harvestRoute(current.selection,{season_start_year:Number(v.season_start_year),greenhouse_id:v.greenhouse_id || null,currency:v.currency || current.selection.currency,allocation:v.allocation || "all",month:null}));
+  } else if (name === "capture") {
     const kind = route.split("/")[1],
       body = {
         client_capture_id: draft.id,
@@ -1446,73 +1487,82 @@ async function submitForm(formEl, snapshot) {
       "report/" + result.id,
       "Полевое наблюдение сохранено на сервере.",
     );
+  } else if (name === 'edit-depot-line') {
+    const i=Number(formEl.dataset.index), payload=structuredClone(current.revision.payload);
+    const stated=v.stated_amount?exactMoney(v.stated_amount):null;
+    if(v.confirmed_amount==='stated' && stated==null) throw Error('Укажите сумму документа.');
+    payload.lines[i]={...payload.lines[i],original_quality_name:requireText(v.quality,'качество'),net_weight_kg:quantity(v.kg),unit_price:exactMoney(v.price),stated_amount:stated,confirmed_amount:v.confirmed_amount==='stated'?stated:null,count:integerOrUnknown(v.count)};
+    payload.qualities[i]=v.quality_category || null;payload.quality_reviewed=payload.qualities.every(Boolean);payload.arithmetic_reviewed=false;
+    await api.entityPost('/owner/confirmations/'+current.id+'/revise',{expected_version:current.version,payload,reason:'Исправление одной строки владельцем'},current.id+':line:'+i+':'+current.version);
+    for(const key of ['depot-editor:'+current.id,'edit-depot/'+current.id]) {
+      const edited=await api.readDraft(key);
+      if(edited) {const pre=i?`line_${i}_`:'';Object.assign(edited,{[pre+'quality']:v.quality,[pre+'quality_category']:v.quality_category,[pre+'kg']:v.kg,[pre+'price']:v.price,[pre+'stated_amount']:v.stated_amount,[pre+'confirmed_amount']:v.confirmed_amount,[pre+'count']:v.count});await api.draft(key,edited);}
+    }
+    sheetRoot.innerHTML=''; await render();
   } else if (name === "depot") {
-    const report = current;
-    if (!draft.file) throw Error("Выберите оригинальный JPEG, PNG или PDF.");
-    const linkEvidence = requireText(draft.link_evidence, "основание связи");
-    const batchBody = {
-      event_date: report.event_date,
-      label: "Срез " + report.original_greenhouse + " " + report.event_date,
-      report_ids: [report.id],
-      link_evidence: linkEvidence,
-    };
-    if (draft.confirmed_amount === "stated" && !draft.stated_amount)
-      throw Error("Выбрана сумма документа: укажите её явно.");
-    const body = {
-      depot_id: requireText(draft.depot, "депо"),
-      event_date: draft.date,
-      currency: "TRY",
-      batch_ids: [],
-      link_evidence: linkEvidence,
-      original_greenhouse: report.original_greenhouse,
-      lines: [
-        {
-          original_quality_name: requireText(
-            draft.quality,
-            "качество из документа",
-          ),
-          net_weight_kg: quantity(draft.kg),
-          unit_price: exactMoney(draft.price),
-          stated_amount: draft.stated_amount
-            ? exactMoney(draft.stated_amount)
-            : null,
-          confirmed_amount:
-            draft.confirmed_amount === "stated"
-              ? draft.stated_amount
-                ? exactMoney(draft.stated_amount)
-                : null
-              : null,
-          count: integerOrUnknown(draft.count),
-          source_line: requireText(draft.source_line, "строку источника"),
-          allocations: [],
-        },
-      ],
-      stated_total: draft.stated_amount
-        ? exactMoney(draft.stated_amount)
-        : null,
-      evidence: {
-        source: "owner:r3-connected-test-depot",
-        source_reference: draft.id,
-        raw_text: draft.caption || null,
-        ...draft.file,
-      },
-    };
-    const batch = await api.entityPost(
-      "/harvest/batches",
-      batchBody,
-      draft.id + ":batch",
-    );
-    body.batch_ids = [batch.id];
-    const result = await api.entityPost(
-      "/harvest/settlements",
-      body,
-      draft.id + ":settlement",
-    );
-    await clearDraft(savedRoute);
-    await finish(
-      "depot/" + result.id,
-      "Исходник, комментарий и явная связь сохранены в черновике депо.",
-    );
+    const report=current?.revision ? null : current;
+    if(!draft.file && !draft.source_id) throw Object.assign(Error('Выберите оригинальный JPEG, PNG или PDF.'),{field:'file'});
+    const selectedReports=[...(report?[report.id]:[]),...Object.entries(draft).filter(([k,v])=>k.startsWith('report_') && v==='on').map(([k])=>k.slice(7))];
+    const lines=[], qualities=[];
+    for(let i=0;i<Number(draft.line_count || 1);i++) {
+      const pre=i?`line_${i}_`:''; const get=k=>draft[pre+k];
+      const stated=get('stated_amount')?exactMoney(get('stated_amount')):null;
+      if(get('confirmed_amount')==='stated' && !stated) throw Object.assign(Error('Укажите выбранную сумму документа.'),{field:pre+'stated_amount'});
+      lines.push({original_quality_name:requireText(get('quality'),'качество из документа'),net_weight_kg:quantity(get('kg')),unit_price:exactMoney(get('price')),stated_amount:stated,confirmed_amount:get('confirmed_amount')==='stated'?stated:null,count:integerOrUnknown(get('count')),source_line:get('source_line') || get('quality'),allocations:[]});
+      qualities.push(get('quality_category') || null);
+    }
+    let proposal;
+    if(draft.proposal_id) proposal=await api.entityGet('/owner/confirmations/'+draft.proposal_id+'/preview');
+    else {
+      if(!draft.source_id) {
+        const source=await api.entityPost('/owner/captures',{client_capture_id:draft.id,captured_at:draft.captured_at,timezone:'Europe/Istanbul',capture_context:'depot_receipt',mode:draft.file.mime_type==='application/pdf'?'file':'photo',...(draft.caption?.trim()?{text:draft.caption}:{}),...draft.file},draft.id+':source');
+        draft.source_id=source.id; await api.draft(savedRoute,draft);
+      }
+      for(let i=0;i<20;i++) {
+        const source=await api.entityGet('/owner/captures/'+draft.source_id);
+        const found=(source.proposals||[]).find(p=>p.action_type==='DEPOT_RECEIPT');
+        if(found) {proposal=await api.entityGet('/owner/confirmations/'+found.id+'/preview');break;}
+        if(source.job?.state==='FAILED') throw Error('Оригинал сохранён, подготовка завершилась ошибкой. Повторите подготовку в источнике. Введённые данные сохранены на телефоне.');
+        await new Promise(resolve=>setTimeout(resolve,500));
+      }
+      if(!proposal) throw Error('Оригинал сохранён. Подготовка ещё выполняется; повторите открытие проверки. Данные формы сохранены.');
+      draft.proposal_id=proposal.id; await api.draft(savedRoute,draft);
+    }
+    let batchIds=proposal.revision.payload.batch_ids || [];
+    if(selectedReports.length) {
+      const batch=await api.entityPost('/harvest/batches',{event_date:draft.date,label:'Явно выбранные полевые срезы',report_ids:[...new Set(selectedReports)],link_evidence:requireText(draft.link_evidence,'основание связи')},draft.id+':batch');
+      batchIds=[batch.id];
+    }
+    const payload={...proposal.revision.payload,depot_id:requireText(draft.depot,'депо'),event_date:draft.date,currency:draft.currency || 'TRY',batch_ids:batchIds,link_evidence:batchIds.length?draft.link_evidence:null,original_greenhouse:report?.original_greenhouse || proposal.revision.payload.original_greenhouse || null,lines,qualities,quality_reviewed:qualities.every(Boolean),arithmetic_reviewed:false,stated_total:draft.stated_total?exactMoney(draft.stated_total):null,alacak_value:draft.alacak_value?exactMoney(draft.alacak_value):null};
+    if(draft.due_date) payload.due_date=draft.due_date; else delete payload.due_date;
+    if(draft.document_number) payload.document_number=draft.document_number; else delete payload.document_number;
+    await api.entityPost('/owner/confirmations/'+proposal.id+'/revise',{expected_version:proposal.version,payload,reason:'Владелец ввёл проверяемую расшифровку документа; оригинал сохранён отдельно'},draft.id+':review:'+proposal.version);
+    await api.draft('depot-editor:'+proposal.id,{...draft,report_id:report?.id || draft.report_id || null});
+    await finish('review/'+proposal.id,'Оригинал и текущая расшифровка сохранены. Проверьте арифметику и эффект.');
+  } else if(name==='journey-links' || name==='journey-attachment' || name==='journey-estimate') {
+    const kind=name.slice(8),body={expected_version:current.journey.version,confirmed:true,reason:requireText(draft.reason,'основание решения')};
+    if(kind==='links') {
+      body.batch_ids=Object.entries(draft).filter(([k,x])=>k.startsWith('batch_') && x==='on').map(([k])=>k.slice(6));
+      const reportIds=Object.entries(draft).filter(([k,x])=>k.startsWith('report_') && x==='on').map(([k])=>k.slice(7));
+      if(reportIds.length) {
+        const b=await api.entityPost('/harvest/batches',{event_date:current.event_date,label:'Поздняя явно подтверждённая связь',report_ids:reportIds,link_evidence:body.reason},draft.id+':batch');
+        body.batch_ids.push(b.id);
+      }
+    } else if(kind==='attachment') {
+      if(!draft.file) throw Error('Выберите отдельный оригинальный файл.');
+      body.evidence={source:'owner:harvest-attachment',source_reference:draft.id,raw_text:draft.caption || null,...draft.file};
+    } else {
+      body.basis=Object.entries(draft).filter(([k,x])=>k.startsWith('basis_') && k!=='basis_description' && x).map(([k,x])=>({work_area_id:k.slice(6),basis_count:quantity(x)}));
+      body.total_basis_count=quantity(draft.total_basis_count);body.basis_description=requireText(draft.basis_description,'основание пропорций');
+      const previewBody={...body};delete previewBody.confirmed;
+      const preview=await api.harvestEstimatePreview(current.id,previewBody);
+      if(savedRoute!==location.hash.slice(1)) return;
+      draft.estimate_body=body;draft.estimate_preview=preview;await api.draft(savedRoute,draft);
+      const rows=preview.lines || [];
+      openSheet('Проверить оценку',`<p>Итог документа: ${e(preview.total_weight_kg)} кг · ${e(preview.total_amount)} ${e(current.currency)}. Следующие доли — ESTIMATED.</p><p>Основание: ${e(body.basis_description)} · всего ${e(body.total_basis_count)} веток. Неизвестная доля: ${e(preview.unknown_basis_count)}.</p>${rows.map(x=>'<p><strong>'+e(x.original_quality_name || 'Строка качества')+'</strong> · '+e(x.work_area_id?(areas().find(a=>a.id===x.work_area_id)?.name || 'Неизвестное место'):'Нераспределено')+' · '+e(x.net_weight_kg)+' кг · '+e(x.amount)+' '+e(current.currency)+'</p>').join('')}<p class="note">Отдельный расчёт каждой строки качества. Деньги не поступают; финансовый период не меняется.</p><div id="action-error" class="form-error"></div>${btn('Подтвердить оценку','confirm-estimate','primary full')}`);return;
+    }
+    await api.entityPost('/harvest/settlements/'+current.id+'/'+(kind==='links'?'links':'attachments'),body,draft.id+':'+kind);
+    await clearDraft(savedRoute);await finish('depot/'+current.id,'Новая версия сохранена. Учётный эффект не повторялся.');
   } else if (name === "post-depot") {
     const required = current.issues.filter((x) => x !== "receipt_draft");
     if (required.some((x) => v["issue_" + x] !== "on"))
@@ -1830,7 +1880,7 @@ document.addEventListener("input", (event) => {
   if (
     !formEl ||
     !draft ||
-    ["product", "edit-fact"].includes(formEl.dataset.form)
+    ["product", "edit-fact", "edit-depot-line"].includes(formEl.dataset.form)
   )
     return;
   if (event.target.type === "file") return;
@@ -1880,6 +1930,9 @@ document.addEventListener("change", (event) => {
           ?.base_unit || "";
   }
 });
+document.addEventListener('click',event=>{
+  if(event.target.closest('a[href^="#"], [data-action="back"]') && /^(harvest|report|depot)(\/|$)/.test(route)) harvestScroll.set(route,scrollY);
+},true);
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
@@ -1897,6 +1950,21 @@ document.addEventListener("click", (event) => {
   }
   if (name.startsWith("capture-")) return go("capture/" + name.slice(8));
   if (name === "edit") return editFact(arg);
+  if(name==='edit-depot-line') {
+    const i=Number(arg),l=current.revision.payload.lines[i];
+    return openSheet('Исправить строку '+(i+1),`<form data-form="edit-depot-line" data-index="${i}">${field('Качество дословно','quality',l.original_quality_name)}${select('Категория','quality_category',[{value:'HIGHEST',label:'Высшее'},{value:'FIRST',label:'Первое'},{value:'SECOND',label:'Второе'}],current.revision.payload.qualities[i],'Нужно проверить')}${field('Вес, кг','kg',l.net_weight_kg,'text','inputmode="decimal"')}${field('Цена за кг','price',l.unit_price,'text','inputmode="decimal"')}${field('Сумма документа · необязательно','stated_amount',l.stated_amount,'text','inputmode="decimal"')}${select('Использовать сумму','confirmed_amount',[{value:'calculated',label:'Вес × цена'},{value:'stated',label:'Сумма документа'}],l.confirmed_amount===l.stated_amount && l.stated_amount!=null?'stated':'calculated')}${field('ADET · если указан','count',l.count,'number','min="1"')}<p class="note">Оригинал не изменится; арифметику нужно проверить заново.</p><div class="form-error" role="alert"></div>${submit('Сохранить исправление')}</form>`);
+  }
+  if (name === "add-depot-line" || name === "remove-depot-line") return action(async()=>{
+    const count=Number(draft.line_count || 1);
+    if(name==='add-depot-line') { if(count>=100) throw Error('Не более 100 строк'); draft.line_count=String(count+1); }
+    else {
+      const keys=['quality','quality_category','kg','price','stated_amount','confirmed_amount','count','source_line'];
+      for(let i=Number(arg);i<count-1;i++) for(const k of keys) draft[`line_${i}_${k}`]=draft[`line_${i+1}_${k}`] || '';
+      for(const k of keys) delete draft[`line_${count-1}_${k}`];
+      draft.line_count=String(count-1);
+    }
+    await api.draft(route,draft); await render();
+  });
   if (name === "new-product")
     return openSheet(
       "Новый товар",
@@ -1963,8 +2031,17 @@ document.addEventListener("click", (event) => {
     }
     if (name === "recover-source") return recover(arg);
     if (name === "recover") return recover(current.source.id, current);
+    if (name === "review-depot-arithmetic") {
+      await api.entityPost('/owner/confirmations/'+current.id+'/revise',{expected_version:current.version,payload:{...current.revision.payload,arithmetic_reviewed:true},reason:'Владелец проверил строки, итог, независимые количества и отсутствие оплаты'},current.id+':arithmetic:'+current.version);
+      return render();
+    }
+    if(name==='confirm-estimate') {
+      if(!draft.estimate_body) throw Error('Сначала рассчитайте оценку.');
+      await api.entityPost('/harvest/settlements/'+current.id+'/estimates',draft.estimate_body,draft.id+':estimate');
+      sheetRoot.innerHTML='';await clearDraft(route);return finish('depot/'+current.id,'Оценка подтверждена отдельной версией. Итог продажи не изменился.');
+    }
     if (name === "confirm-proposal") {
-      await api.entityPost(
+      const confirmed = await api.entityPost(
         "/owner/confirmations/" + current.id + "/confirm",
         {
           expected_version: current.version,
@@ -1974,7 +2051,11 @@ document.addEventListener("click", (event) => {
         },
         current.id + ":confirm:" + current.version,
       );
-      return finish(route, "Сервер подтвердил действие.");
+      if(current.action_type==='DEPOT_RECEIPT' && confirmed.effect?.id) {
+        for(const saved of await api.store.all()) if(saved.scope===api.scope && saved.type==='draft' && saved.value?.proposal_id===current.id)
+          await api.store.delete(saved.key);
+      }
+      return finish(current.action_type==='DEPOT_RECEIPT' && confirmed.effect?.id ? 'depot/'+confirmed.effect.id : route, "Сервер подтвердил действие.");
     }
     if (name === "defer-proposal" || name === "reject-proposal") {
       await api.entityPost(
@@ -2072,7 +2153,9 @@ window.addEventListener("keydown", (event) => {
     api.configure(config);
     const generation = api.generation;
     await refreshData();
+    const navigation=await api.readDraft("harvest-navigation");
     if (generation !== api.generation) return;
+    lastHarvestRoute=navigation?.route || "harvest";
     ready = true;
     await render();
   } catch (error) {
@@ -2100,7 +2183,7 @@ updateVisibleViewport();
 function revealFocusedCaptureField() {
   const field = document.activeElement;
   if (!field?.matches("input:not([type=file]), textarea, select") ||
-      !field.closest('[data-form="report"], [data-form="receipt"]')) return;
+      !field.closest('[data-form="report"], [data-form="receipt"], [data-form="depot"], [data-form^="journey-"], [data-form="edit-depot-line"]')) return;
   const viewport = window.visualViewport;
   const top = (viewport?.offsetTop || 0) + 16;
   const dockTop = document.querySelector('.dock')?.getBoundingClientRect().top ?? Infinity;

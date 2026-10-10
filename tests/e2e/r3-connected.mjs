@@ -653,9 +653,11 @@ try {
       `TEST ${engine} explicitly the selected cut`,
     );
     await fill(page, "quality", "Grand");
+    await select(page, "quality_category", "HIGHEST");
     await fill(page, "kg", "60");
     await fill(page, "price", receiptPrice);
     await fill(page, "count", "6");
+    await page.getByText("Дословная строка документа", {exact:true}).click();
     await fill(
       page,
       "source_line",
@@ -674,70 +676,46 @@ try {
       `TEST ${engine} separate owner caption`,
     );
     assert.equal(captionCheck.storedCaption, captionCheck.domCaption);
-    const settlementRequest = page.waitForRequest(
-      (request) =>
-        request.method() === "POST" &&
-        request.url() === base + root + "/harvest/settlements",
-    );
-    await click(page, "Сохранить черновик чека");
-    captionCheck.requestCaption = (
-      await settlementRequest
-    ).postDataJSON().evidence.raw_text;
-    assert.equal(captionCheck.requestCaption, captionCheck.domCaption);
-    await waitHash(page, "depot/");
-    const settlementId = page.url().split("#depot/")[1];
-    const settlement = await read(
-      context,
-      root + "/harvest/settlements/" + settlementId,
-    );
-    assert.ok(settlement.issues.includes("count_discrepancy"));
-    assert.equal(settlement.reconciliation.field_count, 7);
-    assert.equal(settlement.reconciliation.depot_count, 6);
-    assert.equal(
-      settlement.evidence.raw_text,
-      `TEST ${engine} separate owner caption`,
-    );
-    const originalFile = await context.request.get(
-      base + root + "/harvest/evidence/" + settlement.evidence.id,
-    );
-    assert.deepEqual(await originalFile.body(), originalBytes);
-    await page.getByText("Долг ещё не создан", { exact: true }).waitFor();
-    await page.getByText("Полевой вес, кг", { exact: true }).waitFor();
-    await page.getByText("Вес депо, кг", { exact: true }).waitFor();
-    await page
-      .getByText("Средний вес по ADET, кг/ветку", { exact: true })
-      .waitFor();
-    await snap(page, engine + "-390-depot-mismatch");
-    await page.setViewportSize({ width: 320, height: 844 });
-    await layout(page, "depot-detail-320");
-    await snap(page, engine + "-320-depot-mismatch");
-    await page.setViewportSize({ width: 390, height: 844 });
-    for (const check of await page
-      .locator("input[type=checkbox][name^=issue_]")
-      .all()) {
-      await check.scrollIntoViewIfNeeded();
-      await check.check();
-    }
-    await fill(
-      page,
-      "reason",
-      "TEST: sources remain distinct; count and weight mismatch reviewed; unallocated geography remains unknown.",
-    );
-    await click(page, "Подтвердить чек в TEST");
-    await page
-      .getByText(
-        "Сервер подтвердил документ. Продажа и долг созданы один раз.",
-        { exact: true },
-      )
-      .waitFor();
-    await page.reload();
-    await page
-      .getByText(`TEST ${engine} separate owner caption`, { exact: true })
-      .waitFor();
+    const captureRequest=page.waitForRequest(request=>request.method()==='POST' && request.url()===base+root+'/owner/captures');
+    await click(page,'Открыть короткую проверку');
+    captionCheck.requestCaption=(await captureRequest).postDataJSON().text;
+    assert.equal(captionCheck.requestCaption,captionCheck.domCaption);
+    await waitHash(page,'review/');
+    const depotProposalId=page.url().split('#review/')[1];
+    let depotProposal=await read(context,root+'/owner/confirmations/'+depotProposalId+'/preview');
+    assert.equal(depotProposal.state,'NEEDS_INPUT');
+    assert.equal(depotProposal.revision.basis.arithmetic.field_count,7);
+    assert.equal(depotProposal.revision.basis.arithmetic.depot_count,6);
+    assert.equal(depotProposal.revision.basis.arithmetic.count_discrepancy,true);
+    assert.equal(depotProposal.revision.payload.arithmetic_reviewed,false);
+    assert.equal(await page.locator('[data-action=confirm-proposal]').isDisabled(),true);
+    await page.getByText('Расхождение: 7 веток по полю и 6 ADET по документу. Ни одно значение не заменяется.',{exact:true}).waitFor();
+    await snap(page,engine+'-390-depot-mismatch');
+    await page.setViewportSize({width:320,height:844});
+    await layout(page,'depot-review-320');await snap(page,engine+'-320-depot-mismatch');
+    await page.setViewportSize({width:390,height:844});
+    await click(page,'Арифметика и расхождения проверены');
+    await page.getByText('Арифметика проверена владельцем',{exact:true}).waitFor();
+    assert.equal(await page.locator('[data-action=confirm-proposal]').isDisabled(),false);
+    await click(page,'Подтвердить действие в TEST');
+    await waitHash(page,'depot/');
+    const settlementId=page.url().split('#depot/')[1];
+    const settlement=await read(context,root+'/harvest/settlements/'+settlementId);
+    assert.equal(settlement.status,'posted');assert.ok(settlement.issues.includes('count_discrepancy'));
+    assert.equal(settlement.reconciliation.field_count,7);assert.equal(settlement.reconciliation.depot_count,6);
+    assert.equal(settlement.evidence.raw_text,`TEST ${engine} separate owner caption`);
+    assert.equal(settlement.lines[0].normalized_quality,'HIGHEST');
+    const originalFile=await context.request.get(base+root+'/owner/captures/'+depotProposal.source.id+'/original');
+    assert.deepEqual(await originalFile.body(),originalBytes);
+    await page.getByText('Сервер подтвердил документ. Продажа и долг созданы один раз.',{exact:true}).waitFor();
+    await page.getByText('Средний вес по ADET, кг/ADET',{exact:true}).waitFor();
+    await page.reload();await page.getByText(`TEST ${engine} separate owner caption`,{exact:true}).waitFor();
     result.records.reports.push(reportId);
     result.records.settlements.push(settlementId);
     result.records.settlementEvidence.push({
       id: settlementId,
+      owner_source_id: depotProposal.source.id,
+      proposal_id: depotProposalId,
       report_id: reportId,
       original_sha256: createHash("sha256").update(originalBytes).digest("hex"),
       original_bytes: originalBytes.length,

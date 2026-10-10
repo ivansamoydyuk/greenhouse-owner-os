@@ -170,7 +170,7 @@ class HarvestService:
             for bid in sorted(body.batch_ids,key=str):
                 b=u.session.scalar(select(BatchRow).where(BatchRow.id==bid).with_for_update())
                 if not b or b.entity_id!=e:raise ValidationError('batch scope mismatch')
-                if u.session.scalar(select(SettlementBatchRow.settlement_id).join(SettlementRow,SettlementRow.id==SettlementBatchRow.settlement_id).where(SettlementBatchRow.batch_id==bid,SettlementRow.status!='reversed')):raise ConflictError('batch already assigned to receipt')
+                if u.session.scalar(text("SELECT s.id FROM harvest.depot_settlements s CROSS JOIN LATERAL harvest.current_batch_links(s.id) l WHERE l.batch_id=:b AND s.status<>'reversed' LIMIT 1"),dict(b=bid)):raise ConflictError('batch already assigned to receipt')
                 u.session.add(SettlementBatchRow(settlement_id=r.id,batch_id=bid))
             for ordinal,ln in enumerate(body.lines):
                 calc=line_amount(ln.net_weight_kg,ln.unit_price);amount=ln.confirmed_amount if ln.confirmed_amount is not None else calc
@@ -202,7 +202,8 @@ class HarvestService:
         return r
     def _settlement_view(self,u,r):
         lines=list(u.session.scalars(select(LineRow).where(LineRow.settlement_id==r.id).order_by(LineRow.source_line,LineRow.id)))
-        bids=list(u.session.scalars(select(SettlementBatchRow.batch_id).where(SettlementBatchRow.settlement_id==r.id)))
+        original_bids=list(u.session.scalars(select(SettlementBatchRow.batch_id).where(SettlementBatchRow.settlement_id==r.id)))
+        bids=list(u.session.scalars(text('SELECT batch_id FROM harvest.current_batch_links(:s) ORDER BY batch_id'),dict(s=r.id)))
         report_ids=list(u.session.scalars(select(BatchReportRow.report_id).where(BatchReportRow.batch_id.in_(bids)))) if bids else []
         reports=list(u.session.scalars(select(ReportRow).where(ReportRow.id.in_(report_ids)))) if report_ids else []
         issues=[]
@@ -219,11 +220,13 @@ class HarvestService:
         kg=sum((x.net_weight_kg for x in lines),Decimal(0))
         if field_count is not None and depot_count is not None and field_count!=depot_count:issues.append('count_discrepancy')
         if field_kg is not None and field_kg!=kg:issues.append('weight_discrepancy')
+        quality_reviews=[dict(x) for x in u.session.execute(text("SELECT q.line_no,q.quality,q.proposal_id,q.reviewed_by,r.version,r.basis FROM harvest.receipt_quality_reviews q JOIN core.proposed_actions p ON p.id=q.proposal_id JOIN core.proposal_revisions r ON r.proposal_id=p.id AND r.version=p.version WHERE q.settlement_id=:s ORDER BY q.line_no"),dict(s=r.id)).mappings()]
+        quality_reviews=harvest_json(quality_reviews)
         line_views=[]
         for l in lines:
             allocs=list(u.session.scalars(select(AllocationRow).where(AllocationRow.line_id==l.id)))
             if sum((a.amount for a in allocs),Decimal(0))<l.amount or sum((a.net_weight_kg for a in allocs),Decimal(0))<l.net_weight_kg:issues.append('unallocated')
-            line_views.append(dict(row_dict(l),allocations=[row_dict(a) for a in allocs]))
+            line_views.append(dict(row_dict(l),classification_provenance='OWNER_RECEIPT_REVIEW' if quality_reviews else 'LEGACY_UNVERIFIED',allocations=[row_dict(a) for a in allocs]))
         remaining=u.finance.obligation_remaining(r.obligation_id) if r.obligation_id else Decimal(0)
         if r.expected_payment and not r.due_date and (r.status=='draft' or remaining>0):issues.append('missing_due_date')
         evidenced_gids={x.greenhouse_id for x in reports if x.greenhouse_id}
@@ -233,7 +236,8 @@ class HarvestService:
         confirmed_kg=sum((l.net_weight_kg for l in confirmed_pairs),Decimal(0));confirmed_count=sum((l.count for l in confirmed_pairs),0)
         evidence=u.session.get(EvidenceRow,r.evidence_id)
         replacement=u.session.scalar(select(SettlementRow.id).where(SettlementRow.replacement_of_id==r.id))
-        return dict(row_dict(r),kind='settlement',lines=line_views,batch_ids=[str(b) for b in bids],reports=[row_dict(x) for x in reports],evidence=row_dict(evidence),replacement_id=str(replacement) if replacement else None,
+        owner_source=u.session.scalar(text('SELECT p.inbox_id FROM core.proposed_actions p WHERE p.id::text=:ref AND p.entity_id=:e'),dict(ref=evidence.source_reference,e=r.entity_id)) if evidence.source=='owner:r2-action' else None
+        return dict(row_dict(r),kind='settlement',quality_reviews=quality_reviews,owner_source_id=str(owner_source) if owner_source else None,original_batch_ids=[str(x) for x in original_bids],lines=line_views,batch_ids=[str(b) for b in bids],reports=[row_dict(x) for x in reports],evidence=row_dict(evidence),replacement_id=str(replacement) if replacement else None,
             issues=sorted(set(issues)),reconciliation=dict(field_count=field_count,depot_count=depot_count,field_weight_kg=str(field_kg) if field_kg is not None else None,depot_weight_kg=str(kg)),
             average_weight_kg=str(confirmed_kg/confirmed_count) if confirmed_count else None,
             confirmed_kg=harvest_json(confirmed_kg),confirmed_count=confirmed_count,
@@ -317,7 +321,7 @@ class HarvestService:
             batch_views=[]
             for b in batches:
                 ids=list(u.session.scalars(select(BatchReportRow.report_id).where(BatchReportRow.batch_id==b.id)))
-                linked=u.session.scalar(select(SettlementBatchRow.settlement_id).join(SettlementRow,SettlementRow.id==SettlementBatchRow.settlement_id).where(SettlementBatchRow.batch_id==b.id,SettlementRow.status!='reversed'))
+                linked=u.session.scalar(text("SELECT s.id FROM harvest.depot_settlements s CROSS JOIN LATERAL harvest.current_batch_links(s.id) l WHERE l.batch_id=:b AND s.status<>'reversed' LIMIT 1"),dict(b=b.id))
                 issues=([] if ids else ['missing_report'])+([] if linked else ['missing_depot'])
                 batch_views.append(dict(row_dict(b),kind='batch',report_ids=[str(x) for x in ids],settlement_id=str(linked) if linked else None,issues=issues))
                 for issue in issues:attention.append(dict(type=issue,message=ISSUES[issue],kind='harvest_batch',id=str(b.id)))

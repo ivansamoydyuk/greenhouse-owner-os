@@ -39,8 +39,8 @@ COUNTS = {
     'inventory.locations': 2, 'harvest.worker_reports': 2, 'harvest.batches': 2,
     'harvest.depot_settlements': 2, 'harvest.evidence': 4,
     'core.owner_tasks': 5, 'core.owner_task_actions': 17,
-    'core.confirmation_effects': 8, 'core.invoice_receipt_links': 0,
-    'core.inbox_items': 10, 'workers.tasks': 1, 'workers.assignments': 1,
+    'core.confirmation_effects': 10, 'core.invoice_receipt_links': 0,
+    'core.inbox_items': 12, 'workers.tasks': 1, 'workers.assignments': 1,
     'workers.actions': 1, 'workers.reports': 0, 'workers.links': 0,
 }
 JOURNEYS = {
@@ -324,17 +324,22 @@ def attest(uow, result, proof=None):
         ev = one('SELECT * FROM harvest.evidence WHERE entity_id=:e AND id=:id', id=settlement['evidence_id'])
         expected_mime = 'image/png' if i == 0 else 'application/pdf'
         expected_filename = f'TEST-{engine}-receipt.' + ('png' if i == 0 else 'pdf')
-        require(ev['file_bytes'] is not None and digest(ev['file_bytes']) == ev['fingerprint'] == item['original_sha256']
-                and len(ev['file_bytes']) == item['original_bytes'] and ev['raw_text'] == item['caption']
-                and ev['filename'] == item['filename'] == expected_filename and ev['mime_type'] == item['mime_type'] == expected_mime
-                and ev['created_by'] == owner, 'Original upload bytes/hash/caption/metadata mismatch')
+        capture = one('SELECT * FROM core.inbox_items WHERE entity_id=:e AND id=:id',id=uid(item['owner_source_id']))
+        effect = one('SELECT * FROM core.confirmation_effects WHERE entity_id=:e AND proposal_id=:p',p=uid(item['proposal_id']))
+        proposal = one('SELECT * FROM core.proposed_actions WHERE entity_id=:e AND id=:id',id=uid(item['proposal_id']))
+        require(effect['settlement_id']==settlement['id'] and proposal['inbox_id']==capture['id'] and proposal['action_type']=='DEPOT_RECEIPT' and proposal['state']=='POSTED','Typed source/proposal/depot lineage mismatch')
+        require(capture['file_bytes'] is not None and digest(capture['file_bytes']) == capture['fingerprint'] == ev['fingerprint'] == item['original_sha256']
+                and len(capture['file_bytes']) == item['original_bytes'] and capture['raw_text'] == ev['raw_text'] == item['caption']
+                and capture['filename'] == item['filename'] == expected_filename and capture['mime_type'] == item['mime_type'] == expected_mime
+                and capture['created_by'] == ev['created_by'] == owner and ev['file_bytes'] is None
+                and capture['metadata']['capture_context']=='depot_receipt','Original upload bytes/hash/caption/metadata mismatch')
         require(settlement['status'] == 'posted' and settlement['total_amount'] == TOTALS[i]
                 and settlement['currency'] == 'TRY' and settlement['depot_id'] == parties['depot']['id']
                 and settlement['created_by'] == owner and settlement['payment_id'] is None
                 and settlement['application_ids'] == [] and settlement['reversed_at'] is None
                 and settlement['link_evidence'] == f'TEST {engine} explicitly the selected cut'
                 and {'count_discrepancy', 'weight_discrepancy', 'unallocated'} <= set(settlement['reviewed_issues'])
-                and settlement['review_reason'] == 'TEST: sources remain distinct; count and weight mismatch reviewed; unallocated geography remains unknown.', 'Depot review/financial authority mismatch')
+                and settlement['review_reason'] == 'Owner reviewed R2 receipt arithmetic and scoped qualities', 'Depot review/financial authority mismatch')
         links = rows('''SELECT b.id batch_id,r.id report_id,b.link_evidence FROM harvest.settlement_batches sb
             JOIN harvest.depot_settlements s ON s.id=sb.settlement_id JOIN harvest.batches b ON b.id=sb.batch_id AND b.entity_id=s.entity_id
             JOIN harvest.batch_reports br ON br.batch_id=b.id JOIN harvest.worker_reports r ON r.id=br.report_id AND r.entity_id=b.entity_id
@@ -346,6 +351,9 @@ def attest(uow, result, proof=None):
             WHERE s.entity_id=:e AND s.id=:id''', id=settlement['id'])
         require(len(lines) == 1, 'Exactly one depot line expected')
         line = lines[0]
+        require(line['normalized_quality']=='HIGHEST', 'Explicit receipt quality classification lost')
+        quality_review=one('SELECT * FROM harvest.receipt_quality_reviews WHERE settlement_id=:id',id=settlement['id'])
+        require(quality_review['proposal_id']==proposal['id'] and quality_review['quality']=='HIGHEST' and quality_review['reviewed_by']==owner,'Scoped quality review lineage missing')
         require(line['count'] == 6 and line['net_weight_kg'] == 60 and line['unit_price'] == PRICES[i]
                 and line['amount'] == line['calculated_amount'] == TOTALS[i]
                 and line['source_line'] == f"Grand 60 kg x {item['unit_price']} TRY, ADET 6", 'Depot quantities/price/source line mismatch')
@@ -357,7 +365,7 @@ def attest(uow, result, proof=None):
         depot_obligations.append(ob['id'])
         evidence_ids.extend((report['evidence_id'], ev['id']))
         proof['reports'].append(dict(id=report['id'], evidence_id=report['evidence_id'], original_sha256=report['fingerprint'], count=7, kg='70'))
-        proof['settlements'].append(dict(id=settlement['id'], evidence_id=ev['id'], original_sha256=ev['fingerprint'], independent_expected_sha256=item['original_sha256'], original_bytes=len(ev['file_bytes']), caption_sha256=digest(ev['raw_text']), filename=ev['filename'], mime_type=ev['mime_type'], links=links, line={k: line[k] for k in ('id', 'count', 'net_weight_kg', 'unit_price', 'amount')}, obligation_id=ob['id'], remaining=ob['remaining_amount'], payment_id=None, reviewed_issues=settlement['reviewed_issues']))
+        proof['settlements'].append(dict(id=settlement['id'], evidence_id=ev['id'], original_sha256=ev['fingerprint'], independent_expected_sha256=item['original_sha256'], original_bytes=len(capture['file_bytes']), caption_sha256=digest(ev['raw_text']), filename=capture['filename'], mime_type=capture['mime_type'], links=links, line={k: line[k] for k in ('id', 'count', 'net_weight_kg', 'unit_price', 'amount')}, obligation_id=ob['id'], remaining=ob['remaining_amount'], payment_id=None, reviewed_issues=settlement['reviewed_issues']))
     exact_ids('harvest.batches', batch_ids)
     exact_ids('harvest.evidence', evidence_ids)
     exact_ids('finance.obligations', [r['id'] for r in seed.values()] + depot_obligations)

@@ -153,7 +153,10 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             source=dict(id=s.id,e=s.entity_id,a=s.created_by,raw=s.raw_text,binary=s.file_bytes,mime=s.mime_type,fp=s.fingerprint,saved_at=s.created_at,day=s.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(),duplicate=bool(s.duplicate_of_id),capture_context=s.metadata_json.get('capture_context'))
             u.commit()
         try:
-            if source['binary']:
+            if source['capture_context']=='depot_receipt':
+                # Explicit manual document workflow never depends on OCR availability.
+                output=dict(provider='owner',engine='manual-depot-source',version=ENGINE,text=source['raw'] or '',pages=[],warnings=[])
+            elif source['binary']:
                 output=self.recognizer.recognize(source['binary'],source['mime'])
             else:output=dict(provider='local',engine='source-text',version=ENGINE,text=source['raw'],pages=[],warnings=[])
             with self.factory() as u:
@@ -191,6 +194,9 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
                         locations=rows(u,'SELECT * FROM inventory.locations WHERE entity_id=:e',e=s['e']),
                         workers=rows(u,'SELECT * FROM workers.people WHERE entity_id=:e',e=s['e']))
         raw=out.get('preparation_text',out['text']) or ''
+        if s.get('capture_context')=='depot_receipt':
+            from greenhouse_owner_os.domain.owner_capture import DepotProposal
+            return [('DEPOT_RECEIPT',DepotProposal().model_dump(mode='json'),{'currency':{'category':'CONTEXT DEFAULT','basis':'editable_daily_context'},'lines':{'category':'UNKNOWN','basis':'manual_document_review_required'}})]
         result=prepare_quick_expense(raw,today=s['day']) if s.get('capture_context')=='quick_expense' and not s['binary'] else None
         if result is None:result=prepare_owner_source(raw,today=s['day'],refs=references,binary=bool(s['binary']),pages=out.get('pages',[]))
         for kind,payload,provenance in result:
@@ -303,6 +309,7 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
                 if worker and worker['language']!='ru' and not fields.get('rendered_text'):missing.append('Проверенный перевод: задача пока не отправляется')
         elif kind=='DEPOT_RECEIPT':
             required('depot_id','Депо');required('event_date','Дата');required('currency','Валюта');scoped('core.counterparties',fields.get('depot_id'))
+            if fields.get('due_date') and fields.get('event_date') and fields['due_date']<fields['event_date']:missing.append('Ожидаемая дата оплаты раньше даты документа')
             if fields['batch_ids'] and not (fields.get('link_evidence') or '').strip():missing.append('Подтвердите основание связи с выбранной партией')
             if not fields['lines']:missing.append('Нечитаемые строки: внесите по оригиналу')
             if fields['unreadable_lines']:missing.append('Неполные строки: '+ '; '.join(fields['unreadable_lines'])+' — восстановите точным ручным вводом по оригиналу')
@@ -312,7 +319,21 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             basis['same_day_batches']=rows(u,'SELECT id,event_date,label FROM harvest.batches WHERE entity_id=:e AND event_date=:d ORDER BY id',e=e,d=fields.get('event_date'))
             for bid in fields['batch_ids']:
                 batch=scoped('harvest.batches',bid)
-                if batch and str(batch['event_date'])!=fields.get('event_date'):raise ValidationError('Партия не относится к дате чека')
+                # Date is neither proof nor disproof of an explicitly evidenced scoped link.
+                if batch: basis.setdefault('selected_batches',[]).append(batch)
+            from greenhouse_owner_os.domain.harvest import line_amount
+            arithmetic=[]
+            for line in fields['lines']:
+                calculated=line_amount(line['net_weight_kg'],line['unit_price'])
+                selected=Decimal(line['confirmed_amount']) if line.get('confirmed_amount') is not None else calculated
+                arithmetic.append(dict(calculated_amount=str(calculated),selected_amount=str(selected),stated_amount=line.get('stated_amount')))
+            total=sum((Decimal(x['selected_amount']) for x in arithmetic),Decimal(0))
+            report_counts=rows(u,'SELECT DISTINCT r.id,r.cut_count FROM harvest.worker_reports r JOIN harvest.batch_reports b ON b.report_id=r.id WHERE b.batch_id=ANY(CAST(:ids AS uuid[])) ORDER BY r.id',ids=fields['batch_ids']) if fields['batch_ids'] else []
+            field_count=sum(x['cut_count'] for x in report_counts) if report_counts and all(x['cut_count'] is not None for x in report_counts) else None
+            depot_count=sum(x['count'] for x in fields['lines']) if fields['lines'] and all(x.get('count') is not None for x in fields['lines']) else None
+            basis['arithmetic']=dict(lines=arithmetic,total_amount=str(total),stated_total_discrepancy=fields.get('stated_total') is not None and Decimal(fields['stated_total'])!=total,
+                field_count=field_count,depot_count=depot_count,count_discrepancy=field_count is not None and depot_count is not None and field_count!=depot_count,
+                field_count_unit='веток',depot_count_unit='ADET',cash_effect='0',currency=fields.get('currency'))
             basis['existing_receipts']=rows(u,'SELECT id,version,status FROM harvest.depot_settlements WHERE entity_id=:e AND evidence_id IN (SELECT id FROM harvest.evidence WHERE fingerprint=(SELECT fingerprint FROM core.inbox_items WHERE id=:s))',e=e,s=p['inbox_id'])
             basis['confirmed_source_receipts']=rows(u,"SELECT p.id,p.version FROM core.proposed_actions p JOIN core.inbox_items i ON i.id=p.inbox_id WHERE p.entity_id=:e AND p.action_type='DEPOT_RECEIPT' AND p.state='POSTED' AND i.fingerprint=(SELECT fingerprint FROM core.inbox_items WHERE id=:s)",e=e,s=p['inbox_id'])
             original=u.session.get(InboxRow,UUID(p['inbox_id']))
@@ -472,7 +493,7 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             from .harvest import HarvestService
             from greenhouse_owner_os.domain.harvest import SettlementInput,SettlementPost,EvidenceInput
             svc=HarvestService(factory)
-            body=SettlementInput(depot_id=f['depot_id'],event_date=f['event_date'],currency=f['currency'],original_greenhouse=f['original_greenhouse'],batch_ids=f['batch_ids'],link_evidence=f['link_evidence'],stated_total=f['stated_total'],alacak_value=f['alacak_value'],lines=f['lines'],evidence=EvidenceInput(source='owner:r2-action',source_reference=p['id'],raw_text=s.raw_text or None))
+            body=SettlementInput(depot_id=f['depot_id'],event_date=f['event_date'],currency=f['currency'],due_date=f.get('due_date'),document_number=f.get('document_number'),original_greenhouse=f['original_greenhouse'],batch_ids=f['batch_ids'],link_evidence=f['link_evidence'],stated_total=f['stated_total'],alacak_value=f['alacak_value'],lines=f['lines'],evidence=EvidenceInput(source='owner:r2-action',source_reference=p['id'],raw_text=s.raw_text or None))
             d=svc.settlement(e,a,key,body,reviewed_qualities=f['qualities'],source_item_id=s.id,distinct_source_reviewed=f['separate_event_reviewed'])
             for idx,q in enumerate(f['qualities']):
                 rows(u,'INSERT INTO harvest.receipt_quality_reviews(settlement_id,line_no,entity_id,proposal_id,quality,reviewed_by) VALUES(:s,:n,:e,:p,:q,:a) RETURNING line_no',s=d['id'],n=idx,e=e,p=p['id'],q=q,a=a)

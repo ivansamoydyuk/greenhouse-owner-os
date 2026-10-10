@@ -8,7 +8,7 @@ from .inventory import InventoryLine
 from .harvest import LineInput
 
 class CaptureSource(StrictModel):
-    capture_context: Literal['quick_expense'] | None = Field(default=None,exclude_if=lambda v:v is None)
+    capture_context: Literal['quick_expense','depot_receipt'] | None = Field(default=None,exclude_if=lambda v:v is None)
     client_capture_id: UUID
     captured_at: datetime
     timezone: Literal['Europe/Istanbul'] = 'Europe/Istanbul'
@@ -79,6 +79,8 @@ class TaskProposal(StrictModel):
     relative_time_context: str | None = Field(default=None, min_length=1, max_length=250, exclude_if=lambda v:v is None)
 
 class DepotProposal(StrictModel):
+    due_date: date | None = Field(default=None,exclude_if=lambda v:v is None)
+    document_number: str | None = Field(default=None,max_length=250,exclude_if=lambda v:v is None)
     depot_id: UUID | None = None
     event_date: date | None = None
     currency: Literal['TRY','USD','EUR','UAH'] | None = 'TRY'
