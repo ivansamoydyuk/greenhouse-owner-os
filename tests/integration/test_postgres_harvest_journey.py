@@ -342,3 +342,31 @@ def test_monthly_currencies_sources_and_legacy_quality_are_not_reinterpreted(pre
     kg=monthly(i,'kg');assert Decimal(kg['total']['value'])==1007
     assert set(kg['total']['source_ids'])=={try_doc['evidence_id'],usd_doc['evidence_id']}
     assert kg['filters']['currency'] is None and kg['filters']['unit']=='кг'
+
+
+def test_monthly_greenhouse_scope_excludes_unlinked_keeps_explicit_unknown_and_attribution(preview):
+    i=farm(preview)
+    _,a_batch=field(i)
+    b_report=send(i['c'],f"/entities/{i['e']}/harvest/reports",dict(event_date='2026-10-05',original_greenhouse='Özvadi',cut_count=50,reporter='TEST owner',evidence=dict(source='test:synthetic',raw_text='TEST field B '+str(uuid4()))))
+    b_batch=send(i['c'],f"/entities/{i['e']}/harvest/batches",dict(event_date='2026-10-05',label='TEST load B',report_ids=[b_report['id']],link_evidence='Owner witnessed B loading'))
+    _,_,a_doc=active(i,[a_batch['id']]);_,_,b_doc=active(i,[b_batch['id']])
+    _,_,unlinked=active(i)
+    _,_,partial=active(i)
+    command(i,partial['id'],'estimates',estimate_body(i,total='300'))
+    exact=post(i['c'],i['e'],draft(i['c'],i['e'],receipt(i['depot'],i['areas'])))
+    a=monthly(i,'kg',i['areas']['İmamlı']);b=monthly(i,'kg',i['areas']['Özvadi']);empty=monthly(i,'kg',i['areas']['Yeşilöz'])
+    a_events={x['id']:x for x in a['total']['events']};b_events={x['id']:x for x in b['total']['events']}
+    assert set(a_events)=={a_doc['id'],partial['id']}
+    assert set(b_events)=={b_doc['id'],partial['id'],exact['id']}
+    assert a_events[a_doc['id']]['value'] is None and a_events[a_doc['id']]['missing']
+    assert b_events[b_doc['id']]['value'] is None and b_events[b_doc['id']]['missing']
+    assert Decimal(a_events[partial['id']]['value'])==300 and a_events[partial['id']]['missing']
+    assert Decimal(b_events[partial['id']]['value'])==150 and b_events[partial['id']]['missing']
+    assert Decimal(a['total']['value'])==300 and a['total']['coverage']==dict(known=0,missing=2,total=2,complete=False)
+    assert Decimal(b['total']['value'])==1150 and b['total']['coverage']==dict(known=1,missing=2,total=3,complete=False)
+    assert empty['total']['events']==[] and empty['total']['value'] is None
+    assert set(a['months'][0]['source_ids'])==set(a['total']['source_ids'])
+    assert unlinked['evidence_id'] not in a['total']['source_ids'] and unlinked['evidence_id'] not in b['total']['source_ids']
+    all_docs=monthly(i,'kg')
+    assert {x['id'] for x in all_docs['total']['events']}=={a_doc['id'],b_doc['id'],unlinked['id'],partial['id'],exact['id']}
+    assert Decimal(all_docs['total']['value'])==4600 and unlinked['evidence_id'] in all_docs['total']['source_ids']

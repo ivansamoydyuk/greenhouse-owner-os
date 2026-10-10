@@ -36,3 +36,9 @@ test('server source labels and greenhouse labels are escaped',()=>{
   const html=monthlyHarvestView({greenhouses:[{id:'x',name:'<script>x</script>'}],months:[{...summary,month:'2026-10'}],total:summary},f);
   assert.doesNotMatch(html,/<script>|<img/);assert.match(html,/&lt;img/);
 });
+
+test('greenhouse unallocated receipt remainder is not presented as attributed harvest',()=>{
+ const summary={...empty,value:'7',unallocated_value:'3',coverage:{known:1,missing:1,total:2,complete:false},events:[]};
+ const html=monthlyHarvestView({greenhouses:[{id:'a',name:'İmamlı'}],months:[{...summary,month:'2026-10'}],total:summary},{...f,greenhouse_id:'a'});
+ assert.match(html,/Нераспределённый остаток документов в выборке: 3/);assert.match(html,/не включён в итог теплицы/);
+});

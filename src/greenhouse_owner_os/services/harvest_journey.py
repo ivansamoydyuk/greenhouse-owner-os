@@ -169,7 +169,7 @@ class HarvestJourneyService:
                     linked_roots.discard(None)
                     if receipt.greenhouse_id:linked_roots.add(str(receipt.greenhouse_id))
                     unknown_basis=Decimal(estimate['unknown_basis_count']) if estimate else Decimal(0)
-                    missing=bool(gid and (unallocated>0 or unknown_basis>0) and (not linked_roots or gid in linked_roots))
+                    missing=bool(gid and (unallocated>0 or unknown_basis>0) and (selected_known or gid in linked_roots))
                     if gid and not selected_known and not missing:continue
                     value=full if gid is None else exact+estimated if selected_known else None
                     # Farm totals are exact source totals; estimates describe attribution only.
