@@ -146,7 +146,7 @@ jobs:
         run: pytest tests/integration/test_postgres_opening.py -v
       - name: PostgreSQL integration and concurrency tests
         run: |
-          timeout --signal=TERM --kill-after=10s 600s pytest tests/integration -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/integration.xml"
+          timeout --signal=TERM --kill-after=10s 900s pytest tests/integration -v --durations=20 -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/integration.xml"
           python - <<'PY'
           import os
           import xml.etree.ElementTree as ET

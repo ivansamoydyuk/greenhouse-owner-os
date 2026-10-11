@@ -1457,13 +1457,29 @@ function showError(error, node) {
     });
   }
 }
+let ownerLoggingOut=false;
+async function logoutOwner(){
+ if(ownerLoggingOut)return;ownerLoggingOut=true;
+ const savedRoute=route,savedDraft=draft?structuredClone(draft):null,savedScope=api.scope;
+ epoch++;api.generation++;ready=false;app.inert=true;
+ try{
+  await fertilizerWrites.settle();
+  if(api.scope!==savedScope)throw Error('Сессия изменилась. Черновик не перенесён.');
+  if(savedDraft)await api.draft(savedRoute,savedDraft);
+  await api.request(config?.daily_pilot?'/pilot/logout':'/preview/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  api.clearIdentity();fertilizerWrites.records.clear();draft=null;current=null;data={};if(config)delete config.draft_key;
+  if(config?.daily_pilot)pilotChannel?.postMessage({changed:true});
+  location.assign(config?.daily_pilot?'/pilot/':'/r3/');
+ }catch(error){if(api.scope===savedScope){ready=true;showError(error,document.querySelector('[data-form]'));}}
+ finally{ownerLoggingOut=false;app.inert=false;}
+}
 async function action(run, node = null) {
   if (busy) return;
   busy = true;
   activeActionRoute = route;
   const previousInert = node?.inert;
   if (node) node.inert = true;
-  const buttons = [...document.querySelectorAll("button")];
+  const buttons = [...document.querySelectorAll("button")].filter(button=>button.dataset.action!=="logout");
   buttons.forEach((b) => {
     b.dataset.wasDisabled = b.disabled ? "1" : "0";
     b.disabled = true;
@@ -2165,6 +2181,7 @@ document.addEventListener("click", (event) => {
   const command = button.dataset.action;
   const [name, ...rest] = command.split(":"),
     arg = rest.join(":");
+  if(name==='logout')return logoutOwner();
   if(name.startsWith('fert-')) return action(async()=>{
     await fertilizerWrites.flush(route);
     const origin=route,scope=api.scope,generation=api.generation,plan=current?.plan;
@@ -2292,14 +2309,6 @@ document.addEventListener("click", (event) => {
       if(!config?.daily_pilot||!participant||participant.id===config.participant_id)throw Error('Участник недоступен для отзыва.');
       await api.request('/pilot/participants/'+encodeURIComponent(participant.id)+'/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected_version:participant.version})});
       await refreshData();await render();toast('TEST-доступ отозван. Активные сессии прекращены.');return;
-    }
-    if (name === "logout") {
-      await fertilizerWrites.flush(route);
-      await api.request(config?.daily_pilot?"/pilot/logout":"/preview/logout", { method: "POST" });
-      api.clearIdentity();fertilizerWrites.records.clear();draft=null;current=null;data={};if(config)delete config.draft_key;
-      if(config?.daily_pilot)pilotChannel?.postMessage({changed:true});
-      location.assign(config?.daily_pilot?"/pilot/":"/r3/");
-      return;
     }
     if (name === "prepare") {
       await api.entityPost(
