@@ -1,0 +1,516 @@
+{
+  "version": "2026-10-09-taxonomy-v1",
+  "authority": {
+    "current_contract": "Current approved Capture R2 typed proposal/source/owner-confirmation contract",
+    "code_baseline": "bd6de1d7386fb93d52d5e519da033d4b0b944240",
+    "source_files": [
+      "src/greenhouse_owner_os/domain/owner_capture.py:DTO",
+      "src/greenhouse_owner_os/services/owner_capture.py:prepare/_validate",
+      "src/greenhouse_owner_os/services/tasks_capture.py"
+    ]
+  },
+  "rules": [
+    "TEST language evidence never creates current production facts",
+    "Quoted third-party material is not authenticated owner authority",
+    "Unsupported interpretation remains reviewable UNRESOLVED",
+    "Semantic-group holdout is frozen before evaluation"
+  ],
+  "families": [
+    {
+      "family": "irrigation",
+      "subtypes": [
+        "whole greenhouse",
+        "part",
+        "sequenced water/treatment/water",
+        "duration correction",
+        "completion inquiry"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "PERSONAL_TASK / WORKER_TASK for instruction; UNRESOLVED for unlinked completion/observation",
+      "expected_proposal_type": "PERSONAL_TASK / WORKER_TASK for instruction; UNRESOLVED for unlinked completion/observation",
+      "critical_fields": [
+        "task title/original instruction",
+        "date required only for WORKER_TASK",
+        "worker+greenhouse when worker task"
+      ],
+      "optional_fields": [
+        "duration, sequence, work-area, time-of-day in instruction"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "instruction vs completed",
+        "total water duration vs post-treatment remainder",
+        "ambiguous location",
+        "no physical automation"
+      ]
+    },
+    {
+      "family": "ventilation",
+      "subtypes": [
+        "open/close",
+        "greenhouse-specific",
+        "time",
+        "completion query",
+        "problem"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "PERSONAL_TASK / WORKER_TASK instruction; UNRESOLVED observation",
+      "expected_proposal_type": "PERSONAL_TASK / WORKER_TASK instruction; UNRESOLVED observation",
+      "critical_fields": [
+        "instruction",
+        "date",
+        "worker+greenhouse when assigned"
+      ],
+      "optional_fields": [
+        "window side",
+        "time",
+        "exceptions"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "open instruction vs actual state",
+        "future automation mention is not device command"
+      ]
+    },
+    {
+      "family": "fertilizers_fertigation",
+      "subtypes": [
+        "multi-product",
+        "per-area dose",
+        "barrel",
+        "split",
+        "actual application",
+        "plan correction"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "WORKER_TASK/PERSONAL_TASK for instruction; STOCK_APPLICATION only explicit actual and sufficient confirmed stock context; otherwise UNRESOLVED",
+      "expected_proposal_type": "WORKER_TASK/PERSONAL_TASK for instruction; STOCK_APPLICATION only explicit actual and sufficient confirmed stock context; otherwise UNRESOLVED",
+      "critical_fields": [
+        "For STOCK_APPLICATION: actual event date, product, exact quantity+unit, source stock location, target greenhouse",
+        "For WORKER_TASK: title, original instruction, worker, greenhouse, date; reviewed translation when needed",
+        "For PERSONAL_TASK: title; optional stated date preserved"
+      ],
+      "optional_fields": [
+        "dose scope, barrel sequence, product aliases, greenhouse"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "plan≠consumption",
+        "kg≠L",
+        "package count≠kg",
+        "recommendation≠application"
+      ]
+    },
+    {
+      "family": "manual_plant_work",
+      "subtypes": [
+        "tie flowers",
+        "prune leaves",
+        "suckers",
+        "clean",
+        "pests",
+        "inspect",
+        "collect samples"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "WORKER_TASK/PERSONAL_TASK; UNRESOLVED observations or completion without task context",
+      "expected_proposal_type": "WORKER_TASK/PERSONAL_TASK; UNRESOLVED observations or completion without task context",
+      "critical_fields": [
+        "original instruction",
+        "date required only for WORKER_TASK",
+        "worker+greenhouse where assigned"
+      ],
+      "optional_fields": [
+        "part, priority, tree counts"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "work target count vs actual production",
+        "disease observation≠diagnosis or chemical authority"
+      ]
+    },
+    {
+      "family": "repair",
+      "subtypes": [
+        "pump",
+        "pipe",
+        "fitting",
+        "windows",
+        "electric",
+        "completed repair",
+        "expense"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "task routes for instruction; UNRESOLVED incident/completion; PAYABLE/PAYMENT/DIRECT_EXPENSE only separately evidenced supported finance action",
+      "expected_proposal_type": "task routes for instruction; UNRESOLVED incident/completion; PAYABLE/PAYMENT/DIRECT_EXPENSE only separately evidenced supported finance action",
+      "critical_fields": [
+        "task context or explicit finance amount/date/party/account/settlement basis"
+      ],
+      "optional_fields": [
+        "equipment, failure cause, work area, service purpose"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "breakdown≠expense",
+        "completed repair≠paid",
+        "one phrase may contain independent slots"
+      ]
+    },
+    {
+      "family": "harvest_depot",
+      "subtypes": [
+        "cut instruction",
+        "worker cut report",
+        "trucks",
+        "depot receipt",
+        "qualities",
+        "Alacak"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "task routes for instruction; DEPOT_RECEIPT for actual depot lines; worker cut report legacy Harvest manual route/UNRESOLVED in R2",
+      "expected_proposal_type": "task routes for instruction; DEPOT_RECEIPT for actual depot lines; worker cut report legacy Harvest manual route/UNRESOLVED in R2",
+      "critical_fields": [
+        "depot+date+original quality/weight/price/amount",
+        "selected batch evidence where required"
+      ],
+      "optional_fields": [
+        "worker count, load, source greenhouse"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "worker report≠depot evidence",
+        "depot=buyer OR water storage",
+        "Alacak≠payment",
+        "no global quality mapping"
+      ]
+    },
+    {
+      "family": "inventory",
+      "subtypes": [
+        "physical arrival",
+        "later invoice",
+        "shortage",
+        "remaining",
+        "transfers",
+        "mixed products"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "STOCK_RECEIPT; STOCK_APPLICATION; INVOICE_MATCH; transfer/stocktake/shortage may require manual mode/UNRESOLVED",
+      "expected_proposal_type": "STOCK_RECEIPT; STOCK_APPLICATION; INVOICE_MATCH; transfer/stocktake/shortage may require manual mode/UNRESOLVED",
+      "critical_fields": [
+        "product, exact quantity+unit, stock location, event date"
+      ],
+      "optional_fields": [
+        "supplier",
+        "known cost",
+        "receipt linkage"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "physical receipt≠invoice≠payable≠payment",
+        "unknown cost≠zero",
+        "no invented pack size"
+      ]
+    },
+    {
+      "family": "worker_assignment",
+      "subtypes": [
+        "one/multiple workers",
+        "help another",
+        "temporary",
+        "recurrence",
+        "report/photo",
+        "unavailable worker"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "WORKER_TASK; multi-worker/multiple greenhouse needs independent explicit proposals or review",
+      "expected_proposal_type": "WORKER_TASK; multi-worker/multiple greenhouse needs independent explicit proposals or review",
+      "critical_fields": [
+        "worker identity",
+        "greenhouse",
+        "date",
+        "original instruction",
+        "reviewed language/text before assignment"
+      ],
+      "optional_fields": [
+        "time",
+        "recurrence suggestion",
+        "part",
+        "report request"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "ambiguous Asif/name alias",
+        "worker default greenhouse not source fact",
+        "instruction not dispatched"
+      ]
+    },
+    {
+      "family": "owner_personal_tasks",
+      "subtypes": [
+        "visit office",
+        "call",
+        "collect papers",
+        "check result",
+        "payment reminder"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "PERSONAL_TASK for explicit owner instruction; otherwise UNRESOLVED",
+      "expected_proposal_type": "PERSONAL_TASK for explicit owner instruction; otherwise UNRESOLVED",
+      "critical_fields": [
+        "title; current PERSONAL_TASK contract does not require date"
+      ],
+      "optional_fields": [
+        "planned date, greenhouse, note when explicitly supplied; preserve absent dates"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "owner task≠worker task≠completed business event",
+        "conditional promise not actual payment"
+      ]
+    },
+    {
+      "family": "agronomist_lab",
+      "subtypes": [
+        "visit",
+        "recommendation",
+        "soil/water sample",
+        "test request/result",
+        "symptoms"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "task routes for explicit task; UNRESOLVED advice/result/observation; finance only explicit separate money event",
+      "expected_proposal_type": "task routes for explicit task; UNRESOLVED advice/result/observation; finance only explicit separate money event",
+      "critical_fields": [
+        "instruction/date for task",
+        "original evidence for unsupported observation"
+      ],
+      "optional_fields": [
+        "lab, sample site, pH/EC/SAR/ESP as source"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "lab request≠result",
+        "recommendation≠application",
+        "no new Walk/lab capability"
+      ]
+    },
+    {
+      "family": "payables",
+      "subtypes": [
+        "debt",
+        "invoice",
+        "service due",
+        "rent/utilities",
+        "wages accrued"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "PAYABLE when confirmed obligation language; ambiguous request/estimate→review",
+      "expected_proposal_type": "PAYABLE when confirmed obligation language; ambiguous request/estimate→review",
+      "critical_fields": [
+        "creditor",
+        "amount",
+        "currency",
+        "event date",
+        "operational purpose if needed"
+      ],
+      "optional_fields": [
+        "due date",
+        "greenhouse",
+        "category",
+        "description"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "need-to-pay vs actual-paid",
+        "'asks'≠confirmed debt",
+        "no due-date fabrication"
+      ]
+    },
+    {
+      "family": "payments",
+      "subtypes": [
+        "paid cash/bank",
+        "partial/full debt",
+        "correction/reversal language"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "PAYMENT for existing payable settlement; DIRECT_EXPENSE for supported new paid expense; unsupported advance/correction→manual/UNRESOLVED",
+      "expected_proposal_type": "PAYMENT for existing payable settlement; DIRECT_EXPENSE for supported new paid expense; unsupported advance/correction→manual/UNRESOLVED",
+      "critical_fields": [
+        "amount",
+        "currency",
+        "date",
+        "account",
+        "party",
+        "exact obligation+purpose for PAYMENT"
+      ],
+      "optional_fields": [
+        "source receipt, note"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "promise≠paid",
+        "cashflow≠expense",
+        "multiple debts not guessed",
+        "no known debt≠advance"
+      ]
+    },
+    {
+      "family": "salaries_daylabor",
+      "subtypes": [
+        "monthly balance",
+        "salary date",
+        "advance",
+        "people/days/rate",
+        "paid vs due"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "PAYABLE/PAYMENT/DIRECT_EXPENSE for supported explicit money events; task/UNRESOLVED for planning; no payroll engine",
+      "expected_proposal_type": "PAYABLE/PAYMENT/DIRECT_EXPENSE for supported explicit money events; task/UNRESOLVED for planning; no payroll engine",
+      "critical_fields": [
+        "finance critical fields",
+        "explicit amount or auditable calculation review"
+      ],
+      "optional_fields": [
+        "period",
+        "number workers/days/rate",
+        "greenhouse when stated"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "accrual≠payment",
+        "pay-date promise≠completed payment",
+        "source geography absent remains absent"
+      ]
+    },
+    {
+      "family": "rent_utilities",
+      "subtypes": [
+        "rent",
+        "partial payment",
+        "electricity",
+        "water",
+        "phone/internet",
+        "transport/lab/service"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "PAYABLE/PAYMENT/DIRECT_EXPENSE by explicit semantic event; task if reminder",
+      "expected_proposal_type": "PAYABLE/PAYMENT/DIRECT_EXPENSE by explicit semantic event; task if reminder",
+      "critical_fields": [
+        "supported money fields"
+      ],
+      "optional_fields": [
+        "billing period",
+        "category",
+        "due date",
+        "greenhouse"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "invoice period≠event/due date",
+        "payment≠new payable",
+        "absent vendor may be direct expense only"
+      ]
+    },
+    {
+      "family": "bank_advance_financing",
+      "subtypes": [
+        "transfer",
+        "cash",
+        "exchange",
+        "supplier/customer advance",
+        "loan",
+        "financing",
+        "fee"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "R2 UNRESOLVED/manual for unsupported strategic/incoming/advance/transfer; existing backend routes do not imply R2 support",
+      "expected_proposal_type": "R2 UNRESOLVED/manual for unsupported strategic/incoming/advance/transfer; existing backend routes do not imply R2 support",
+      "critical_fields": [
+        "original evidence",
+        "exact manual route review"
+      ],
+      "optional_fields": [
+        "amount",
+        "currency",
+        "account",
+        "direction",
+        "date"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "funding/transfer/principal≠operating expense",
+        "future transfer≠completed",
+        "no FX inference"
+      ]
+    },
+    {
+      "family": "counterparties_aliases",
+      "subtypes": [
+        "RU/TR names",
+        "transliteration",
+        "typo",
+        "name-only",
+        "repeated names"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "reference candidates + owner-confirmed name-only creation; UNRESOLVED ambiguity",
+      "expected_proposal_type": "reference candidates + owner-confirmed name-only creation; UNRESOLVED ambiguity",
+      "critical_fields": [
+        "exact candidate identity scoped to current entity"
+      ],
+      "optional_fields": [
+        "role/category later",
+        "original alias"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "historical name≠active master",
+        "fuzzy alias≠authority",
+        "distinct people not merged"
+      ]
+    },
+    {
+      "family": "documents_photos",
+      "subtypes": [
+        "invoice",
+        "receipt",
+        "depot",
+        "product photo",
+        "unclear/duplicate/rotated image"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "source first; typed proposal based on genuine recognized evidence or UNRESOLVED",
+      "expected_proposal_type": "source first; typed proposal based on genuine recognized evidence or UNRESOLVED",
+      "critical_fields": [
+        "immutable source identity",
+        "original",
+        "fields required by resultant route"
+      ],
+      "optional_fields": [
+        "filename/pages",
+        "readable labels",
+        "duplicate review"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "image unavailable in history≠OCR evidence",
+        "duplicate source≠second effect",
+        "receipt≠cashflow by label alone"
+      ]
+    },
+    {
+      "family": "incidents",
+      "subtypes": [
+        "no water/power",
+        "pump broken",
+        "leak",
+        "film",
+        "pest",
+        "delay",
+        "anonymized worker unavailable"
+      ],
+      "source_language_patterns": "Curated operational TEST patterns with independently reviewed expectations",
+      "supported_current_route": "UNRESOLVED observation; explicit accepted task→task route; finance only independent explicit event",
+      "expected_proposal_type": "UNRESOLVED observation; explicit accepted task→task route; finance only independent explicit event",
+      "critical_fields": [
+        "original evidence",
+        "task context if instructed"
+      ],
+      "optional_fields": [
+        "location",
+        "equipment",
+        "urgency"
+      ],
+      "ambiguities_and_dangerous_confusions": [
+        "problem≠payable",
+        "medical details minimized",
+        "no agronomic/medical inference"
+      ]
+    }
+  ]
+}

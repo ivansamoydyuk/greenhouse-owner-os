@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select,text
 from greenhouse_owner_os.domain.errors import ValidationError,ConflictError,NotFoundError
 from greenhouse_owner_os.domain.harvest import quality,line_amount
+from greenhouse_owner_os.domain.owner_form_source import encode_original,original_readback
 from greenhouse_owner_os.domain.cash import AdvanceApplicationCommand
 from greenhouse_owner_os.domain.finance import Obligation,ObligationDirection,RecordStatus
 from greenhouse_owner_os.domain.commands import CreatePaymentCommand,AttributionInput,ReverseCommand
@@ -29,9 +30,21 @@ def harvest_json(v):
     if isinstance(v,list):return [harvest_json(x) for x in v]
     return json_value(v)
 
-def row_dict(r):return {c.name:harvest_json(getattr(r,c.name)) for c in r.__table__.columns if c.name!='file_bytes'}
+def row_dict(r):return original_readback({c.name:harvest_json(getattr(r,c.name)) for c in r.__table__.columns if c.name!='file_bytes'})
 
 def root(area):return area.parent_id or area.id
+
+def field_count_summary(reports):
+    """Known field sum and coverage of the supplied full, filtered population.
+
+    Empty evidence and evidence with no count both have no known sum. The
+    coverage distinguishes them; no depot quantity supplies a missing count.
+    """
+    counts=[r.cut_count for r in reports]
+    known=[count for count in counts if count is not None]
+    return (sum(known) if known else None, dict(report_count=len(counts),
+        known_report_count=len(known),unknown_report_count=len(counts)-len(known),
+        complete=bool(counts) and len(known)==len(counts)))
 
 class HarvestService:
     def __init__(self,factory):self.factory=factory;self.finance=FinanceService(factory)
@@ -55,40 +68,51 @@ class HarvestService:
         a=u.session.get(WorkAreaRow,aid)
         if not a or a.entity_id!=e or (gid and root(a)!=gid):raise ValidationError('work area belongs to another entity or greenhouse')
         return a
-    def _evidence(self,u,e,actor,body):
+    def _evidence(self,u,e,actor,body,source_item_id=None,distinct_source_reviewed=False):
         if body.existing_id:
             r=u.session.get(EvidenceRow,body.existing_id)
             if not r or r.entity_id!=e:raise ValidationError('existing evidence scope mismatch')
             return r
+        stored_text=encode_original(body.structured_original) if body.structured_original else body.raw_text
         raw=None
         if body.file_base64:
             try:raw=base64.b64decode(body.file_base64,validate=True)
             except ValueError:raise ValidationError('invalid file encoding')
             signatures={'application/pdf':b'%PDF-','image/png':b'\x89PNG\r\n\x1a\n','image/jpeg':b'\xff\xd8\xff'}
             if not raw.startswith(signatures[body.mime_type]) or len(raw)>5242880:raise ValidationError('file type or size invalid; maximum 5 MB')
-        fingerprint=hashlib.sha256(raw if raw is not None else (body.raw_text if body.raw_text is not None else body.source_reference).encode()).hexdigest()
+        fingerprint=hashlib.sha256(raw if raw is not None else (stored_text if stored_text is not None else body.source_reference).encode()).hexdigest()
+        binary_identity=raw is not None
+        if source_item_id is not None:
+            # The immutable Inbox retains the original (including large PDFs).
+            # Share its content identity with manual/R1 evidence, not a new hash
+            # of the proposal UUID: a later manual upload must not post twice.
+            from greenhouse_owner_os.infrastructure.inbox_models import InboxRow
+            original=u.session.get(InboxRow,source_item_id)
+            if not original or original.entity_id!=e or original.source!='owner:r2' or body.source!='owner:r2-action':raise ValidationError('original capture scope mismatch')
+            fingerprint=original.fingerprint
+            binary_identity=original.file_bytes is not None
         stable=body.source_reference is not None
         locks=[]
         if stable:
             locks.append('harvest-source:'+json.dumps([str(e),body.source,body.source_reference],ensure_ascii=False))
-        locks.append('harvest-content:'+str(e)+('binary:' if raw is not None else 'text:')+fingerprint)
+        locks.append('harvest-content:'+str(e)+('binary:' if binary_identity else 'text:')+fingerprint)
         # Lock all relevant identities in a fixed order, across independent request keys.
         for key in sorted(locks):
             u.session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':key})
         if stable:
             existing=u.session.scalar(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.source==body.source,EvidenceRow.source_reference==body.source_reference))
             if existing:
-                if existing.raw_text!=body.raw_text or existing.file_bytes!=raw:
+                if existing.raw_text!=stored_text or existing.file_bytes!=raw:
                     raise ConflictError('stable evidence source content changed; original retained')
                 return existing
-        if raw is not None and (not stable or body.source in ('owner_mobile:manual','inbox:manual')):
-            if u.session.scalar(select(EvidenceRow.id).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_not(None),EvidenceRow.fingerprint==fingerprint)):
+        if (source_item_id is not None and (binary_identity or not distinct_source_reviewed)) or (raw is not None and (not stable or body.source in ('owner_mobile:manual','inbox:manual'))):
+            if u.session.scalar(select(EvidenceRow.id).where(EvidenceRow.entity_id==e,EvidenceRow.fingerprint==fingerprint)):
                 raise ConflictError('duplicate binary document; original evidence retained')
         elif not stable:
             existing=u.session.scalar(select(EvidenceRow).where(EvidenceRow.entity_id==e,EvidenceRow.file_bytes.is_(None),EvidenceRow.fingerprint==fingerprint).order_by(EvidenceRow.received_at,EvidenceRow.id).limit(1))
             if existing and existing.source_reference is not None:raise ConflictError('possible duplicate text source; provide the original source reference or explicitly reuse its evidence')
             if existing:return existing
-        r=EvidenceRow(id=uuid4(),entity_id=e,created_by=actor,fingerprint=fingerprint,file_bytes=raw,**body.model_dump(exclude={'file_base64','existing_id'}))
+        r=EvidenceRow(id=uuid4(),entity_id=e,created_by=actor,fingerprint=fingerprint,file_bytes=raw,**dict(body.model_dump(exclude={'file_base64','existing_id','structured_original','raw_text'}),raw_text=stored_text))
         u.session.add(r);u.session.flush();return r
     def report(self,e,actor,key,body):
         def run(u):
@@ -117,11 +141,15 @@ class HarvestService:
             for rid in ids:u.session.add(BatchReportRow(batch_id=r.id,report_id=rid))
             u.session.flush();return dict(row_dict(r),kind='batch',report_ids=[str(x) for x in ids])
         return self._write(e,actor,key,'harvest_batch',body.model_dump(mode='json'),run)
-    def settlement(self,e,actor,key,body):
+    def settlement(self,e,actor,key,body,*,reviewed_qualities=None,source_item_id=None,distinct_source_reviewed=False):
+        if reviewed_qualities is not None:
+            if len(reviewed_qualities)!=len(body.lines) or any(q not in ('HIGHEST','FIRST','SECOND') for q in reviewed_qualities):raise ValidationError('Explicit receipt quality review required')
+            if body.evidence.source!='owner:r2-action':raise ValidationError('Scoped proposal adapter required')
         def run(u):
             cp=u.session.get(CounterpartyRow,body.depot_id)
             if not cp or cp.entity_id!=e or cp.counterparty_type not in ('depot','customer','both'):raise ValidationError('select an existing depot/customer counterparty')
-            evidence=self._evidence(u,e,actor,body.evidence)
+            evidence=self._evidence(u,e,actor,body.evidence,source_item_id,distinct_source_reviewed)
+            if evidence.source=='owner_form:v1:field_harvest':raise ValidationError('Field report original is not depot receipt evidence; attach a separate depot original')
             # Serialize all lifecycle creation for this immutable evidence, including
             # existing-id corrections and retries after reversal.
             u.session.scalar(select(EvidenceRow).where(EvidenceRow.id==evidence.id).with_for_update())
@@ -142,18 +170,18 @@ class HarvestService:
             for bid in sorted(body.batch_ids,key=str):
                 b=u.session.scalar(select(BatchRow).where(BatchRow.id==bid).with_for_update())
                 if not b or b.entity_id!=e:raise ValidationError('batch scope mismatch')
-                if u.session.scalar(select(SettlementBatchRow.settlement_id).join(SettlementRow,SettlementRow.id==SettlementBatchRow.settlement_id).where(SettlementBatchRow.batch_id==bid,SettlementRow.status!='reversed')):raise ConflictError('batch already assigned to receipt')
+                if u.session.scalar(text("SELECT s.id FROM harvest.depot_settlements s CROSS JOIN LATERAL harvest.current_batch_links(s.id) l WHERE l.batch_id=:b AND s.status<>'reversed' LIMIT 1"),dict(b=bid)):raise ConflictError('batch already assigned to receipt')
                 u.session.add(SettlementBatchRow(settlement_id=r.id,batch_id=bid))
-            for ln in body.lines:
+            for ordinal,ln in enumerate(body.lines):
                 calc=line_amount(ln.net_weight_kg,ln.unit_price);amount=ln.confirmed_amount if ln.confirmed_amount is not None else calc
-                line=LineRow(id=uuid4(),settlement_id=r.id,normalized_quality=quality(ln.original_quality_name),calculated_amount=calc,amount=amount,**ln.model_dump(exclude={'allocations','confirmed_amount'}))
+                line=LineRow(id=uuid4(),settlement_id=r.id,normalized_quality=reviewed_qualities[ordinal] if reviewed_qualities is not None else quality(ln.original_quality_name),calculated_amount=calc,amount=amount,**ln.model_dump(exclude={'allocations','confirmed_amount'}))
                 u.session.add(line);u.session.flush()
                 for a in ln.allocations:
                     self._area(u,e,a.work_area_id)
                     u.session.add(AllocationRow(line_id=line.id,**a.model_dump()))
                 u.session.flush()
             return self._settlement_view(u,r)
-        return self._write(e,actor,key,'depot_draft',body.model_dump(mode='json'),run)
+        return self._write(e,actor,key,'depot_draft',dict(body.model_dump(mode='json'),**({'reviewed_qualities':reviewed_qualities} if reviewed_qualities is not None else {}),**({'source_item_id':str(source_item_id),'distinct_source_reviewed':distinct_source_reviewed} if source_item_id else {})),run)
     def _same_settlement(self,u,r,body):
         # Source retries cannot silently change reviewed business values either.
         if any(getattr(r,k)!=v for k,v in body.model_dump(exclude={'evidence','lines','batch_ids'}).items()):return False
@@ -174,7 +202,8 @@ class HarvestService:
         return r
     def _settlement_view(self,u,r):
         lines=list(u.session.scalars(select(LineRow).where(LineRow.settlement_id==r.id).order_by(LineRow.source_line,LineRow.id)))
-        bids=list(u.session.scalars(select(SettlementBatchRow.batch_id).where(SettlementBatchRow.settlement_id==r.id)))
+        original_bids=list(u.session.scalars(select(SettlementBatchRow.batch_id).where(SettlementBatchRow.settlement_id==r.id)))
+        bids=list(u.session.scalars(text('SELECT batch_id FROM harvest.current_batch_links(:s) ORDER BY batch_id'),dict(s=r.id)))
         report_ids=list(u.session.scalars(select(BatchReportRow.report_id).where(BatchReportRow.batch_id.in_(bids)))) if bids else []
         reports=list(u.session.scalars(select(ReportRow).where(ReportRow.id.in_(report_ids)))) if report_ids else []
         issues=[]
@@ -191,11 +220,13 @@ class HarvestService:
         kg=sum((x.net_weight_kg for x in lines),Decimal(0))
         if field_count is not None and depot_count is not None and field_count!=depot_count:issues.append('count_discrepancy')
         if field_kg is not None and field_kg!=kg:issues.append('weight_discrepancy')
+        quality_reviews=[dict(x) for x in u.session.execute(text("SELECT q.line_no,q.quality,q.proposal_id,q.reviewed_by,r.version,r.basis FROM harvest.receipt_quality_reviews q JOIN core.proposed_actions p ON p.id=q.proposal_id JOIN core.proposal_revisions r ON r.proposal_id=p.id AND r.version=p.version WHERE q.settlement_id=:s ORDER BY q.line_no"),dict(s=r.id)).mappings()]
+        quality_reviews=harvest_json(quality_reviews)
         line_views=[]
         for l in lines:
             allocs=list(u.session.scalars(select(AllocationRow).where(AllocationRow.line_id==l.id)))
             if sum((a.amount for a in allocs),Decimal(0))<l.amount or sum((a.net_weight_kg for a in allocs),Decimal(0))<l.net_weight_kg:issues.append('unallocated')
-            line_views.append(dict(row_dict(l),allocations=[row_dict(a) for a in allocs]))
+            line_views.append(dict(row_dict(l),classification_provenance='OWNER_RECEIPT_REVIEW' if quality_reviews else 'LEGACY_UNVERIFIED',allocations=[row_dict(a) for a in allocs]))
         remaining=u.finance.obligation_remaining(r.obligation_id) if r.obligation_id else Decimal(0)
         if r.expected_payment and not r.due_date and (r.status=='draft' or remaining>0):issues.append('missing_due_date')
         evidenced_gids={x.greenhouse_id for x in reports if x.greenhouse_id}
@@ -205,9 +236,13 @@ class HarvestService:
         confirmed_kg=sum((l.net_weight_kg for l in confirmed_pairs),Decimal(0));confirmed_count=sum((l.count for l in confirmed_pairs),0)
         evidence=u.session.get(EvidenceRow,r.evidence_id)
         replacement=u.session.scalar(select(SettlementRow.id).where(SettlementRow.replacement_of_id==r.id))
-        return dict(row_dict(r),kind='settlement',lines=line_views,batch_ids=[str(b) for b in bids],reports=[row_dict(x) for x in reports],evidence=row_dict(evidence),replacement_id=str(replacement) if replacement else None,
+        owner_source=u.session.scalar(text('SELECT p.inbox_id FROM core.proposed_actions p WHERE p.id::text=:ref AND p.entity_id=:e'),dict(ref=evidence.source_reference,e=r.entity_id)) if evidence.source=='owner:r2-action' else None
+        return dict(row_dict(r),kind='settlement',quality_reviews=quality_reviews,owner_source_id=str(owner_source) if owner_source else None,original_batch_ids=[str(x) for x in original_bids],lines=line_views,batch_ids=[str(b) for b in bids],reports=[row_dict(x) for x in reports],evidence=row_dict(evidence),replacement_id=str(replacement) if replacement else None,
             issues=sorted(set(issues)),reconciliation=dict(field_count=field_count,depot_count=depot_count,field_weight_kg=str(field_kg) if field_kg is not None else None,depot_weight_kg=str(kg)),
-            average_weight_kg=str(confirmed_kg/confirmed_count) if confirmed_count else None,remaining_amount=f'{remaining:.2f}',overdue=bool(remaining>0 and r.due_date and r.due_date<datetime.now(ZoneInfo('Europe/Istanbul')).date()))
+            average_weight_kg=str(confirmed_kg/confirmed_count) if confirmed_count else None,
+            confirmed_kg=harvest_json(confirmed_kg),confirmed_count=confirmed_count,
+            count_coverage_complete=bool(kg) and confirmed_kg==kg,
+            remaining_amount=f'{remaining:.2f}',overdue=bool(remaining>0 and r.due_date and r.due_date<datetime.now(ZoneInfo('Europe/Istanbul')).date()))
     def get(self,e,sid):
         with self.factory() as u:return self._settlement_view(u,self._get(u,e,sid))
     def post(self,e,actor,key,sid,body):
@@ -286,7 +321,7 @@ class HarvestService:
             batch_views=[]
             for b in batches:
                 ids=list(u.session.scalars(select(BatchReportRow.report_id).where(BatchReportRow.batch_id==b.id)))
-                linked=u.session.scalar(select(SettlementBatchRow.settlement_id).join(SettlementRow,SettlementRow.id==SettlementBatchRow.settlement_id).where(SettlementBatchRow.batch_id==b.id,SettlementRow.status!='reversed'))
+                linked=u.session.scalar(text("SELECT s.id FROM harvest.depot_settlements s CROSS JOIN LATERAL harvest.current_batch_links(s.id) l WHERE l.batch_id=:b AND s.status<>'reversed' LIMIT 1"),dict(b=b.id))
                 issues=([] if ids else ['missing_report'])+([] if linked else ['missing_depot'])
                 batch_views.append(dict(row_dict(b),kind='batch',report_ids=[str(x) for x in ids],settlement_id=str(linked) if linked else None,issues=issues))
                 for issue in issues:attention.append(dict(type=issue,message=ISSUES[issue],kind='harvest_batch',id=str(b.id)))
@@ -294,6 +329,14 @@ class HarvestService:
                 if not r.greenhouse_id:attention.append(dict(type='unknown_greenhouse',message=ISSUES['unknown_greenhouse'],kind='harvest_report',id=str(r.id)))
                 if not u.session.scalar(select(BatchReportRow.batch_id).where(BatchReportRow.report_id==r.id)):attention.append(dict(type='unbatched_report',message='Срез ещё не включён в партию',kind='harvest_report',id=str(r.id)))
             areas={a.id:a for a in u.session.scalars(select(WorkAreaRow).where(WorkAreaRow.entity_id==e))}
+            # Aggregate the full query, never the capped raw source lists below.
+            period_reports=[r for r in reports if in_range(r)]
+            total_cut_count,cut_count_coverage=field_count_summary(period_reports)
+            reports_by_greenhouse=defaultdict(list)
+            for r in period_reports:reports_by_greenhouse[r.greenhouse_id].append(r)
+            field_summaries={gid:field_count_summary(rows) for gid,rows in reports_by_greenhouse.items()}
+            def field_summary(gid):return field_summaries.get(gid,field_count_summary([]))
+            unknown_cut_count,unknown_cut_count_coverage=field_summary(None)
             grouped={};unallocated={}
             def bucket(gid,currency):
                 target=grouped if gid else unallocated
@@ -332,8 +375,12 @@ class HarvestService:
                 kg=b['total_depot_kg'];ct=b['confirmed_count']
                 b['average_price_kg']=str(b['sales_amount']/kg) if kg else None
                 b['average_weight_kg']=str(b['confirmed_kg']/ct) if ct else None
-                b['total_cut_count']=sum((r.cut_count or 0 for r in reports if in_range(r) and str(r.greenhouse_id or '')==str(b['greenhouse_id'] or '')),0)
+                b['count_coverage_complete']=bool(kg) and b['confirmed_kg']==kg
+                b['total_cut_count'],b['cut_count_coverage']=field_summary(UUID(b['greenhouse_id']) if b['greenhouse_id'] else None)
                 b['settlement_status']={status:sum(1 for v in views if (not start or date.fromisoformat(v['event_date'])>=start) and (not end or date.fromisoformat(v['event_date'])<=end) and v['status']==status and (str(v['greenhouse_id'])==str(b['greenhouse_id']))) for status in ('draft','posted','reversed')}
                 analytics.append({k:harvest_json(v) for k,v in b.items()})
             return dict(entity_id=str(e),reports=[row_dict(r) for r in reports[:100]],batches=batch_views[:100],settlements=views[:100],attention=attention,analytics=analytics,date_from=str(start) if start else None,date_to=str(end) if end else None,
-                total_cut_count=sum((r.cut_count or 0 for r in reports if in_range(r)),0),cut_counts=[dict(greenhouse_id=str(a.id),name=a.name,count=sum((r.cut_count or 0 for r in reports if in_range(r) and r.greenhouse_id==a.id),0)) for a in areas.values() if a.kind=='greenhouse'],unknown_cut_count=sum((r.cut_count or 0 for r in reports if in_range(r) and r.greenhouse_id is None),0),debt_attribution_policy='Exact single-greenhouse sale only; mixed outstanding stays unallocated')
+                total_cut_count=total_cut_count,cut_count_coverage=cut_count_coverage,
+                cut_counts=[dict(greenhouse_id=str(a.id),name=a.name,count=field_summary(a.id)[0],count_coverage=field_summary(a.id)[1]) for a in areas.values() if a.kind=='greenhouse'],
+                unknown_cut_count=unknown_cut_count,unknown_cut_count_coverage=unknown_cut_count_coverage,
+                debt_attribution_policy='Exact single-greenhouse sale only; mixed outstanding stays unallocated')

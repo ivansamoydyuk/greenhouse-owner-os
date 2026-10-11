@@ -158,6 +158,8 @@ class FinanceService(CashServiceMixin, HistoryServiceMixin, OpeningServiceMixin)
                 raise ValidationError("only draft/review obligation can be posted")
             uow.finance.assert_live_date(obligation.entity_id, obligation.event_date)
             uow.finance.assert_ledger_account_scope(obligation.offset_ledger_account_id, obligation.entity_id, obligation.currency)
+            # Recheck persisted drafts created before the reserved-offset guard.
+            uow.finance.assert_regular_offset(obligation.offset_ledger_account_id)
             if obligation.economic_source == "harvest_depot":
                 self._assert_depot_source(uow, obligation.id, _depot_source)
             if obligation.obligation_class == "STRATEGIC":

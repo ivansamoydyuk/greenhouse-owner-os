@@ -1,21 +1,23 @@
-name: Workers & Tasks isolated review preview
+name: Owner isolated review preview
 
 on:
+  push:
+    branches: [06-owner-ux-r2-capture-confirmation, 06-owner-ui-r2-modern-dashboard]
   pull_request:
     types: [opened, reopened, synchronize]
-    branches: [01-architecture-database]
+    branches: [01-architecture-database, 06-owner-ux-r2-capture-confirmation]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: owner-finance-isolated-review
+  group: owner-isolated-review-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   preview:
-    if: github.head_ref == '08-workers-tasks-r1' || github.ref_name == '08-workers-tasks-r1'
+    if: github.head_ref == '08-workers-tasks-r1' || github.ref_name == '08-workers-tasks-r1' || github.head_ref == '06-owner-ux-r2-capture-confirmation' || github.ref_name == '06-owner-ux-r2-capture-confirmation' || github.head_ref == '06-owner-ui-r2-modern-dashboard' || github.ref_name == '06-owner-ui-r2-modern-dashboard'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -31,18 +33,39 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       APP_ENV: test
+      OWNER_PREVIEW_FEATURE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
       TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
     steps:
+      - name: Gate owner review launch
+        id: review
+        env:
+          REVIEW_BRANCH: ${{ github.head_ref || github.ref_name }}
+          REVIEW_EVENT: ${{ github.event_name }}
+          REVIEW_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          if [ "$REVIEW_BRANCH" != '06-owner-ui-r2-modern-dashboard' ] || [ "$REVIEW_EVENT" = 'workflow_dispatch' ] || [ "$REVIEW_ATTEMPT" -gt 1 ]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'UI checkpoint only. After exact-SHA verification, explicitly rerun this job once to open owner review.'
+          fi
       - uses: actions/checkout@v4
+        if: steps.review.outputs.enabled == 'true'
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
+        if: steps.review.outputs.enabled == 'true'
         with:
           python-version: '3.13.15'
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
+        if: steps.review.outputs.enabled == 'true'
       - run: pip install -e ".[dev]"
+        if: steps.review.outputs.enabled == 'true'
       - run: alembic upgrade head
+        if: steps.review.outputs.enabled == 'true'
       - name: Start isolated authenticated HTTPS preview
+        if: steps.review.outputs.enabled == 'true'
         run: |
           mkdir -p artifacts
           curl --fail --location --retry 2 -o "$RUNNER_TEMP/cloudflared" https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-linux-amd64
@@ -59,6 +82,7 @@ jobs:
           export PREVIEW_SECRET=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
           echo "::add-mask::$PREVIEW_SECRET"
           export PREVIEW_PORT=4173
+          export R2_REVIEW_FIXTURES=1
           python -m greenhouse_owner_os.preview > artifacts/preview.log 2>&1 &
           echo $! > "$RUNNER_TEMP/server.pid"
           for i in $(seq 1 60); do
@@ -67,13 +91,16 @@ jobs:
           done
           curl --fail --retry 8 --retry-delay 2 "$preview_url/health"
           python - <<'PY'
-          import os, httpx
+          import os, httpx, subprocess
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==os.environ['OWNER_PREVIEW_FEATURE_SHA']
           origin=os.environ['PREVIEW_PUBLIC_ORIGIN']
           with httpx.Client(base_url=origin,timeout=30) as client:
               assert client.get('/preview/config').status_code==401
               response=client.post('/preview/login',json={'secret':os.environ['PREVIEW_SECRET']},headers={'Origin':origin})
               assert response.status_code==200 and 'Secure' in response.headers['set-cookie']
-              eid=client.get('/preview/config').json()['entity_id']
+              config=client.get('/preview/config').json()
+              assert config['feature_sha']==os.environ['OWNER_PREVIEW_FEATURE_SHA']
+              eid=config['entity_id']
               overview=client.get('/v1/entities/'+eid+'/finance-overview').json()
               assert overview['balances']['TRY']['payable']=='2600.00'
               assert overview['balances']['TRY']['cash']=='0.00'
@@ -87,7 +114,14 @@ jobs:
               assert inventory['stock']==[] and inventory['events']==[] and inventory['opening_state']=='UNINITIALIZED_VERIFY'
               assert inventory['invariants']['ok']
               tasks=client.get('/v1/entities/'+eid+'/tasks').json()
-              assert tasks['workers']==[] and tasks['tasks']==[]
+              fixture=config['worker_assignment_fixture']
+              assert fixture['translation_scope']=='ONE_AUTHORED_TEST_EXAMPLE' and fixture['real_dispatch'] is False
+              assert len(tasks['workers'])==1 and tasks['workers'][0]['display_name']=='TEST Muhammed'
+              assert tasks['workers'][0]['language']=='fa' and tasks['workers'][0]['telegram_ref'] is None
+              assert len(tasks['tasks'])==1 and tasks['tasks'][0]['status']=='draft'
+              example=client.get('/v1/entities/'+eid+'/tasks/'+fixture['task_id']).json()
+              assert example['assignments']==[] and example['prepared_assignment']['worker_id']==fixture['worker_id']
+              assert example['prepared_assignment']['language']=='fa' and example['prepared_assignment']['rendered_text']!=example['original_instruction']
               assert client.get('/worker').status_code==200
               assert client.get('/v1/worker/tasks').status_code==401
               harvest=client.get('/v1/entities/'+eid+'/harvest').json()
@@ -98,13 +132,15 @@ jobs:
           print('External HTTPS authenticated preview smoke PASS; zero cash, Serkan unpaid 2600 TRY, reconciliation PASS')
           PY
           printf 'URL: %s\nAccess key: %s\nTEST PREVIEW ONLY. Opening Serkan AP 2600 TRY remains unpaid.\nExpires after 35 minutes of review time; runner database is then destroyed.\n' "$preview_url" "$PREVIEW_SECRET" > artifacts/preview-access.txt
-          printf '### Isolated Workers & Tasks preview\n\n%s\n\nAccess key: download the private **owner-workers-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
+          printf '### Isolated Owner UI preview\n\n%s\n\nAccess key: download the private **owner-workers-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
+        if: steps.review.outputs.enabled == 'true'
         with:
           name: owner-workers-review-access
           path: artifacts/preview-access.txt
           retention-days: 1
       - name: Owner review window (35 minutes, ephemeral data)
+        if: steps.review.outputs.enabled == 'true'
         run: |
           for i in $(seq 1 35); do
             curl --silent --fail http://127.0.0.1:4173/health > /dev/null

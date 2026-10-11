@@ -55,6 +55,12 @@ class ReferenceService:
             ReferenceRecordRow.entity_id == entity_id, ReferenceRecordRow.kind == kind,
             ReferenceRecordRow.canonical_key == key))
         if old:
+            # Knowing an entity's deterministic name is not permission to join it.
+            # Check under the same identity lock that serializes first creation.
+            if kind == 'entity' and not session.scalar(
+                text('SELECT core.r2_owner(:e,:a)'), dict(e=entity_id,a=actor_id)
+            ):
+                raise ValidationError('Entity access is not authorized')
             if (old.original_name, old.definition, old.reference_class) != (name, definition, classification):
                 raise ConflictError('reference identity already exists with different original name or definition')
             resource = session.get(RESOURCE_MODELS[kind], old.id)
@@ -96,6 +102,8 @@ class ReferenceService:
                 entity_id = reference_id(self.environment, kind, key)
             else:
                 self._entity(uow.session, entity_id)
+                if not uow.session.scalar(text('SELECT core.r2_owner(:e,:a)'),dict(e=entity_id,a=actor_id)):
+                    raise ValidationError('Entity access is not authorized')
             definition = {k: v for k, v in values.items() if k not in ('name', 'source')}
             def build(session, rid):
                 if kind == 'entity':
@@ -120,6 +128,9 @@ class ReferenceService:
             response = self._ensure(uow, entity_id=entity_id, kind=kind, key=key,
                 name=command.name, source=command.source, definition=definition,
                 classification=self.environment, actor_id=actor_id, build=build)
+            if kind == 'entity':
+                uow.session.execute(text('INSERT INTO core.owner_entity_access(entity_id,actor_id) VALUES(:e,:a) ON CONFLICT DO NOTHING'),
+                                    dict(e=entity_id,a=actor_id))
             uow.idempotency.put(actor_id=actor_id, operation=operation, key=idempotency_key,
                 request_hash=request_hash, resource_type=kind, resource_id=UUID(response['id']), response=response)
             uow.commit()

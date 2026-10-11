@@ -8,6 +8,102 @@ info:
 servers:
 - url: /v1
 paths:
+  /entities/{entity_id}/finance/analytics:
+    get:
+      summary: Analytics
+      operationId: analytics_v1_entities__entity_id__finance_analytics_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: date_from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date From
+      - name: date_to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date To
+      - name: currency
+        in: query
+        required: false
+        schema:
+          type: string
+          default: TRY
+          title: Currency
+      - name: greenhouse_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+      - name: money_account_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Money Account Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceAnalytics'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/finance/analytics/documents/{obligation_id}:
+    get:
+      summary: Document
+      operationId: document_v1_entities__entity_id__finance_analytics_documents__obligation_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: obligation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Obligation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebtDocument'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /entities/{entity_id}/finance-overview:
     get:
       summary: Finance Overview
@@ -43,7 +139,8 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/FinanceOverview'
         '422':
           description: Validation Error
           content:
@@ -2101,6 +2198,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/evidence/{evidence_id}/metadata:
+    get:
+      summary: Read immutable Harvest original metadata
+      description: Authenticated, entity-scoped read of original source text and provenance.
+        Does not infer source text from prepared fields or return file bytes. The
+        existing binary evidence endpoint remains unchanged.
+      operationId: evidence_metadata_v1_entities__entity_id__harvest_evidence__evidence_id__metadata_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: evidence_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Evidence Id
+      responses:
+        '200':
+          description: Immutable original metadata, including exact nullable raw text
+            and binary availability.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HarvestEvidenceMetadata'
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: private, no-store
+        '401':
+          description: Authenticated owner required.
+        '403':
+          description: The authenticated owner cannot access the requested managed
+            entity.
+        '404':
+          description: Evidence is missing or does not belong to the requested entity.
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /entities/{entity_id}/inbox:
     post:
       summary: Ingest
@@ -3236,6 +3381,1902 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/home:
+    get:
+      summary: Home
+      operationId: home_v1_entities__entity_id__owner_home_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/captures:
+    post:
+      summary: Capture
+      operationId: capture_v1_entities__entity_id__owner_captures_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptureSource'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      summary: Sources
+      operationId: sources_v1_entities__entity_id__owner_captures_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 10000
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/captures/{item_id}:
+    get:
+      summary: Source
+      operationId: source_v1_entities__entity_id__owner_captures__item_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/captures/{item_id}/original:
+    get:
+      summary: Original
+      operationId: original_v1_entities__entity_id__owner_captures__item_id__original_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/captures/{item_id}/retry-preparation:
+    post:
+      summary: Retry
+      operationId: retry_v1_entities__entity_id__owner_captures__item_id__retry_preparation_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/captures/{item_id}/direct-expense-recovery:
+    post:
+      summary: Recover Expense
+      operationId: recover_expense_v1_entities__entity_id__owner_captures__item_id__direct_expense_recovery_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpenseRecoveryAction'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/confirmations:
+    get:
+      summary: Queue
+      operationId: queue_v1_entities__entity_id__owner_confirmations_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 10000
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/confirmations/{item_id}/preview:
+    get:
+      summary: Preview
+      operationId: preview_v1_entities__entity_id__owner_confirmations__item_id__preview_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/confirmations/{item_id}/revise:
+    post:
+      summary: Revise
+      operationId: revise_v1_entities__entity_id__owner_confirmations__item_id__revise_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviseAction'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/confirmations/{item_id}/defer:
+    post:
+      summary: Defer
+      operationId: defer_v1_entities__entity_id__owner_confirmations__item_id__defer_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewAction'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/confirmations/{item_id}/reject:
+    post:
+      summary: Reject
+      operationId: reject_v1_entities__entity_id__owner_confirmations__item_id__reject_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewAction'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/confirmations/{item_id}/reopen:
+    post:
+      summary: Reopen
+      operationId: reopen_v1_entities__entity_id__owner_confirmations__item_id__reopen_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewAction'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/confirmations/{item_id}/confirm:
+    post:
+      summary: Confirm
+      operationId: confirm_v1_entities__entity_id__owner_confirmations__item_id__confirm_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmAction'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/tasks/{item_id}/state:
+    post:
+      summary: Task State
+      operationId: task_state_v1_entities__entity_id__owner_tasks__item_id__state_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskStateAction'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/counterparties:
+    post:
+      summary: Party
+      operationId: party_v1_entities__entity_id__owner_counterparties_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NameOnlyParty'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/reminder-eligibility:
+    post:
+      summary: Reminders
+      operationId: reminders_v1_entities__entity_id__owner_reminder_eligibility_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/direct-expenses/{item_id}/reverse:
+    post:
+      summary: Reverse
+      operationId: reverse_v1_entities__entity_id__owner_direct_expenses__item_id__reverse_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReverseCommand'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/tasks:
+    get:
+      summary: Tasks
+      operationId: tasks_v1_entities__entity_id__owner_tasks_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: state
+        in: query
+        required: false
+        schema:
+          enum:
+          - TO_DO
+          - DONE
+          type: string
+          default: TO_DO
+          title: State
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/tasks/{item_id}:
+    get:
+      summary: Task
+      operationId: task_v1_entities__entity_id__owner_tasks__item_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/monthly:
+    get:
+      summary: Monthly
+      operationId: monthly_v1_entities__entity_id__harvest_monthly_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: season_start_year
+        in: query
+        required: true
+        schema:
+          type: integer
+          maximum: 9998
+          minimum: 1900
+          title: Season Start Year
+      - name: greenhouse_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+      - name: metric
+        in: query
+        required: false
+        schema:
+          type: string
+          default: branches
+          title: Metric
+      - name: currency
+        in: query
+        required: false
+        schema:
+          type: string
+          default: TRY
+          title: Currency
+      - name: allocation
+        in: query
+        required: false
+        schema:
+          type: string
+          default: all
+          title: Allocation
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/reports/{report_id}:
+    get:
+      summary: Get Report
+      operationId: get_report_v1_entities__entity_id__harvest_reports__report_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: report_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Report Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/journey:
+    get:
+      summary: Get Journey
+      operationId: get_journey_v1_entities__entity_id__harvest_settlements__settlement_id__journey_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/links:
+    post:
+      summary: Links
+      operationId: links_v1_entities__entity_id__harvest_settlements__settlement_id__links_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JourneyLinks'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/estimates/preview:
+    post:
+      summary: Estimate Preview
+      operationId: estimate_preview_v1_entities__entity_id__harvest_settlements__settlement_id__estimates_preview_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstimatePreview'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/estimates:
+    post:
+      summary: Estimate
+      operationId: estimate_v1_entities__entity_id__harvest_settlements__settlement_id__estimates_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JourneyEstimate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/harvest/settlements/{settlement_id}/attachments:
+    post:
+      summary: Attach
+      operationId: attach_v1_entities__entity_id__harvest_settlements__settlement_id__attachments_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: settlement_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Settlement Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JourneyAttachment'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/purchases:
+    get:
+      summary: Purchases
+      operationId: purchases_v1_entities__entity_id__purchases_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      - name: supplier_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supplier Id
+      - name: product_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Product Id
+      - name: location_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseHistory'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/purchases/{receipt_id}:
+    get:
+      summary: Purchase
+      operationId: purchase_v1_entities__entity_id__purchases__receipt_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: receipt_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Receipt Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseReceipt'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/history:
+    get:
+      summary: History
+      operationId: history_v1_entities__entity_id__inventory_history_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      - name: supplier_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supplier Id
+      - name: product_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Product Id
+      - name: location_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+      - name: kind
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Kind
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryHistory'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/inventory/history/{event_id}:
+    get:
+      summary: History Event
+      operationId: history_event_v1_entities__entity_id__inventory_history__event_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryHistoryEvent'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/tasks/{task_id}/responses:
+    post:
+      summary: Worker Response
+      operationId: worker_response_v1_worker_tasks__task_id__responses_post
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Task Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerResponseInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerResponseResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/references:
+    get:
+      summary: References
+      operationId: references_v1_entities__entity_id__fertilizer_references_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: event_date
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Event Date
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      summary: Reference
+      operationId: reference_v1_entities__entity_id__fertilizer_references_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReferenceInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer:
+    get:
+      summary: Calendar
+      operationId: calendar_v1_entities__entity_id__fertilizer_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: date_from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date From
+      - name: date_to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date To
+      - name: greenhouse_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/preview:
+    post:
+      summary: Preview
+      operationId: preview_v1_entities__entity_id__fertilizer_plans_preview_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanPreview'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans:
+    post:
+      summary: Create
+      operationId: create_v1_entities__entity_id__fertilizer_plans_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}:
+    get:
+      summary: Get
+      operationId: get_v1_entities__entity_id__fertilizer_plans__plan_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}/revisions:
+    post:
+      summary: Revise
+      operationId: revise_v1_entities__entity_id__fertilizer_plans__plan_id__revisions_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevisionInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}/dispatch:
+    post:
+      summary: Dispatch
+      operationId: dispatch_v1_entities__entity_id__fertilizer_plans__plan_id__dispatch_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DispatchInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DispatchView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}/actual-preview:
+    post:
+      summary: Actual Preview
+      operationId: actual_preview_v1_entities__entity_id__fertilizer_plans__plan_id__actual_preview_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActualInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActualPreview'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}/actual:
+    post:
+      summary: Actual
+      operationId: actual_v1_entities__entity_id__fertilizer_plans__plan_id__actual_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActualConfirm'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActualView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}/revisions/{revision}/cards/{card_id}/components/{component_id}/photo:
+    get:
+      summary: Photo
+      operationId: photo_v1_entities__entity_id__fertilizer_plans__plan_id__revisions__revision__cards__card_id__components__component_id__photo_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: revision
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Revision
+      - name: card_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Card Id
+      - name: component_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Component Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/fertilizer:
+    get:
+      summary: Worker List
+      operationId: worker_list_v1_worker_fertilizer_get
+      parameters:
+      - name: date_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+      - name: date_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerCalendarView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/fertilizer/{plan_id}:
+    get:
+      summary: Worker Detail
+      operationId: worker_detail_v1_worker_fertilizer__plan_id__get
+      parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPlanView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/fertilizer/{plan_id}/responses:
+    post:
+      summary: Response
+      operationId: response_v1_worker_fertilizer__plan_id__responses_post
+      parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FertilizerResponseInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportView'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/fertilizer/{plan_id}/revisions/{revision}/cards/{card_id}/components/{component_id}/photo:
+    get:
+      summary: Worker Photo
+      operationId: worker_photo_v1_worker_fertilizer__plan_id__revisions__revision__cards__card_id__components__component_id__photo_get
+      parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: revision
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Revision
+      - name: card_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Card Id
+      - name: component_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Component Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -3254,6 +5295,215 @@ components:
         type: string
         format: uuid
   schemas:
+    FinanceOverview:
+      type: object
+      description: Additive direct-expense read projection. Existing Finance balances,
+        operation families, offset/limit/has_more pagination and other response fields
+        remain unchanged. The direct-expense list is independently bounded and is
+        not used to recompute balances.
+      additionalProperties: true
+      required:
+      - direct_expenses
+      - direct_expenses_total
+      - direct_expenses_limit
+      - direct_expenses_has_more
+      - direct_expenses_order
+      - direct_expenses_period
+      properties:
+        direct_expenses:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/DirectExpenseRead'
+          description: Most recent posted or reversed direct-expense records across
+            all dates and currencies, ordered by created_at descending then id descending.
+            Never a period total or full history.
+        direct_expenses_total:
+          type: integer
+          minimum: 0
+          description: Total number of direct-expense rows for this entity, including
+            reversed rows. This is a row count, not a monetary total.
+        direct_expenses_limit:
+          type: integer
+          const: 50
+        direct_expenses_has_more:
+          type: boolean
+          description: True when rows exist beyond the bounded recent list.
+        direct_expenses_order:
+          type: string
+          const: created_at_desc_id_desc
+        direct_expenses_period:
+          type: string
+          const: ALL_DATES
+    DirectExpenseRead:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - entity_id
+      - proposal_id
+      - amount
+      - currency
+      - event_date
+      - money_account_id
+      - counterparty_id
+      - description
+      - status
+      - version
+      - posting_id
+      - reversal_posting_id
+      - created_by
+      - created_at
+      - reversed_by
+      - reversal_reason
+      - source_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        entity_id:
+          type: string
+          format: uuid
+        proposal_id:
+          type: string
+          format: uuid
+        amount:
+          type: string
+          pattern: ^\d+\.\d{2}$
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        event_date:
+          type: string
+          format: date
+        money_account_id:
+          type: string
+          format: uuid
+        counterparty_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        description:
+          type:
+          - string
+          - 'null'
+        status:
+          type: string
+          enum:
+          - posted
+          - reversed
+        version:
+          type: integer
+          minimum: 1
+        posting_id:
+          type: string
+          format: uuid
+        reversal_posting_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        reversed_by:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        reversal_reason:
+          type:
+          - string
+          - 'null'
+        source_id:
+          type: string
+          format: uuid
+          description: Persisted original inbox identity joined through the same-entity
+            proposal; summary includes no original bytes or raw text.
+    HarvestEvidenceMetadata:
+      properties:
+        structured_original:
+          anyOf:
+          - $ref: '#/components/schemas/OwnerFormSource'
+          - type: 'null'
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        source:
+          type: string
+          title: Source
+        source_reference:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Reference
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+          description: Exact immutable original text or source-associated caption;
+            never synthesized from prepared report fields.
+        filename:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Filename
+        mime_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mime Type
+        fingerprint:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Fingerprint
+        created_by:
+          type: string
+          format: uuid
+          title: Created By
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+        has_file:
+          type: boolean
+          title: Has File
+        original_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          format: uri-reference
+          title: Original Url
+          description: Same-origin existing /v1/entities/{entity_id}/harvest/evidence/{evidence_id}
+            binary route when has_file is true; otherwise null. Never a source-provided
+            URL.
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - entity_id
+      - source
+      - source_reference
+      - raw_text
+      - filename
+      - mime_type
+      - fingerprint
+      - created_by
+      - received_at
+      - has_file
+      - original_url
+      title: HarvestEvidenceMetadata
     Money:
       type: string
       pattern: ^-?[0-9]+\\.[0-9]{2}$
@@ -3579,7 +5829,6 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
           title: Amount
       additionalProperties: false
       type: object
@@ -3598,7 +5847,6 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Amount
         currency:
           type: string
@@ -3686,7 +5934,6 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
           title: Original Amount
         currency:
           type: string
@@ -3769,7 +6016,6 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
           title: Amount
         currency:
           type: string
@@ -3835,7 +6081,6 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Amount
         currency:
           type: string
@@ -3887,7 +6132,6 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Amount
         currency:
           type: string
@@ -3939,7 +6183,6 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Amount
         currency:
           type: string
@@ -3975,7 +6218,6 @@ components:
           - type: number
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Fee
           default: '0.00'
         fee_account_id:
@@ -4031,7 +6273,6 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Amount
         currency:
           type: string
@@ -4141,7 +6382,6 @@ components:
             maximum: 1.0
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d{0,6}0*$
           - type: 'null'
           title: Confidence
         raw_value:
@@ -4201,6 +6441,7 @@ components:
           - customer
           - depot
           - both
+          - unclassified
           title: Role
       additionalProperties: false
       type: object
@@ -4281,7 +6522,6 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Amount
         currency:
           type: string
@@ -4386,7 +6626,6 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Amount
       additionalProperties: false
       type: object
@@ -4405,7 +6644,6 @@ components:
           - type: number
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Amount
       additionalProperties: false
       type: object
@@ -4451,6 +6689,10 @@ components:
       title: BatchInput
     EvidenceInput:
       properties:
+        structured_original:
+          anyOf:
+          - $ref: '#/components/schemas/OwnerFormSource'
+          - type: 'null'
         existing_id:
           anyOf:
           - type: string
@@ -4511,14 +6753,12 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,17}|(?=[\d.]{1,21}0*$)\d{0,17}\.\d{0,3}0*$)
           title: Net Weight Kg
         amount:
           anyOf:
           - type: number
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Amount
         confirmed_count:
           anyOf:
@@ -4545,21 +6785,18 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,17}|(?=[\d.]{1,21}0*$)\d{0,17}\.\d{0,3}0*$)
           title: Net Weight Kg
         unit_price:
           anyOf:
           - type: number
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Unit Price
         stated_amount:
           anyOf:
           - type: number
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           - type: 'null'
           title: Stated Amount
         confirmed_amount:
@@ -4567,7 +6804,6 @@ components:
           - type: number
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           - type: 'null'
           title: Confirmed Amount
         count:
@@ -4709,7 +6945,6 @@ components:
           - type: number
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           - type: 'null'
           title: Stated Total
         alacak_value:
@@ -4717,7 +6952,6 @@ components:
           - type: number
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           - type: 'null'
           title: Alacak Value
         lines:
@@ -4771,7 +7005,6 @@ components:
           - type: number
             minimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,18}|(?=[\d.]{1,21}0*$)\d{0,18}\.\d{0,2}0*$)
           title: Cash Amount
           default: '0'
         money_account_id:
@@ -4947,6 +7180,10 @@ components:
       title: ConversionInput
     InventoryEvidence:
       properties:
+        structured_original:
+          anyOf:
+          - $ref: '#/components/schemas/OwnerFormSource'
+          - type: 'null'
         source:
           type: string
           maxLength: 200
@@ -5511,6 +7748,13 @@ components:
       title: RuleInput
     TaskInput:
       properties:
+        execution_contract:
+          type: string
+          enum:
+          - R1
+          - R2_RECEIVED_REPORT
+          title: Execution Contract
+          default: R1
         owner_language:
           type: string
           enum:
@@ -5679,7 +7923,6 @@ components:
           - type: number
             exclusiveMinimum: 0.0
           - type: string
-            pattern: ^(?!^[-+.]*$)[+-]?0*(?:\d{0,17}|(?=[\d.]{1,21}0*$)\d{0,17}\.\d{0,3}0*$)
           - type: 'null'
           title: Field Weight Kg
         reporter:
@@ -5782,6 +8025,4055 @@ components:
       - original_language
       - locator
       title: ReportInput
+    CaptureSource:
+      properties:
+        capture_context:
+          anyOf:
+          - type: string
+            enum:
+            - quick_expense
+            - depot_receipt
+            - supplier_invoice
+          - type: 'null'
+          title: Capture Context
+        invoice_intent:
+          anyOf:
+          - type: string
+            enum:
+            - operating_expense
+            - existing_payable
+          - type: 'null'
+          title: Invoice Intent
+        invoice_receipt_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Invoice Receipt Id
+        client_capture_id:
+          type: string
+          format: uuid
+          title: Client Capture Id
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        timezone:
+          type: string
+          const: Europe/Istanbul
+          title: Timezone
+          default: Europe/Istanbul
+        mode:
+          type: string
+          enum:
+          - text
+          - voice_transcript
+          - photo
+          - file
+          title: Mode
+          default: text
+        text:
+          anyOf:
+          - type: string
+            maxLength: 10000
+            minLength: 1
+          - type: 'null'
+          title: Text
+        file_base64:
+          anyOf:
+          - type: string
+            maxLength: 27962028
+          - type: 'null'
+          title: File Base64
+        filename:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Filename
+        mime_type:
+          anyOf:
+          - type: string
+            enum:
+            - image/jpeg
+            - image/png
+            - application/pdf
+          - type: 'null'
+          title: Mime Type
+      additionalProperties: false
+      type: object
+      required:
+      - client_capture_id
+      - captured_at
+      title: CaptureSource
+    ConfirmAction:
+      properties:
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        reason:
+          type: string
+          maxLength: 2000
+          title: Reason
+          default: ''
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+        preview_digest:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Preview Digest
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - confirmed
+      - preview_digest
+      title: ConfirmAction
+    NameOnlyParty:
+      properties:
+        name:
+          type: string
+          maxLength: 250
+          minLength: 1
+          title: Name
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - confirmed
+      title: NameOnlyParty
+    ReviewAction:
+      properties:
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        reason:
+          type: string
+          maxLength: 2000
+          title: Reason
+          default: ''
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      title: ReviewAction
+    ReviseAction:
+      properties:
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        reason:
+          type: string
+          maxLength: 2000
+          title: Reason
+          default: ''
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - payload
+      title: ReviseAction
+    TaskStateAction:
+      properties:
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        state:
+          type: string
+          enum:
+          - TO_DO
+          - DONE
+          title: State
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - state
+      title: TaskStateAction
+    ExpenseRecoveryAction:
+      properties:
+        origin_proposal_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Origin Proposal Id
+        expected_version:
+          anyOf:
+          - type: integer
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Expected Version
+      additionalProperties: false
+      type: object
+      title: ExpenseRecoveryAction
+    OwnerFormSource:
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+          title: Schema Version
+        form_kind:
+          type: string
+          enum:
+          - field_harvest
+          - inventory_receipt
+          - inventory_transfer
+          title: Form Kind
+        form_id:
+          type: string
+          format: uuid
+          title: Form Id
+        captured_at:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Captured At
+        timezone:
+          type: string
+          const: Europe/Istanbul
+          title: Timezone
+        fields:
+          additionalProperties:
+            type: string
+          type: object
+          title: Fields
+      additionalProperties: false
+      type: object
+      required:
+      - schema_version
+      - form_kind
+      - form_id
+      - captured_at
+      - timezone
+      - fields
+      title: OwnerFormSource
+    JourneyLinks:
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Version
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+        batch_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 100
+          title: Batch Ids
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - confirmed
+      - reason
+      - batch_ids
+      title: JourneyLinks
+    JourneyEstimate:
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Version
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+        basis:
+          items:
+            $ref: '#/components/schemas/EstimateBasis'
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Basis
+        total_basis_count:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+          title: Total Basis Count
+        basis_description:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Basis Description
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - reason
+      - basis
+      - total_basis_count
+      - basis_description
+      - confirmed
+      title: JourneyEstimate
+    JourneyAttachment:
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Version
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+        evidence:
+          $ref: '#/components/schemas/EvidenceInput'
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - confirmed
+      - reason
+      - evidence
+      title: JourneyAttachment
+    EstimatePreview:
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0.0
+          title: Expected Version
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+        basis:
+          items:
+            $ref: '#/components/schemas/EstimateBasis'
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Basis
+        total_basis_count:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+          title: Total Basis Count
+        basis_description:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Basis Description
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - reason
+      - basis
+      - total_basis_count
+      - basis_description
+      title: EstimatePreview
+    EstimateBasis:
+      properties:
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        basis_count:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+          title: Basis Count
+      additionalProperties: false
+      type: object
+      required:
+      - work_area_id
+      - basis_count
+      title: EstimateBasis
+    AnalyticsAccount:
+      properties:
+        money_account_id:
+          type: string
+          format: uuid
+          title: Money Account Id
+        name:
+          type: string
+          title: Name
+        account_type:
+          type: string
+          title: Account Type
+        currency:
+          type: string
+          title: Currency
+        active:
+          type: boolean
+          title: Active
+        current_balance:
+          type: string
+          title: Current Balance
+        opening_balance:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Opening Balance
+        incoming:
+          type: string
+          title: Incoming
+        outgoing:
+          type: string
+          title: Outgoing
+        net_change:
+          type: string
+          title: Net Change
+        closing_balance:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Closing Balance
+        opening_basis:
+          type: string
+          enum:
+          - ZERO_AT_CUTOVER_PLUS_PRIOR_JOURNAL
+          - UNKNOWN_BEFORE_CUTOVER
+          title: Opening Basis
+      additionalProperties: false
+      type: object
+      required:
+      - money_account_id
+      - name
+      - account_type
+      - currency
+      - active
+      - current_balance
+      - opening_balance
+      - incoming
+      - outgoing
+      - net_change
+      - closing_balance
+      - opening_basis
+      title: AnalyticsAccount
+    AnalyticsAllocation:
+      properties:
+        work_area_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Work Area Id
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        amount:
+          type: string
+          title: Amount
+        classification:
+          type: string
+          enum:
+          - EXACT
+          - GENERAL_VIRTUAL
+          - UNRESOLVED
+          - ESTIMATED
+          title: Classification
+        provenance:
+          type: string
+          title: Provenance
+        policy_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Policy Id
+        policy_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Policy Version
+        estimate_revision_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Estimate Revision Id
+      additionalProperties: false
+      type: object
+      required:
+      - amount
+      - classification
+      - provenance
+      title: AnalyticsAllocation
+    AnalyticsArea:
+      properties:
+        greenhouse_id:
+          type: string
+          format: uuid
+          title: Greenhouse Id
+        name:
+          type: string
+          title: Name
+        revenue:
+          type: string
+          title: Revenue
+        operating_cost:
+          type: string
+          title: Operating Cost
+        operating_result:
+          type: string
+          title: Operating Result
+        exact_cost:
+          type: string
+          title: Exact Cost
+        virtual_general_cost:
+          type: string
+          title: Virtual General Cost
+        estimated_revenue:
+          type: string
+          title: Estimated Revenue
+        harvest_denominator:
+          $ref: '#/components/schemas/HarvestDenominator'
+        cost_per_kg:
+          $ref: '#/components/schemas/AnalyticsCostPerKg'
+      additionalProperties: false
+      type: object
+      required:
+      - greenhouse_id
+      - name
+      - revenue
+      - operating_cost
+      - operating_result
+      - exact_cost
+      - virtual_general_cost
+      - estimated_revenue
+      - harvest_denominator
+      - cost_per_kg
+      title: AnalyticsArea
+    AnalyticsAreaPolicy:
+      properties:
+        id:
+          type: string
+          const: ADR033-AREA-2026-10-01
+          title: Id
+          default: ADR033-AREA-2026-10-01
+        version:
+          type: integer
+          const: 1
+          title: Version
+          default: 1
+        effective_from:
+          type: string
+          format: date
+          title: Effective From
+          default: '2026-10-01'
+        effective_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effective To
+        algorithm:
+          type: string
+          const: largest-remainder-cent-v1
+          title: Algorithm
+          default: largest-remainder-cent-v1
+        status:
+          type: string
+          enum:
+          - AVAILABLE
+          - UNRESOLVED_REFERENCE
+          title: Status
+        targets:
+          items:
+            $ref: '#/components/schemas/AreaPolicyTarget'
+          type: array
+          title: Targets
+        affects_ledger:
+          type: boolean
+          const: false
+          title: Affects Ledger
+          default: false
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - targets
+      title: AnalyticsAreaPolicy
+    AnalyticsCostPerKg:
+      properties:
+        value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Value
+        known_finance_cost_per_kg:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Known Finance Cost Per Kg
+        currency:
+          type: string
+          title: Currency
+        classification:
+          type: string
+          enum:
+          - KNOWN_FINANCE_ONLY
+          - ESTIMATED_DENOMINATOR
+          - PARTIAL
+          - UNAVAILABLE
+          title: Classification
+        reason:
+          type: string
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - value
+      - known_finance_cost_per_kg
+      - currency
+      - classification
+      - reason
+      title: AnalyticsCostPerKg
+    AnalyticsCoverage:
+      properties:
+        complete_production_cost:
+          type: boolean
+          const: false
+          title: Complete Production Cost
+          default: false
+        financial_period_policy:
+          type: string
+          const: D05_OPEN_NOT_HISTORICAL_AS_OF
+          title: Financial Period Policy
+          default: D05_OPEN_NOT_HISTORICAL_AS_OF
+        inventory_cost_rows:
+          items:
+            $ref: '#/components/schemas/InventoryCostCoverage'
+          type: array
+          title: Inventory Cost Rows
+        unclassified_obligation_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Unclassified Obligation Ids
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        source_count:
+          type: integer
+          title: Source Count
+        economic_event_count:
+          type: integer
+          title: Economic Event Count
+        movement_count:
+          type: integer
+          title: Movement Count
+      additionalProperties: false
+      type: object
+      required:
+      - inventory_cost_rows
+      - unclassified_obligation_ids
+      - warnings
+      - source_count
+      - economic_event_count
+      - movement_count
+      title: AnalyticsCoverage
+    AnalyticsDebts:
+      properties:
+        receivable:
+          type: string
+          title: Receivable
+        payable:
+          type: string
+          title: Payable
+        parties:
+          items:
+            $ref: '#/components/schemas/DebtParty'
+          type: array
+          title: Parties
+        documents:
+          items:
+            $ref: '#/components/schemas/DebtDocument'
+          type: array
+          title: Documents
+        scope:
+          type: string
+          const: CURRENT_ENTITY_CURRENCY_ALL_DATES
+          title: Scope
+          default: CURRENT_ENTITY_CURRENCY_ALL_DATES
+      additionalProperties: false
+      type: object
+      required:
+      - receivable
+      - payable
+      - parties
+      - documents
+      title: AnalyticsDebts
+    AnalyticsEconomics:
+      properties:
+        revenue:
+          type: string
+          title: Revenue
+        operating_cost:
+          type: string
+          title: Operating Cost
+        operating_result:
+          type: string
+          title: Operating Result
+        exact_cost:
+          type: string
+          title: Exact Cost
+        virtual_general_cost:
+          type: string
+          title: Virtual General Cost
+        unresolved_cost:
+          type: string
+          title: Unresolved Cost
+        unallocated_revenue:
+          type: string
+          title: Unallocated Revenue
+        basis:
+          type: string
+          const: CURRENT_ACTIVE_POSTED_ECONOMIC_LEDGER
+          title: Basis
+          default: CURRENT_ACTIVE_POSTED_ECONOMIC_LEDGER
+        completeness:
+          type: string
+          enum:
+          - CONFIRMED_FINANCE_ONLY
+          - PARTIAL_SCOPE
+          title: Completeness
+      additionalProperties: false
+      type: object
+      required:
+      - revenue
+      - operating_cost
+      - operating_result
+      - exact_cost
+      - virtual_general_cost
+      - unresolved_cost
+      - unallocated_revenue
+      - completeness
+      title: AnalyticsEconomics
+    AnalyticsMovement:
+      properties:
+        posting_id:
+          type: string
+          format: uuid
+          title: Posting Id
+        money_account_id:
+          type: string
+          format: uuid
+          title: Money Account Id
+        account_name:
+          type: string
+          title: Account Name
+        currency:
+          type: string
+          title: Currency
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        direction:
+          type: string
+          enum:
+          - in
+          - out
+          title: Direction
+        amount:
+          type: string
+          title: Amount
+        signed_amount:
+          type: string
+          title: Signed Amount
+        reversal_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Reversal Of Id
+        source:
+          $ref: '#/components/schemas/AnalyticsSource'
+      additionalProperties: false
+      type: object
+      required:
+      - posting_id
+      - money_account_id
+      - account_name
+      - currency
+      - event_date
+      - direction
+      - amount
+      - signed_amount
+      - source
+      title: AnalyticsMovement
+    AnalyticsPeriod:
+      properties:
+        date_from:
+          type: string
+          format: date
+          title: Date From
+        date_to:
+          type: string
+          format: date
+          title: Date To
+        inclusive:
+          type: boolean
+          const: true
+          title: Inclusive
+          default: true
+      additionalProperties: false
+      type: object
+      required:
+      - date_from
+      - date_to
+      title: AnalyticsPeriod
+    AnalyticsSource:
+      properties:
+        kind:
+          type: string
+          title: Kind
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          title: Status
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        source_reference:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Reference
+        original_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Original Text
+        counterparty_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Counterparty Id
+        counterparty_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Counterparty Name
+        proposal_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Proposal Id
+        proposal_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Proposal Version
+        original_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Original Id
+        capture_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Capture Id
+        harvest_settlement_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Harvest Settlement Id
+        evidence_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Evidence Id
+        replacement_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Of Id
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - id
+      - status
+      title: AnalyticsSource
+    AreaPolicyTarget:
+      properties:
+        name:
+          type: string
+          title: Name
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        numerator:
+          type: integer
+          title: Numerator
+        denominator:
+          type: integer
+          const: 70
+          title: Denominator
+          default: 70
+        area_da:
+          type: string
+          title: Area Da
+        display_percentage:
+          type: string
+          title: Display Percentage
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - numerator
+      - area_da
+      - display_percentage
+      title: AreaPolicyTarget
+    AvailableAnalyticsAccount:
+      properties:
+        money_account_id:
+          type: string
+          format: uuid
+          title: Money Account Id
+        name:
+          type: string
+          title: Name
+        currency:
+          type: string
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - money_account_id
+      - name
+      - currency
+      title: AvailableAnalyticsAccount
+    CashTotals:
+      properties:
+        incoming:
+          type: string
+          title: Incoming
+        outgoing:
+          type: string
+          title: Outgoing
+        net_change:
+          type: string
+          title: Net Change
+      additionalProperties: false
+      type: object
+      required:
+      - incoming
+      - outgoing
+      - net_change
+      title: CashTotals
+    DebtDocument:
+      properties:
+        obligation_id:
+          type: string
+          format: uuid
+          title: Obligation Id
+        counterparty_id:
+          type: string
+          format: uuid
+          title: Counterparty Id
+        counterparty_name:
+          type: string
+          title: Counterparty Name
+        direction:
+          type: string
+          enum:
+          - payable
+          - receivable
+          title: Direction
+        currency:
+          type: string
+          title: Currency
+        original_amount:
+          type: string
+          title: Original Amount
+        allocated_amount:
+          type: string
+          title: Allocated Amount
+        remaining_amount:
+          type: string
+          title: Remaining Amount
+        status:
+          type: string
+          title: Status
+        settlement_status:
+          type: string
+          title: Settlement Status
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        due_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Due Date
+        overdue:
+          type: boolean
+          title: Overdue
+        obligation_class:
+          type: string
+          title: Obligation Class
+        economic_source:
+          type: string
+          title: Economic Source
+        opening:
+          type: boolean
+          title: Opening
+        opening_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Opening Date
+        opening_source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Opening Source
+        source:
+          $ref: '#/components/schemas/AnalyticsSource'
+        attributions:
+          items:
+            $ref: '#/components/schemas/AnalyticsAllocation'
+          type: array
+          title: Attributions
+        history:
+          items:
+            $ref: '#/components/schemas/DebtHistory'
+          type: array
+          title: History
+      additionalProperties: false
+      type: object
+      required:
+      - obligation_id
+      - counterparty_id
+      - counterparty_name
+      - direction
+      - currency
+      - original_amount
+      - allocated_amount
+      - remaining_amount
+      - status
+      - settlement_status
+      - event_date
+      - overdue
+      - obligation_class
+      - economic_source
+      - opening
+      - source
+      - attributions
+      - history
+      title: DebtDocument
+    DebtHistory:
+      properties:
+        kind:
+          type: string
+          enum:
+          - payment
+          - direct_settlement
+          - advance_application
+          title: Kind
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          title: Status
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        amount:
+          type: string
+          title: Amount
+        currency:
+          type: string
+          title: Currency
+        money_account_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Money Account Id
+        advance_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Advance Id
+        posting_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Posting Id
+        reversal_posting_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Reversal Posting Id
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - id
+      - status
+      - event_date
+      - amount
+      - currency
+      title: DebtHistory
+    DebtParty:
+      properties:
+        counterparty_id:
+          type: string
+          format: uuid
+          title: Counterparty Id
+        name:
+          type: string
+          title: Name
+        receivable:
+          type: string
+          title: Receivable
+        payable:
+          type: string
+          title: Payable
+        document_count:
+          type: integer
+          title: Document Count
+      additionalProperties: false
+      type: object
+      required:
+      - counterparty_id
+      - name
+      - receivable
+      - payable
+      - document_count
+      title: DebtParty
+    EconomicEvent:
+      properties:
+        posting_id:
+          type: string
+          format: uuid
+          title: Posting Id
+        entry_id:
+          type: string
+          format: uuid
+          title: Entry Id
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        currency:
+          type: string
+          title: Currency
+        classification:
+          type: string
+          enum:
+          - REVENUE
+          - OPERATING_COST
+          title: Classification
+        account_class:
+          type: string
+          title: Account Class
+        ledger_account_id:
+          type: string
+          format: uuid
+          title: Ledger Account Id
+        ledger_account_name:
+          type: string
+          title: Ledger Account Name
+        category:
+          type: string
+          const: UNKNOWN
+          title: Category
+          default: UNKNOWN
+        amount:
+          type: string
+          title: Amount
+        selected_amount:
+          type: string
+          title: Selected Amount
+        source_geography:
+          type: string
+          enum:
+          - EXACT
+          - GENERAL
+          - UNRESOLVED
+          - PARTIAL
+          - ESTIMATED
+          title: Source Geography
+        source:
+          $ref: '#/components/schemas/AnalyticsSource'
+        allocations:
+          items:
+            $ref: '#/components/schemas/AnalyticsAllocation'
+          type: array
+          title: Allocations
+      additionalProperties: false
+      type: object
+      required:
+      - posting_id
+      - entry_id
+      - event_date
+      - currency
+      - classification
+      - account_class
+      - ledger_account_id
+      - ledger_account_name
+      - amount
+      - selected_amount
+      - source_geography
+      - source
+      - allocations
+      title: EconomicEvent
+    FinanceAnalytics:
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+          title: Schema Version
+          default: 1
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        snapshot_at:
+          type: string
+          format: date-time
+          title: Snapshot At
+        currency:
+          type: string
+          title: Currency
+        period:
+          $ref: '#/components/schemas/AnalyticsPeriod'
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        money_account_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Money Account Id
+        cutover_date:
+          type: string
+          format: date
+          title: Cutover Date
+        finance_opening_policy:
+          type: string
+          title: Finance Opening Policy
+        cash_scope:
+          type: string
+          const: ENTITY_CURRENCY_ACCOUNT_NO_GREENHOUSE_ALLOCATION
+          title: Cash Scope
+          default: ENTITY_CURRENCY_ACCOUNT_NO_GREENHOUSE_ALLOCATION
+        accounts:
+          items:
+            $ref: '#/components/schemas/AnalyticsAccount'
+          type: array
+          title: Accounts
+        available_accounts:
+          items:
+            $ref: '#/components/schemas/AvailableAnalyticsAccount'
+          type: array
+          title: Available Accounts
+        cash_totals:
+          $ref: '#/components/schemas/CashTotals'
+        movements:
+          items:
+            $ref: '#/components/schemas/AnalyticsMovement'
+          type: array
+          title: Movements
+        debts:
+          $ref: '#/components/schemas/AnalyticsDebts'
+        economics:
+          $ref: '#/components/schemas/AnalyticsEconomics'
+        economic_events:
+          items:
+            $ref: '#/components/schemas/EconomicEvent'
+          type: array
+          title: Economic Events
+        areas:
+          items:
+            $ref: '#/components/schemas/AnalyticsArea'
+          type: array
+          title: Areas
+        harvest_denominator:
+          $ref: '#/components/schemas/HarvestDenominator'
+        cost_per_kg:
+          $ref: '#/components/schemas/AnalyticsCostPerKg'
+        allocation_policy:
+          $ref: '#/components/schemas/AnalyticsAreaPolicy'
+        coverage:
+          $ref: '#/components/schemas/AnalyticsCoverage'
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - snapshot_at
+      - currency
+      - period
+      - cutover_date
+      - finance_opening_policy
+      - accounts
+      - available_accounts
+      - cash_totals
+      - movements
+      - debts
+      - economics
+      - economic_events
+      - areas
+      - harvest_denominator
+      - cost_per_kg
+      - allocation_policy
+      - coverage
+      title: FinanceAnalytics
+    HarvestDenominator:
+      properties:
+        confirmed_kg:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Confirmed Kg
+        exact_kg:
+          type: string
+          title: Exact Kg
+        estimated_kg:
+          type: string
+          title: Estimated Kg
+        unallocated_kg:
+          type: string
+          title: Unallocated Kg
+        classification:
+          type: string
+          enum:
+          - EXACT
+          - ESTIMATED
+          - PARTIAL
+          - UNAVAILABLE
+          title: Classification
+        source_count:
+          type: integer
+          title: Source Count
+        stale_estimate_count:
+          type: integer
+          title: Stale Estimate Count
+        basis_incomplete:
+          type: boolean
+          title: Basis Incomplete
+        basis:
+          type: string
+          const: CURRENT_CONFIRMED_DEPOT_KG_SAME_PERIOD_SCOPE_ALL_CURRENCIES
+          title: Basis
+          default: CURRENT_CONFIRMED_DEPOT_KG_SAME_PERIOD_SCOPE_ALL_CURRENCIES
+        sources:
+          items:
+            $ref: '#/components/schemas/HarvestDenominatorSource'
+          type: array
+          title: Sources
+      additionalProperties: false
+      type: object
+      required:
+      - confirmed_kg
+      - exact_kg
+      - estimated_kg
+      - unallocated_kg
+      - classification
+      - source_count
+      - stale_estimate_count
+      - basis_incomplete
+      - sources
+      title: HarvestDenominator
+    HarvestDenominatorSource:
+      properties:
+        settlement_id:
+          type: string
+          format: uuid
+          title: Settlement Id
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        evidence_id:
+          type: string
+          format: uuid
+          title: Evidence Id
+        exact_kg:
+          type: string
+          title: Exact Kg
+        estimated_kg:
+          type: string
+          title: Estimated Kg
+        unallocated_kg:
+          type: string
+          title: Unallocated Kg
+        estimate_revision_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Estimate Revision Id
+        stale_estimate_revision_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Stale Estimate Revision Id
+        source_total_kg:
+          type: string
+          title: Source Total Kg
+        unknown_basis_count:
+          type: string
+          title: Unknown Basis Count
+      additionalProperties: false
+      type: object
+      required:
+      - settlement_id
+      - event_date
+      - evidence_id
+      - exact_kg
+      - estimated_kg
+      - unallocated_kg
+      - source_total_kg
+      - unknown_basis_count
+      title: HarvestDenominatorSource
+    InventoryCostCoverage:
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        product_name:
+          type: string
+          title: Product Name
+        kind:
+          type: string
+          title: Kind
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        base_unit:
+          type: string
+          title: Base Unit
+        quantity:
+          type: string
+          title: Quantity
+        uncosted_quantity:
+          type: string
+          title: Uncosted Quantity
+        known_cost:
+          type: string
+          title: Known Cost
+        currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Currency
+        finance_obligation_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Finance Obligation Ids
+        recognition:
+          type: string
+          enum:
+          - FINANCE_BASIS_ONLY
+          - UNRESOLVED_LINK_OR_TIMING
+          title: Recognition
+      additionalProperties: false
+      type: object
+      required:
+      - event_id
+      - product_id
+      - product_name
+      - kind
+      - event_date
+      - base_unit
+      - quantity
+      - uncosted_quantity
+      - known_cost
+      - finance_obligation_ids
+      - recognition
+      title: InventoryCostCoverage
+    HistoryFilters:
+      properties:
+        date_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+        date_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+        supplier_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supplier Id
+        product_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Product Id
+        location_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+        kind:
+          anyOf:
+          - type: string
+            enum:
+            - receipt
+            - application
+            - transfer
+            - writeoff
+            - plan
+          - type: 'null'
+          title: Kind
+        inclusive:
+          type: boolean
+          const: true
+          title: Inclusive
+          default: true
+        date_basis:
+          type: string
+          const: SOURCE_EVENT_DATE
+          title: Date Basis
+          default: SOURCE_EVENT_DATE
+      additionalProperties: false
+      type: object
+      title: HistoryFilters
+    HistoryReference:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        base_unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Base Unit
+        currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      title: HistoryReference
+    HistoryStock:
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        product_name:
+          type: string
+          title: Product Name
+        location_id:
+          type: string
+          format: uuid
+          title: Location Id
+        location_name:
+          type: string
+          title: Location Name
+        base_unit:
+          type: string
+          title: Base Unit
+        quantity:
+          type: string
+          title: Quantity
+        uncosted_quantity:
+          type: string
+          title: Uncosted Quantity
+        known_cost:
+          type: string
+          title: Known Cost
+        currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - product_id
+      - product_name
+      - location_id
+      - location_name
+      - base_unit
+      - quantity
+      - uncosted_quantity
+      - known_cost
+      title: HistoryStock
+    InventoryHistory:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        snapshot_at:
+          type: string
+          format: date-time
+          title: Snapshot At
+        filters:
+          $ref: '#/components/schemas/HistoryFilters'
+        offset:
+          type: integer
+          title: Offset
+        limit:
+          type: integer
+          title: Limit
+        total:
+          type: integer
+          title: Total
+        next_offset:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Next Offset
+        available_products:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Products
+        available_locations:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Locations
+        available_suppliers:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Suppliers
+        opening_state:
+          type: string
+          const: UNINITIALIZED_VERIFY
+          title: Opening State
+          default: UNINITIALIZED_VERIFY
+        events:
+          items:
+            $ref: '#/components/schemas/InventoryHistoryEvent'
+          type: array
+          title: Events
+        stock:
+          items:
+            $ref: '#/components/schemas/HistoryStock'
+          type: array
+          title: Stock
+        stock_scope:
+          type: string
+          const: CURRENT_PRODUCT_LOCATION_NOT_PERIOD_OPENING
+          title: Stock Scope
+          default: CURRENT_PRODUCT_LOCATION_NOT_PERIOD_OPENING
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - snapshot_at
+      - filters
+      - offset
+      - limit
+      - total
+      - next_offset
+      - available_products
+      - available_locations
+      - available_suppliers
+      - events
+      - stock
+      title: InventoryHistory
+    InventoryHistoryEvent:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          enum:
+          - receipt
+          - application
+          - transfer
+          - writeoff
+          - plan
+          title: Kind
+        event_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Event Date
+        status:
+          type: string
+          enum:
+          - draft
+          - posted
+          - reversed
+          title: Status
+        version:
+          type: integer
+          title: Version
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        supplier_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supplier Id
+        supplier_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Supplier Name
+        finance_obligation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Finance Obligation Id
+        replacement_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Of Id
+        replacement_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Id
+        reversal_event_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Reversal Event Date
+        reversal_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reversal Reason
+        lines:
+          items:
+            $ref: '#/components/schemas/InventoryHistoryLine'
+          type: array
+          title: Lines
+        movements:
+          items:
+            $ref: '#/components/schemas/InventoryHistoryMovement'
+          type: array
+          title: Movements
+        original:
+          $ref: '#/components/schemas/InventoryOriginal'
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        issue_messages:
+          items:
+            type: string
+          type: array
+          title: Issue Messages
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - kind
+      - status
+      - version
+      - created_at
+      - lines
+      - movements
+      - original
+      - issues
+      - issue_messages
+      title: InventoryHistoryEvent
+    InventoryHistoryLine:
+      properties:
+        line_no:
+          type: integer
+          title: Line No
+        product_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Product Id
+        product_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Product Name
+        original_product_name:
+          type: string
+          title: Original Product Name
+        quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity
+        unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Unit
+        original_quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Original Quantity
+        original_unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Original Unit
+        base_quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Base Quantity
+        base_unit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Base Unit
+        location_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+        location_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location Name
+        destination_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Destination Id
+        destination_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Destination Name
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        work_area_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Work Area Id
+        unit_cost:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Unit Cost
+        currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Currency
+      additionalProperties: false
+      type: object
+      required:
+      - line_no
+      - original_product_name
+      title: InventoryHistoryLine
+    InventoryHistoryMovement:
+      properties:
+        seq:
+          type: integer
+          title: Seq
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        role:
+          type: string
+          title: Role
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        product_name:
+          type: string
+          title: Product Name
+        location_id:
+          type: string
+          format: uuid
+          title: Location Id
+        location_name:
+          type: string
+          title: Location Name
+        base_unit:
+          type: string
+          title: Base Unit
+        quantity:
+          type: string
+          title: Quantity
+        uncosted_quantity:
+          type: string
+          title: Uncosted Quantity
+        known_cost:
+          type: string
+          title: Known Cost
+        currency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Currency
+        reversal_of_seq:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Reversal Of Seq
+      additionalProperties: false
+      type: object
+      required:
+      - seq
+      - event_id
+      - role
+      - event_date
+      - product_id
+      - product_name
+      - location_id
+      - location_name
+      - base_unit
+      - quantity
+      - uncosted_quantity
+      - known_cost
+      title: InventoryHistoryMovement
+    InventoryOriginal:
+      properties:
+        source:
+          type: string
+          title: Source
+        locator:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Locator
+        source_document:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Document
+        raw_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Raw Text
+        structured_original:
+          anyOf:
+          - $ref: '#/components/schemas/OwnerFormSource'
+          - type: 'null'
+        filename:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Filename
+        mime_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mime Type
+        has_file:
+          type: boolean
+          title: Has File
+        original_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Original Url
+        sha256:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sha256
+        hash_basis:
+          type: string
+          enum:
+          - BINARY_BYTES
+          - RAW_TEXT_UTF8
+          - CANONICAL_TYPED_FORM_JSON
+          - UNAVAILABLE
+          title: Hash Basis
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - has_file
+      - hash_basis
+      title: InventoryOriginal
+    InvoiceLink:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        original_source_id:
+          type: string
+          format: uuid
+          title: Original Source Id
+        proposal_id:
+          type: string
+          format: uuid
+          title: Proposal Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        finance_obligation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Finance Obligation Id
+        valuation_state:
+          type: string
+          const: UNKNOWN_UNCHANGED
+          title: Valuation State
+        supplier_consistency:
+          type: string
+          enum:
+          - MATCH
+          - UNKNOWN
+          - LEGACY_MISMATCH
+          title: Supplier Consistency
+        original_url:
+          type: string
+          title: Original Url
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - original_source_id
+      - proposal_id
+      - created_at
+      - valuation_state
+      - supplier_consistency
+      - original_url
+      title: InvoiceLink
+    InvoiceProposalState:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        action_type:
+          type: string
+          enum:
+          - PAYABLE
+          - INVOICE_MATCH
+          title: Action Type
+        state:
+          type: string
+          title: State
+        version:
+          type: integer
+          title: Version
+        confirmed_effect_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Confirmed Effect Id
+        current_receipt_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Current Receipt Id
+        finance_obligation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Finance Obligation Id
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - action_type
+      - state
+      - version
+      title: InvoiceProposalState
+    InvoiceWorkflow:
+      properties:
+        source_id:
+          type: string
+          format: uuid
+          title: Source Id
+        saved_at:
+          type: string
+          format: date-time
+          title: Saved At
+        capture_context:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Capture Context
+        invoice_intent:
+          anyOf:
+          - type: string
+            enum:
+            - operating_expense
+            - existing_payable
+          - type: 'null'
+          title: Invoice Intent
+        invoice_receipt_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Invoice Receipt Id
+        job_state:
+          type: string
+          title: Job State
+        filename:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Filename
+        text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Text
+        has_file:
+          type: boolean
+          title: Has File
+        original_url:
+          type: string
+          title: Original Url
+        proposals:
+          items:
+            $ref: '#/components/schemas/InvoiceProposalState'
+          type: array
+          title: Proposals
+      additionalProperties: false
+      type: object
+      required:
+      - source_id
+      - saved_at
+      - job_state
+      - has_file
+      - original_url
+      - proposals
+      title: InvoiceWorkflow
+    PurchaseHistory:
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        snapshot_at:
+          type: string
+          format: date-time
+          title: Snapshot At
+        filters:
+          $ref: '#/components/schemas/HistoryFilters'
+        offset:
+          type: integer
+          title: Offset
+        limit:
+          type: integer
+          title: Limit
+        total:
+          type: integer
+          title: Total
+        next_offset:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Next Offset
+        available_products:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Products
+        available_locations:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Locations
+        available_suppliers:
+          items:
+            $ref: '#/components/schemas/HistoryReference'
+          type: array
+          title: Available Suppliers
+        opening_state:
+          type: string
+          const: UNINITIALIZED_VERIFY
+          title: Opening State
+          default: UNINITIALIZED_VERIFY
+        items:
+          items:
+            $ref: '#/components/schemas/PurchaseReceipt'
+          type: array
+          title: Items
+        linked_documents:
+          items:
+            $ref: '#/components/schemas/DebtDocument'
+          type: array
+          title: Linked Documents
+        document_scope:
+          type: string
+          const: CURRENT_PAGE_LINKED_WHOLE_DOCUMENTS
+          title: Document Scope
+          default: CURRENT_PAGE_LINKED_WHOLE_DOCUMENTS
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - snapshot_at
+      - filters
+      - offset
+      - limit
+      - total
+      - next_offset
+      - available_products
+      - available_locations
+      - available_suppliers
+      - items
+      - linked_documents
+      title: PurchaseHistory
+    PurchaseReceipt:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          enum:
+          - receipt
+          - application
+          - transfer
+          - writeoff
+          - plan
+          title: Kind
+        event_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Event Date
+        status:
+          type: string
+          enum:
+          - draft
+          - posted
+          - reversed
+          title: Status
+        version:
+          type: integer
+          title: Version
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        supplier_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supplier Id
+        supplier_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Supplier Name
+        finance_obligation_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Finance Obligation Id
+        replacement_of_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Of Id
+        replacement_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Id
+        reversal_event_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Reversal Event Date
+        reversal_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reversal Reason
+        lines:
+          items:
+            $ref: '#/components/schemas/InventoryHistoryLine'
+          type: array
+          title: Lines
+        movements:
+          items:
+            $ref: '#/components/schemas/InventoryHistoryMovement'
+          type: array
+          title: Movements
+        original:
+          $ref: '#/components/schemas/InventoryOriginal'
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        issue_messages:
+          items:
+            type: string
+          type: array
+          title: Issue Messages
+        invoice_links:
+          items:
+            $ref: '#/components/schemas/InvoiceLink'
+          type: array
+          title: Invoice Links
+        pending_invoice_actions:
+          items:
+            $ref: '#/components/schemas/InvoiceWorkflow'
+          type: array
+          title: Pending Invoice Actions
+        linked_documents:
+          items:
+            $ref: '#/components/schemas/DebtDocument'
+          type: array
+          title: Linked Documents
+        valuation_policy:
+          type: string
+          const: UNKNOWN_UNCHANGED_ON_INVOICE_LINK
+          title: Valuation Policy
+          default: UNKNOWN_UNCHANGED_ON_INVOICE_LINK
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - kind
+      - status
+      - version
+      - created_at
+      - lines
+      - movements
+      - original
+      - issues
+      - issue_messages
+      - invoice_links
+      - pending_invoice_actions
+      - linked_documents
+      title: PurchaseReceipt
+    WorkerResponseInput:
+      properties:
+        client_response_id:
+          type: string
+          format: uuid
+          title: Client Response Id
+        assignment_id:
+          type: string
+          format: uuid
+          title: Assignment Id
+        expected_cycle:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Cycle
+        response:
+          type: string
+          enum:
+          - RECEIVED
+          - DONE
+          - PROBLEM
+          title: Response
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        button_label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Button Label
+        original_language:
+          type: string
+          enum:
+          - ru
+          - tr
+          - fa
+          - uz
+          title: Original Language
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Comment
+      additionalProperties: false
+      type: object
+      required:
+      - client_response_id
+      - assignment_id
+      - expected_cycle
+      - response
+      - captured_at
+      - button_label
+      - original_language
+      title: WorkerResponseInput
+    WorkerResponseResult:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        client_response_id:
+          type: string
+          format: uuid
+          title: Client Response Id
+        task_id:
+          type: string
+          format: uuid
+          title: Task Id
+        assignment_id:
+          type: string
+          format: uuid
+          title: Assignment Id
+        cycle:
+          type: integer
+          title: Cycle
+        execution_contract:
+          type: string
+          const: R2_RECEIVED_REPORT
+          title: Execution Contract
+          default: R2_RECEIVED_REPORT
+        response:
+          type: string
+          enum:
+          - RECEIVED
+          - DONE
+          - PROBLEM
+          title: Response
+        action_id:
+          type: string
+          format: uuid
+          title: Action Id
+        report_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Report Id
+        task_version:
+          type: integer
+          title: Task Version
+        task_status:
+          type: string
+          title: Task Status
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - client_response_id
+      - task_id
+      - assignment_id
+      - cycle
+      - response
+      - action_id
+      - report_id
+      - task_version
+      - task_status
+      title: WorkerResponseResult
+    ActualConfirm:
+      properties:
+        input:
+          $ref: '#/components/schemas/ActualInput'
+        actual_preview_digest:
+          type: string
+          maxLength: 64
+          minLength: 64
+          title: Actual Preview Digest
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - input
+      - actual_preview_digest
+      - confirmed
+      title: ActualConfirm
+    ActualInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/FormSource'
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        revision:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Revision
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        duplicate_reviewed:
+          type: boolean
+          title: Duplicate Reviewed
+          default: false
+        lines:
+          items:
+            $ref: '#/components/schemas/ActualLine'
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Lines
+        completed_card_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 50
+          title: Completed Card Ids
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - expected_version
+      - revision
+      - event_date
+      - lines
+      title: ActualInput
+    ActualLine:
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        component_id:
+          type: string
+          format: uuid
+          title: Component Id
+        report_id:
+          type: string
+          format: uuid
+          title: Report Id
+        quantity:
+          type: string
+          title: Quantity
+        disposition:
+          type: string
+          enum:
+          - APPLIED
+          - NOT_APPLIED
+          title: Disposition
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Reason
+      additionalProperties: false
+      type: object
+      required:
+      - card_id
+      - component_id
+      - report_id
+      - quantity
+      - disposition
+      title: ActualLine
+    ActualPreview:
+      properties:
+        input:
+          $ref: '#/components/schemas/ActualInput'
+        actual_preview_digest:
+          type: string
+          title: Actual Preview Digest
+        selected_scope:
+          items:
+            $ref: '#/components/schemas/ActualLine'
+          type: array
+          title: Selected Scope
+        totals:
+          items:
+            $ref: '#/components/schemas/ProductTotal'
+          type: array
+          title: Totals
+        zero_lines:
+          items:
+            $ref: '#/components/schemas/ActualLine'
+          type: array
+          title: Zero Lines
+        remainder:
+          items:
+            $ref: '#/components/schemas/ProposedActualLine'
+          type: array
+          title: Remainder
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        can_confirm:
+          type: boolean
+          title: Can Confirm
+        inventory_effect:
+          additionalProperties: true
+          type: object
+          title: Inventory Effect
+      additionalProperties: false
+      type: object
+      required:
+      - input
+      - actual_preview_digest
+      - selected_scope
+      - totals
+      - zero_lines
+      - remainder
+      - issues
+      - can_confirm
+      - inventory_effect
+      title: ActualPreview
+    ActualView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        plan_id:
+          type: string
+          format: uuid
+          title: Plan Id
+        revision_id:
+          type: string
+          format: uuid
+          title: Revision Id
+        source_id:
+          type: string
+          format: uuid
+          title: Source Id
+        application_id:
+          type: string
+          format: uuid
+          title: Application Id
+        input:
+          $ref: '#/components/schemas/ActualInput'
+        source_snapshot:
+          $ref: '#/components/schemas/ActualConfirm'
+        preview_digest:
+          type: string
+          title: Preview Digest
+        created_by:
+          type: string
+          format: uuid
+          title: Created By
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        inventory_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Inventory Status
+        replacement_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replacement Id
+        current_application_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Current Application Id
+        current_inventory_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Inventory Status
+        application_history:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Application History
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - entity_id
+      - plan_id
+      - revision_id
+      - source_id
+      - application_id
+      - input
+      - source_snapshot
+      - preview_digest
+      - created_by
+      - created_at
+      title: ActualView
+    AreaView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        kind:
+          type: string
+          title: Kind
+        parent_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Parent Id
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      - kind
+      - parent_id
+      title: AreaView
+    CardInput:
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        area_reference_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Area Reference Id
+        mix_label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Mix Label
+        worker_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Worker Id
+        worker_reference_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Worker Reference Id
+        original_instruction:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Original Instruction
+        rendered_text:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Rendered Text
+        language:
+          type: string
+          const: fa
+          title: Language
+          default: fa
+        rendering_reviewed:
+          type: boolean
+          title: Rendering Reviewed
+          default: false
+        components:
+          items:
+            $ref: '#/components/schemas/ComponentInput'
+          type: array
+          maxItems: 30
+          minItems: 1
+          title: Components
+      additionalProperties: false
+      type: object
+      required:
+      - card_id
+      - work_area_id
+      - mix_label
+      - components
+      title: CardInput
+    CardView:
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        area_reference_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Area Reference Id
+        mix_label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Mix Label
+        worker_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Worker Id
+        worker_reference_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Worker Reference Id
+        original_instruction:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Original Instruction
+        rendered_text:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Rendered Text
+        language:
+          type: string
+          const: fa
+          title: Language
+          default: fa
+        rendering_reviewed:
+          type: boolean
+          title: Rendering Reviewed
+          default: false
+        components:
+          items:
+            $ref: '#/components/schemas/ComponentView'
+          type: array
+          title: Components
+        greenhouse_name:
+          type: string
+          title: Greenhouse Name
+        part_name:
+          type: string
+          title: Part Name
+        worker_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Worker Name
+        area_da:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Area Da
+        area_provenance:
+          anyOf:
+          - $ref: '#/components/schemas/ReferenceView'
+          - type: 'null'
+        prepared_instruction:
+          type: string
+          title: Prepared Instruction
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        current_report:
+          anyOf:
+          - $ref: '#/components/schemas/ReportView'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      required:
+      - card_id
+      - work_area_id
+      - mix_label
+      - components
+      - greenhouse_name
+      - part_name
+      - worker_name
+      - area_da
+      - area_provenance
+      - prepared_instruction
+      - issues
+      title: CardView
+    ComponentInput:
+      properties:
+        component_id:
+          type: string
+          format: uuid
+          title: Component Id
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        location_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+        dose_per_da:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Dose Per Da
+        unit:
+          type: string
+          enum:
+          - kg
+          - L
+          title: Unit
+        quantity_override:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity Override
+        override_reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Override Reason
+        photo_source_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Photo Source Id
+      additionalProperties: false
+      type: object
+      required:
+      - component_id
+      - product_id
+      - unit
+      title: ComponentInput
+    ComponentView:
+      properties:
+        component_id:
+          type: string
+          format: uuid
+          title: Component Id
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        location_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Location Id
+        dose_per_da:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Dose Per Da
+        unit:
+          type: string
+          enum:
+          - kg
+          - L
+          title: Unit
+        quantity_override:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity Override
+        override_reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Override Reason
+        photo_source_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Photo Source Id
+        product_name:
+          type: string
+          title: Product Name
+        location_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location Name
+        calculated_quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Calculated Quantity
+        proposed_quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Proposed Quantity
+        quantity_basis:
+          type: string
+          enum:
+          - UNKNOWN
+          - OWNER_OVERRIDE
+          - DOSE_TIMES_AREA
+          title: Quantity Basis
+        photo_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Photo Url
+      additionalProperties: false
+      type: object
+      required:
+      - component_id
+      - product_id
+      - unit
+      - product_name
+      - location_name
+      - calculated_quantity
+      - proposed_quantity
+      - quantity_basis
+      title: ComponentView
+    DispatchInput:
+      properties:
+        client_approval_id:
+          type: string
+          format: uuid
+          title: Client Approval Id
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        revision:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Revision
+        preview_digest:
+          type: string
+          maxLength: 64
+          minLength: 64
+          title: Preview Digest
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - client_approval_id
+      - captured_at
+      - expected_version
+      - revision
+      - preview_digest
+      - confirmed
+      title: DispatchInput
+    DispatchView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        plan_id:
+          type: string
+          format: uuid
+          title: Plan Id
+        revision_id:
+          type: string
+          format: uuid
+          title: Revision Id
+        created_by:
+          type: string
+          format: uuid
+          title: Created By
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        source_snapshot:
+          $ref: '#/components/schemas/DispatchInput'
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - entity_id
+      - plan_id
+      - revision_id
+      - created_by
+      - created_at
+      - source_snapshot
+      title: DispatchView
+    FertilizerResponseInput:
+      properties:
+        client_response_id:
+          type: string
+          format: uuid
+          title: Client Response Id
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        expected_revision:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Revision
+        dispatch_id:
+          type: string
+          format: uuid
+          title: Dispatch Id
+        response:
+          type: string
+          enum:
+          - DONE
+          - PARTIAL
+          - PROBLEM
+          title: Response
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        button_label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Button Label
+        original_language:
+          type: string
+          enum:
+          - ru
+          - tr
+          - fa
+          - uz
+          title: Original Language
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Comment
+        quantities:
+          items:
+            $ref: '#/components/schemas/ReportQuantity'
+          type: array
+          maxItems: 30
+          title: Quantities
+      additionalProperties: false
+      type: object
+      required:
+      - client_response_id
+      - card_id
+      - expected_revision
+      - dispatch_id
+      - response
+      - captured_at
+      - button_label
+      - original_language
+      title: FertilizerResponseInput
+    FormSource:
+      properties:
+        form_id:
+          type: string
+          format: uuid
+          title: Form Id
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        source_kind:
+          type: string
+          const: OWNER_FORM
+          title: Source Kind
+          default: OWNER_FORM
+        origin:
+          type: string
+          enum:
+          - owner
+          - agronomist
+          title: Origin
+          default: owner
+        original_text:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Original Text
+        inbox_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Inbox Id
+      additionalProperties: false
+      type: object
+      required:
+      - form_id
+      - captured_at
+      title: FormSource
+    GreenhouseView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      title: GreenhouseView
+    PlanInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/FormSource'
+        greenhouse_id:
+          type: string
+          format: uuid
+          title: Greenhouse Id
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        intended_send_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Intended Send At
+        copied_from_plan_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Copied From Plan Id
+        copied_from_revision:
+          anyOf:
+          - type: integer
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Copied From Revision
+        copy_reason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Copy Reason
+        cards:
+          items:
+            $ref: '#/components/schemas/CardInput'
+          type: array
+          maxItems: 50
+          minItems: 1
+          title: Cards
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - greenhouse_id
+      - event_date
+      - cards
+      title: PlanInput
+    PlanPreview:
+      properties:
+        input:
+          $ref: '#/components/schemas/PlanInput'
+        cards:
+          items:
+            $ref: '#/components/schemas/CardView'
+          type: array
+          title: Cards
+        totals:
+          items:
+            $ref: '#/components/schemas/ProductTotal'
+          type: array
+          title: Totals
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        preview_digest:
+          type: string
+          title: Preview Digest
+        can_dispatch:
+          type: boolean
+          title: Can Dispatch
+        greenhouse:
+          $ref: '#/components/schemas/AreaView'
+      additionalProperties: false
+      type: object
+      required:
+      - input
+      - cards
+      - totals
+      - issues
+      - preview_digest
+      - can_dispatch
+      - greenhouse
+      title: PlanPreview
+    PlanView:
+      properties:
+        late_evidence_count:
+          type: integer
+          title: Late Evidence Count
+        late_evidence_review_supported:
+          type: boolean
+          const: false
+          title: Late Evidence Review Supported
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        revision:
+          type: integer
+          title: Revision
+        version:
+          type: integer
+          title: Version
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - APPROVED
+          - PARTIALLY_APPLIED
+          - APPLIED
+          - ACTUAL_REVERSED
+          - ACTUAL_CORRECTED
+          title: Status
+        input:
+          $ref: '#/components/schemas/PlanInput'
+        source_snapshot:
+          $ref: '#/components/schemas/FormSource'
+        preview_digest:
+          type: string
+          title: Preview Digest
+        cards:
+          items:
+            $ref: '#/components/schemas/CardView'
+          type: array
+          title: Cards
+        totals:
+          items:
+            $ref: '#/components/schemas/ProductTotal'
+          type: array
+          title: Totals
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        can_dispatch:
+          type: boolean
+          title: Can Dispatch
+        current_dispatch_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Current Dispatch Id
+        dispatches:
+          items:
+            $ref: '#/components/schemas/DispatchView'
+          type: array
+          title: Dispatches
+        reports:
+          items:
+            $ref: '#/components/schemas/ReportView'
+          type: array
+          title: Reports
+        actual:
+          anyOf:
+          - $ref: '#/components/schemas/ActualView'
+          - type: 'null'
+        revisions:
+          items:
+            $ref: '#/components/schemas/RevisionView'
+          type: array
+          title: Revisions
+        proposed_actual_lines:
+          items:
+            $ref: '#/components/schemas/ProposedActualLine'
+          type: array
+          title: Proposed Actual Lines
+        remainder:
+          items:
+            $ref: '#/components/schemas/ProposedActualLine'
+          type: array
+          title: Remainder
+        subsequent_scope_supported:
+          type: boolean
+          const: false
+          title: Subsequent Scope Supported
+      additionalProperties: false
+      type: object
+      required:
+      - late_evidence_count
+      - late_evidence_review_supported
+      - id
+      - entity_id
+      - revision
+      - version
+      - status
+      - input
+      - source_snapshot
+      - preview_digest
+      - cards
+      - totals
+      - issues
+      - can_dispatch
+      - current_dispatch_id
+      - dispatches
+      - reports
+      - actual
+      - revisions
+      - proposed_actual_lines
+      - remainder
+      - subsequent_scope_supported
+      title: PlanView
+    ProductTotal:
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        unit:
+          type: string
+          enum:
+          - kg
+          - L
+          title: Unit
+        quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity
+      additionalProperties: false
+      type: object
+      required:
+      - product_id
+      - unit
+      - quantity
+      title: ProductTotal
+    ProposedActualLine:
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        component_id:
+          type: string
+          format: uuid
+          title: Component Id
+        report_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Report Id
+        quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity
+        quantity_basis:
+          type: string
+          enum:
+          - WORKER_REPORTED
+          - PLAN_CANDIDATE
+          - UNKNOWN
+          title: Quantity Basis
+        product_id:
+          type: string
+          format: uuid
+          title: Product Id
+        product_name:
+          type: string
+          title: Product Name
+        unit:
+          type: string
+          enum:
+          - kg
+          - L
+          title: Unit
+        resolution_required:
+          type: boolean
+          title: Resolution Required
+        remaining_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Remaining Status
+      additionalProperties: false
+      type: object
+      required:
+      - card_id
+      - component_id
+      - report_id
+      - quantity
+      - quantity_basis
+      - product_id
+      - product_name
+      - unit
+      - resolution_required
+      title: ProposedActualLine
+    ReferenceInput:
+      properties:
+        client_reference_id:
+          type: string
+          format: uuid
+          title: Client Reference Id
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        area_da:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Area Da
+        default_worker_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Default Worker Id
+        canonical_key:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Canonical Key
+        verification:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Verification
+        effective_from:
+          type: string
+          format: date
+          title: Effective From
+        replaces_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replaces Id
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - client_reference_id
+      - captured_at
+      - work_area_id
+      - verification
+      - effective_from
+      - confirmed
+      title: ReferenceInput
+    ReferenceView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        work_area_id:
+          type: string
+          format: uuid
+          title: Work Area Id
+        area_da:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Area Da
+        default_worker_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Default Worker Id
+        canonical_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Canonical Key
+        verification:
+          type: string
+          title: Verification
+        effective_from:
+          type: string
+          format: date
+          title: Effective From
+        replaces_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replaces Id
+        created_by:
+          type: string
+          format: uuid
+          title: Created By
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        source_snapshot:
+          $ref: '#/components/schemas/ReferenceInput'
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - entity_id
+      - work_area_id
+      - area_da
+      - default_worker_id
+      - canonical_key
+      - verification
+      - effective_from
+      - replaces_id
+      - created_by
+      - created_at
+      - source_snapshot
+      title: ReferenceView
+    ReportOriginal:
+      properties:
+        client_response_id:
+          type: string
+          format: uuid
+          title: Client Response Id
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        expected_revision:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Revision
+        dispatch_id:
+          type: string
+          format: uuid
+          title: Dispatch Id
+        response:
+          type: string
+          enum:
+          - DONE
+          - PARTIAL
+          - PROBLEM
+          title: Response
+        captured_at:
+          type: string
+          format: date-time
+          title: Captured At
+        button_label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Button Label
+        original_language:
+          type: string
+          enum:
+          - ru
+          - tr
+          - fa
+          - uz
+          title: Original Language
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Comment
+        quantities:
+          items:
+            $ref: '#/components/schemas/ReportQuantity'
+          type: array
+          maxItems: 30
+          title: Quantities
+        schema_version:
+          type: integer
+          const: 1
+          title: Schema Version
+        source_kind:
+          type: string
+          const: UI_ACTION
+          title: Source Kind
+      additionalProperties: false
+      type: object
+      required:
+      - client_response_id
+      - card_id
+      - expected_revision
+      - dispatch_id
+      - response
+      - captured_at
+      - button_label
+      - original_language
+      - schema_version
+      - source_kind
+      title: ReportOriginal
+    ReportQuantity:
+      properties:
+        component_id:
+          type: string
+          format: uuid
+          title: Component Id
+        quantity:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Quantity
+      additionalProperties: false
+      type: object
+      required:
+      - component_id
+      title: ReportQuantity
+    ReportView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        plan_id:
+          type: string
+          format: uuid
+          title: Plan Id
+        revision_id:
+          type: string
+          format: uuid
+          title: Revision Id
+        dispatch_id:
+          type: string
+          format: uuid
+          title: Dispatch Id
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        worker_id:
+          type: string
+          format: uuid
+          title: Worker Id
+        actor_id:
+          type: string
+          format: uuid
+          title: Actor Id
+        response:
+          type: string
+          enum:
+          - DONE
+          - PARTIAL
+          - PROBLEM
+          title: Response
+        source_snapshot:
+          $ref: '#/components/schemas/ReportOriginal'
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - entity_id
+      - plan_id
+      - revision_id
+      - dispatch_id
+      - card_id
+      - worker_id
+      - actor_id
+      - response
+      - source_snapshot
+      - received_at
+      title: ReportView
+    RevisionInput:
+      properties:
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        input:
+          $ref: '#/components/schemas/PlanInput'
+      additionalProperties: false
+      type: object
+      required:
+      - expected_version
+      - input
+      title: RevisionInput
+    RevisionView:
+      properties:
+        revision:
+          type: integer
+          title: Revision
+        preview_digest:
+          type: string
+          title: Preview Digest
+        input:
+          $ref: '#/components/schemas/PlanInput'
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        created_by:
+          type: string
+          format: uuid
+          title: Created By
+      additionalProperties: false
+      type: object
+      required:
+      - revision
+      - preview_digest
+      - input
+      - created_at
+      - created_by
+      title: RevisionView
+    WorkerCalendarView:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/WorkerPlanView'
+          type: array
+          title: Items
+        attention:
+          type: integer
+          title: Attention
+        filters:
+          additionalProperties: true
+          type: object
+          title: Filters
+      additionalProperties: false
+      type: object
+      required:
+      - items
+      - attention
+      - filters
+      title: WorkerCalendarView
+    WorkerPlanView:
+      properties:
+        current_revision:
+          type: integer
+          title: Current Revision
+        can_respond:
+          type: boolean
+          title: Can Respond
+        id:
+          type: string
+          format: uuid
+          title: Id
+        plan_id:
+          type: string
+          format: uuid
+          title: Plan Id
+        revision:
+          type: integer
+          title: Revision
+        version:
+          type: integer
+          title: Version
+        dispatch_id:
+          type: string
+          format: uuid
+          title: Dispatch Id
+        event_date:
+          type: string
+          format: date
+          title: Event Date
+        greenhouse:
+          $ref: '#/components/schemas/GreenhouseView'
+        cards:
+          items:
+            $ref: '#/components/schemas/CardView'
+          type: array
+          title: Cards
+        reports:
+          items:
+            $ref: '#/components/schemas/ReportView'
+          type: array
+          title: Reports
+      additionalProperties: false
+      type: object
+      required:
+      - current_revision
+      - can_respond
+      - id
+      - plan_id
+      - revision
+      - version
+      - dispatch_id
+      - event_date
+      - greenhouse
+      - cards
+      - reports
+      title: WorkerPlanView
   responses:
     Conflict:
       description: Version or idempotency conflict

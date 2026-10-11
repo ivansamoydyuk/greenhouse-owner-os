@@ -19,6 +19,8 @@ class SqlOpeningRepositoryMixin:
         row = self.session.get(LedgerAccountRow, account_id)
         if row and (row.account_class == 'opening_equity' or row.system_code == 'OPENING_PAYABLE_OFFSET'):
             raise ValidationError('opening offset reserved for explicit owner-verified opening payable')
+        if row and row.system_code in ('AP_CONTROL', 'AR_CONTROL', 'SUPPLIER_ADVANCE', 'CUSTOMER_ADVANCE'):
+            raise ValidationError('subledger control account cannot be an ordinary obligation offset')
 
     def get_opening_payable(self, obligation_id):
         row = self.session.get(OpeningPayableRow, obligation_id)

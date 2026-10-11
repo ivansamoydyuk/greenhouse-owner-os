@@ -8,13 +8,14 @@ from greenhouse_owner_os.domain.errors import ValidationError,ConflictError,NotF
 from greenhouse_owner_os.domain.workers import TaskInput,ReportInput
 from .finance import FinanceService,_hash_request
 from .inventory import rows
+from .workers_r2 import WorkersR2Mixin
 
 def same_value(key,left,right):
     if key in ('source_timestamp','event_at','due_at') and left is not None and right is not None:
         return datetime.fromisoformat(left)==datetime.fromisoformat(right)
     return left==right
 
-class WorkersService:
+class WorkersService(WorkersR2Mixin):
     def __init__(self,factory):self.factory=factory;self.finance=FinanceService(factory)
     def _write(self,e,a,key,operation,payload,fn):
         h=_hash_request(dict(entity_id=str(e),**payload))
@@ -24,7 +25,7 @@ class WorkersService:
                 replay=self.finance._replay_if_exists(u,a,operation,key,h)
                 if replay:return replay
                 if not rows(u,'SELECT id FROM core.entities WHERE id=:e',e=e):raise NotFoundError('entity not found')
-                if operation not in ('task_action','task_report') and not rows(u,"SELECT id FROM core.actors WHERE id=:a AND actor_type='owner' AND active",a=a):raise NotFoundError('owner identity required')
+                if operation not in ('task_action','task_report','worker_r2_response') and not rows(u,"SELECT id FROM core.actors WHERE id=:a AND actor_type='owner' AND active",a=a):raise NotFoundError('owner identity required')
                 u.session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended('workers:'||CAST(:e AS text),0))"),{'e':str(e)})
                 r=fn(u)
                 u.audit.append(actor_id=a,action=operation,entity_type='workers',entity_id=UUID(r['id']),before=None,after=r)
@@ -61,12 +62,13 @@ class WorkersService:
         p=dict(payload);gaps=list(b.gaps)
         if rows(u,'SELECT id FROM workers.tasks WHERE entity_id=:e AND original_instruction=:raw',e=e,raw=b.original_instruction):gaps.append('Возможный дубль поручения: другой идентификатор источника')
         p['gaps']=json.dumps(gaps,ensure_ascii=False)
-        return rows(u,'INSERT INTO workers.tasks(id,entity_id,owner_language,title,original_instruction,description,category,greenhouse_id,work_area_id,priority,planned_date,due_at,source,locator,source_timestamp,interpretation,gaps,created_by,rule_id,template_id,occurrence_date) VALUES(:id,:e,:owner_language,:title,:original_instruction,:description,:category,:greenhouse_id,:work_area_id,:priority,:planned_date,:due_at,:source,:locator,:source_timestamp,CAST(:payload AS jsonb),CAST(:gaps AS jsonb),:a,:rule,:template,:occurrence) RETURNING *',id=uuid4(),e=e,a=a,payload=json.dumps(payload,ensure_ascii=False),rule=rule['id'] if rule else None,template=rule['template_id'] if rule else None,occurrence=occurrence,**p)[0]
+        return rows(u,'INSERT INTO workers.tasks(id,entity_id,owner_language,title,original_instruction,description,category,greenhouse_id,work_area_id,priority,planned_date,due_at,source,locator,source_timestamp,interpretation,gaps,created_by,rule_id,template_id,occurrence_date,execution_contract) VALUES(:id,:e,:owner_language,:title,:original_instruction,:description,:category,:greenhouse_id,:work_area_id,:priority,:planned_date,:due_at,:source,:locator,:source_timestamp,CAST(:payload AS jsonb),CAST(:gaps AS jsonb),:a,:rule,:template,:occurrence,:contract) RETURNING *',id=uuid4(),e=e,a=a,payload=json.dumps(payload,ensure_ascii=False),rule=rule['id'] if rule else None,template=rule['template_id'] if rule else None,occurrence=occurrence,contract=b.execution_contract,**{k:v for k,v in p.items() if k!='execution_contract'})[0]
     def create(self,e,a,key,b):return self._write(e,a,key,'task_create',b.model_dump(mode='json'),lambda u:self._create(u,e,a,b))
     def assign(self,e,a,key,t,b):
         def run(u):
             task=self._task(u,e,t);worker=self._worker(u,e,b.worker_id)
             if not worker['active']:raise ValidationError('Работник неактивен')
+            if task['execution_contract']=='R2_RECEIVED_REPORT' and b.language!=worker['language']:raise ValidationError('Для R2 нужен проверенный текст на языке работника')
             if b.language!=(task['owner_language'] if b.translation_source=='original' else worker['language']):raise ValidationError('Проверьте язык оригинала/перевода')
             if b.translation_source=='original' and b.rendered_text!=task['original_instruction']:raise ValidationError('Оригинал нельзя менять под видом перевода')
             old=rows(u,'SELECT * FROM workers.assignments WHERE task_id=:t AND worker_id=:w',t=t,w=b.worker_id)
@@ -101,6 +103,7 @@ class WorkersService:
                 if worker['actor_id']!=str(a):raise NotFoundError('worker identity mismatch')
                 if not worker['active']:raise ValidationError('Worker inactive')
                 if b.kind not in ('acknowledge','start','submit_report'):raise ValidationError('Owner review required')
+                if task['execution_contract']=='R2_RECEIVED_REPORT':raise ValidationError('Используйте Получено / Готово / Проблема для R2')
                 assignment=rows(u,'SELECT * FROM workers.assignments WHERE task_id=:t AND worker_id=:w',t=t,w=worker_id)
                 if not assignment or b.assignment_id and str(b.assignment_id)!=assignment[0]['id']:raise NotFoundError('assignment not found')
                 if b.expected_cycle!=task['cycle']:raise ConflictError('Цикл задачи изменился; обновите поручение')
@@ -163,12 +166,22 @@ class WorkersService:
         task['assignments']=rows(u,'SELECT a.*,p.display_name FROM workers.assignments a JOIN workers.people p ON p.id=a.worker_id WHERE a.task_id=:t AND (CAST(:w AS uuid) IS NULL OR a.worker_id=CAST(:w AS uuid)) ORDER BY a.assigned_at',t=t,w=str(w) if w else None)
         task['reports']=rows(u,'SELECT * FROM workers.reports WHERE task_id=:t AND (CAST(:w AS uuid) IS NULL OR worker_id=CAST(:w AS uuid)) ORDER BY received_at',t=t,w=str(w) if w else None)
         task['actions']=rows(u,'SELECT * FROM workers.actions WHERE task_id=:t AND (CAST(:w AS uuid) IS NULL OR worker_id IS NULL OR worker_id=CAST(:w AS uuid)) ORDER BY received_at,id',t=t,w=str(w) if w else None)
+        if task['execution_contract']=='R2_RECEIVED_REPORT':task['response_history']=self._response_history(u,e,t,w)
         if w:
             # Worker payload intentionally omits downstream accounting links and other assignees.
             for k in ('interpretation','source','locator','created_by','description','gaps'):task.pop(k,None)
         else:
             task['can_complete']=task['status']=='reported' and bool(task['assignments']) and all(any(r['assignment_id']==a['id'] and r['cycle']==task['cycle'] and r['state']=='submitted' and r['claim']=='done' for r in task['reports']) for a in task['assignments']) and not any(r['cycle']==task['cycle'] and r['state']=='submitted' and r['claim']=='issue' and not any(x['kind']=='review_report' and x['report_id']==r['id'] for x in task['actions']) for r in task['reports'])
             task['links']=rows(u,'SELECT * FROM workers.links WHERE task_id=:t ORDER BY created_at',t=t)
+            prepared=rows(u,"SELECT r.payload FROM core.confirmation_effects c JOIN core.proposal_revisions r ON r.proposal_id=c.proposal_id AND r.version=c.version AND r.entity_id=c.entity_id WHERE c.worker_task_id=:t AND c.entity_id=:e",t=t,e=e)
+            if prepared:
+                payload=prepared[0]['payload']
+                task['prepared_assignment']={k:payload.get(k) for k in ('worker_id','language','rendered_text')}
+                # Owner-only display metadata from the immutable approval. It
+                # does not replace the authoritative R1 category/date or reach
+                # worker payloads as a new instruction/dispatch capability.
+                if payload.get('relative_time_context'):task['relative_time_context']=payload['relative_time_context']
+                if payload.get('category'):task['prepared_category']=payload['category']
         return task
     def get(self,e,t,w=None):
         with self.factory() as u:
@@ -181,7 +194,7 @@ class WorkersService:
             if w:
                 worker=self._worker(u,e,w)
                 if not worker['active']:raise NotFoundError('worker inactive')
-                tasks=rows(u,'SELECT t.id,a.rendered_text AS title,t.status,t.planned_date,t.due_at,t.category,t.greenhouse_id FROM workers.tasks t JOIN workers.assignments a ON a.task_id=t.id WHERE t.entity_id=:e AND a.worker_id=:w ORDER BY t.created_at DESC',e=e,w=w)
+                tasks=rows(u,'SELECT t.id,a.rendered_text AS title,t.status,t.planned_date,t.due_at,t.category,t.greenhouse_id,t.execution_contract,t.cycle FROM workers.tasks t JOIN workers.assignments a ON a.task_id=t.id WHERE t.entity_id=:e AND a.worker_id=:w ORDER BY t.created_at DESC',e=e,w=w)
                 return dict(tasks=tasks,worker=dict(id=worker['id'],display_name=worker['display_name'],language=worker['language']))
             tasks=rows(u,"SELECT t.*,COALESCE((SELECT jsonb_agg(a.worker_id) FROM workers.assignments a WHERE a.task_id=t.id),'[]'::jsonb) AS assigned_worker_ids FROM workers.tasks t WHERE entity_id=:e ORDER BY created_at DESC",e=e)
             attention=[];now=datetime.now(timezone.utc);today=now.astimezone(__import__('zoneinfo').ZoneInfo('Europe/Istanbul')).date()

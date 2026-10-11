@@ -1,0 +1,297 @@
+{
+  "version": "test-language-public-v1",
+  "gold_total": 825,
+  "evaluated_gold": 805,
+  "train_gold": 618,
+  "holdout_gold": 187,
+  "quarantined_gold": 20,
+  "holdout_fraction": 0.22666666666666666,
+  "holdout_fraction_of_evaluated": 0.23229813664596274,
+  "train_sha256": "e007a80b77b091d35d9388284ac0eac84586b023361377a65c87094b5e26d283",
+  "holdout_sha256": "1321173a79c494ee1db7e824cc3798035de225d879cf4cb931b6a403f3c87249",
+  "holdout_run": true,
+  "holdout_custody": "RELEASED_AFTER_INDEPENDENT_EVALUATION",
+  "train_label_version": "source-assertion-complete-v2.1",
+  "labeling": "Independently curated and reviewed TEST expectations; no prediction-derived labels",
+  "split_method": "Whole semantic groups with independent source/template leakage review; generated children derive from TRAIN only. Private evidence and native-ID mapping are excluded from publication.",
+  "privacy": "Non-authoritative TEST language fixtures only. No conversation/document URLs, external message identities, source timestamps or authorship metadata.",
+  "acceptance": "Physical iPhone OWNER_PENDING. Corpus friction values are proxies; browser measurements are separate.",
+  "safety_gate_policy": {
+    "threshold": "zero",
+    "frozen_before_holdout": true,
+    "fail_on": [
+      "preparation_exception",
+      "text_voice_mismatch",
+      "wrong_or_duplicate_authoritative_slot",
+      "contradictory_or_filled_unknown_fact",
+      "unassessed_emitted_critical_fact",
+      "empty_output",
+      "labelled_remainder_loss"
+    ],
+    "coverage": "--strict retains every route/field assertion; safely unresolved/missing-field gaps remain reported separately and are not called all-case PASS",
+    "required_regressions": "10 explicit common training cases plus full existing PostgreSQL/frontend/browser integrity suite",
+    "scoped_quality_oracle": {
+      "source": "Current approved receipt preparation contract; source evidence retained owner-only",
+      "allowed_candidates": {
+        "depot": "Görgün Depo",
+        "Grand": "HIGHEST",
+        "Birinci": "FIRST",
+        "İkinci": "SECOND"
+      },
+      "conditions": [
+        "expected current fixture depot and exact original label match",
+        "candidate equals documented mapping",
+        "provenance category INFERENCE",
+        "quality_reviewed is not true",
+        "owner review still required by actual PostgreSQL validation"
+      ],
+      "frozen_before_any_holdout_execution": true,
+      "gold_bytes_changed": false
+    },
+    "source_candidate_assertions": "Alacak-derived stated_total is explicitly a review candidate, must retain INFERENCE provenance and unreviewed arithmetic state; never payment, receipt authority or replacement for missing lines."
+  },
+  "counts_by_family": {
+    "fertilizers_fertigation": {
+      "gold": 52,
+      "train": 41,
+      "holdout": 7,
+      "quarantined": 4
+    },
+    "inventory": {
+      "gold": 68,
+      "train": 44,
+      "holdout": 24,
+      "quarantined": 0
+    },
+    "counterparties_aliases": {
+      "gold": 33,
+      "train": 27,
+      "holdout": 6,
+      "quarantined": 0
+    },
+    "irrigation": {
+      "gold": 53,
+      "train": 43,
+      "holdout": 10,
+      "quarantined": 0
+    },
+    "worker_assignment": {
+      "gold": 47,
+      "train": 38,
+      "holdout": 9,
+      "quarantined": 0
+    },
+    "rent_utilities": {
+      "gold": 43,
+      "train": 32,
+      "holdout": 11,
+      "quarantined": 0
+    },
+    "payments": {
+      "gold": 63,
+      "train": 44,
+      "holdout": 19,
+      "quarantined": 0
+    },
+    "owner_personal_tasks": {
+      "gold": 38,
+      "train": 23,
+      "holdout": 15,
+      "quarantined": 0
+    },
+    "documents_photos": {
+      "gold": 37,
+      "train": 27,
+      "holdout": 6,
+      "quarantined": 4
+    },
+    "salaries_daylabor": {
+      "gold": 37,
+      "train": 32,
+      "holdout": 5,
+      "quarantined": 0
+    },
+    "agronomist_lab": {
+      "gold": 41,
+      "train": 25,
+      "holdout": 16,
+      "quarantined": 0
+    },
+    "harvest_depot": {
+      "gold": 61,
+      "train": 50,
+      "holdout": 11,
+      "quarantined": 0
+    },
+    "manual_plant_work": {
+      "gold": 47,
+      "train": 40,
+      "holdout": 3,
+      "quarantined": 4
+    },
+    "bank_advance_financing": {
+      "gold": 35,
+      "train": 25,
+      "holdout": 10,
+      "quarantined": 0
+    },
+    "payables": {
+      "gold": 56,
+      "train": 48,
+      "holdout": 8,
+      "quarantined": 0
+    },
+    "repair": {
+      "gold": 41,
+      "train": 28,
+      "holdout": 9,
+      "quarantined": 4
+    },
+    "ventilation": {
+      "gold": 44,
+      "train": 32,
+      "holdout": 12,
+      "quarantined": 0
+    },
+    "incidents": {
+      "gold": 29,
+      "train": 19,
+      "holdout": 6,
+      "quarantined": 4
+    }
+  },
+  "holdout_expected_route_counts": {
+    "DEPOT_RECEIPT": 4,
+    "DIRECT_EXPENSE": 4,
+    "INVOICE_MATCH": 3,
+    "PAYABLE": 10,
+    "PAYMENT": 12,
+    "PERSONAL_TASK": 30,
+    "STOCK_APPLICATION": 6,
+    "STOCK_RECEIPT": 7,
+    "UNRESOLVED": 95,
+    "WORKER_TASK": 20
+  },
+  "holdout_field_assertions": 355,
+  "generation_notes": "Exact deterministic transforms; actual event dates never moved into future. Ambiguity, negation/corrections and multi-slot sources are excluded from semantic rewriting. Noise preserves source meaning. Full generated hashes are recorded after reproduction.",
+  "variants": {
+    "files": {
+      "semantic_variants": {
+        "filename": "semantic_variants.jsonl",
+        "sha256": "5adcc05ea90e6dd1703a96e2c45f09e61a60935f0237cec0467a57a746291b8e",
+        "count": 5200
+      },
+      "noise_variants": {
+        "filename": "noise_variants.jsonl",
+        "sha256": "5d60d91a47694c76260b6fe6dbe1b3603f8115d3bc6f95df1296b4480e5f31a8",
+        "count": 5200
+      }
+    },
+    "deterministic_exclusions": {
+      "multiple_semantic_slots": 18,
+      "declared_ambiguity": 198,
+      "unresolved_remainder": 2,
+      "negation_correction_partial_or_quantity_scope": 230
+    },
+    "temporal_rule": "Actual events only today/yesterday; task dates today/tomorrow/day-after. No future actuality inheritance.",
+    "semantic": 5200,
+    "noise": 5200,
+    "total": 10400,
+    "semantic_parent_count": 136,
+    "noise_parent_count": 618,
+    "distinct_texts": 10400,
+    "scope": "Exact single-token amount/quantity/current-worker/current-greenhouse/relative-date crossproducts; filler/case/whitespace noise. No acoustic model, no fuzzy label inheritance, no heldout templates.",
+    "limitations": "Semantic coverage intentionally narrower than all GOLD families. Noise is formatting/voice-filler simulation, not real audio recognition or arbitrary typo robustness.",
+    "by_family": {
+      "fertilizers_fertigation": {
+        "semantic": 192,
+        "noise": 362
+      },
+      "inventory": {
+        "semantic": 481,
+        "noise": 371
+      },
+      "counterparties_aliases": {
+        "semantic": 314,
+        "noise": 237
+      },
+      "irrigation": {
+        "semantic": 120,
+        "noise": 368
+      },
+      "worker_assignment": {
+        "semantic": 138,
+        "noise": 309
+      },
+      "rent_utilities": {
+        "semantic": 746,
+        "noise": 261
+      },
+      "payments": {
+        "semantic": 682,
+        "noise": 359
+      },
+      "owner_personal_tasks": {
+        "semantic": 20,
+        "noise": 187
+      },
+      "documents_photos": {
+        "semantic": 0,
+        "noise": 234
+      },
+      "salaries_daylabor": {
+        "semantic": 434,
+        "noise": 261
+      },
+      "agronomist_lab": {
+        "semantic": 255,
+        "noise": 218
+      },
+      "harvest_depot": {
+        "semantic": 120,
+        "noise": 434
+      },
+      "manual_plant_work": {
+        "semantic": 292,
+        "noise": 336
+      },
+      "bank_advance_financing": {
+        "semantic": 0,
+        "noise": 218
+      },
+      "payables": {
+        "semantic": 868,
+        "noise": 386
+      },
+      "repair": {
+        "semantic": 306,
+        "noise": 230
+      },
+      "ventilation": {
+        "semantic": 224,
+        "noise": 265
+      },
+      "incidents": {
+        "semantic": 8,
+        "noise": 164
+      }
+    }
+  },
+  "subsequent_same_cases_status": "EXPOSED_REGRESSION_ONLY",
+  "first_holdout_evaluation": {
+    "report_sha256": "8fc37d3c65976ae0056383e670898791ff978157c3e2a3226d3543c0be1974ff",
+    "source_manifest_sha256": "f38a083976118afee0905e8d3694194f7eb293cd582f33ef82103f7c57b59ad0",
+    "harness_sha256": "09036c0d426dbfe7bdae6982a36673b9c9aa87f98d76e05ffca856266434242c",
+    "corpus_sha256": "1321173a79c494ee1db7e824cc3798035de225d879cf4cb931b6a403f3c87249",
+    "cases": 187,
+    "route_accuracy": 0.6577540106951871,
+    "key_field_accuracy": 0.4225352112676056,
+    "safety_failure_cases": 17,
+    "strict_failure_cases": 65,
+    "safety_passed": false,
+    "strict_passed": false,
+    "source_and_remainder_preservation": 1.0,
+    "text_voice_parity_cases": 187,
+    "outcome_preserved": true
+  }
+}

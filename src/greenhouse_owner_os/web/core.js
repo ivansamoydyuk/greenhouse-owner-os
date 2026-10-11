@@ -5,6 +5,24 @@ export function escape(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp
 export function money(v,currency){const [a,b='00']=String(v??'0.00').split('.');return `${a.replace(/\B(?=(\d{3})+(?!\d))/g,' ' )},${b.padEnd(2,'0')} ${currency}`;}
 export function exact(v,zero=false){const s=String(v).trim().replace(',','.');if(!/^\d{1,18}(\.\d{1,2})?$/.test(s)||(!zero&&BigInt(s.replace('.','').replace(/^0+/, '')||'0')===0n))throw Error('Введите положительную сумму, не более двух знаков после запятой.');const[a,b='']=s.split('.');return `${BigInt(a)}.${b.padEnd(2,'0')}`;}
 export function localDay(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Istanbul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
+// Date-only facts are calendar dates, never instants in the device's timezone.
+// Timestamp facts are always shown in the operating timezone, independently of device locale.
+function displayDateValue(value){
+ if(typeof value!=='string'||!value.trim())return null;
+ const raw=value.trim(),dateOnly=/^\d{4}-\d{2}-\d{2}$/.test(raw);
+ if(!dateOnly&&!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(raw))return null;
+ const date=new Date(dateOnly?raw+'T12:00:00Z':/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)?raw:raw.replace(' ','T')+'+03:00');
+ if(Number.isNaN(date.getTime())||(dateOnly&&date.toISOString().slice(0,10)!==raw))return null;
+ return {date,dateOnly};
+}
+export function displayDate(value,fallback='Не указана'){
+ const parsed=displayDateValue(value);if(!parsed)return fallback;
+ return new Intl.DateTimeFormat('ru-RU',{timeZone:parsed.dateOnly?'UTC':'Europe/Istanbul',day:'numeric',month:'short',year:'numeric'}).format(parsed.date);
+}
+export function displayDateTime(value,fallback='Не указана'){
+ const parsed=displayDateValue(value);if(!parsed)return fallback;if(parsed.dateOnly)return displayDate(value,fallback);
+ return new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Istanbul',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(parsed.date);
+}
 export function command(kind,f,entity,ledger){const b={entity_id:entity,currency:f.currency,event_date:f.event_date};const amount=exact(f.amount);if(kind==='obligation')return {...b,counterparty_id:f.counterparty_id,direction:f.direction,original_amount:amount,due_date:f.due_date||null,obligation_class:f.obligation_class||'OPERATIONAL',description:f.description||null,attributions:f.attributions||[],offset_ledger_account_id:f.strategic_offset||ledger(f.currency,f.obligation_class==='STRATEGIC'?'STRATEGIC_PRINCIPAL':f.direction==='payable'?'GENERAL_EXPENSE':'GENERAL_REVENUE'),...(f.replacement_of_id?{replacement_of_id:f.replacement_of_id}:{})};
 const common={...b,amount,source:'test:owner-mobile-preview',reason:f.reason||'TEST PREVIEW'};
 if(kind==='payment')return {...common,money_account_id:f.money_account_id,counterparty_id:f.counterparty_id,direction:f.direction,allocations:(f.allocations||[]).filter(a=>a.amount.trim()).map(a=>({obligation_id:a.obligation_id,amount:exact(a.amount)})),...(f.replacement_of_id?{replacement_of_id:f.replacement_of_id}:{})};

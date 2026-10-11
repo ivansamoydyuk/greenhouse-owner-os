@@ -17,6 +17,10 @@ from greenhouse_owner_os.services.finance import FinanceService
 from greenhouse_owner_os.services.references import ReferenceService, provision_authenticated_owner
 
 ROOT = Path(__file__).resolve().parents[1]
+# One synthetic authenticated principal owns the shared disposable profile.
+# Separate adapters must not grant themselves access by reusing its name.
+TEST_PROFILE_OWNER_REF='test:owner-mobile-preview'
+TEST_PROFILE_OWNER_NAME='TEST PREVIEW Owner'
 
 
 def setup_confirmed_profile(client, manifest):
@@ -47,8 +51,8 @@ def main():
     url = os.environ['TEST_DATABASE_URL']
     require_disposable_database(url, os.getenv('APP_ENV'))
     sf = make_session_factory(url)
-    actor = provision_authenticated_owner(sf,external_ref='test:owner-opening-validation',
-        display_name='TEST VALIDATION Owner adapter',environment='OWNER_VERIFIED')
+    actor = provision_authenticated_owner(sf,external_ref=TEST_PROFILE_OWNER_REF,
+        display_name=TEST_PROFILE_OWNER_NAME,environment='OWNER_VERIFIED')
     factory = lambda: SqlAlchemyUnitOfWork(sf)
     finance = FinanceService(factory)
     references = ReferenceService(factory,environment='OWNER_VERIFIED')

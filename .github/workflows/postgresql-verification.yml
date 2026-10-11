@@ -2,14 +2,17 @@ name: PostgreSQL verification
 
 on:
   push:
-    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1, 04-fertilizers-inventory-r1, 08-workers-tasks-r1]
+    branches: [01-architecture-database, 02-finance-integrity-corrections, 02-finance-cash-settlements, 02-finance-r1-completion, 09-finance-cutover-foundation, 10-finance-operational-readiness, 06-owner-finance-mvp, 06-owner-workflow-alignment, 03-harvest-depot-r1, 05-ai-inbox-document-ingestion-r1, 04-fertilizers-inventory-r1, 08-workers-tasks-r1, 06-owner-ux-r2-capture-confirmation, 06-owner-ui-r2-modern-dashboard, 06-capture-aud001-002-semantic-fixes, 06-owner-source-queue-errors, 06-owner-personal-task-access, 06-owner-direct-expense-recovery, 06-harvest-coverage-unknown, 10-consolidated-owner-integration]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+
 jobs:
-  verify:
+  owner-r2-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -30,11 +33,79 @@ jobs:
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
       TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
+      R2_E2E_ONLY: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Record exact clean checkout
+        run: |
+          test "$(git rev-parse HEAD)" = '${{ github.event.pull_request.head.sha || github.sha }}'
+          test -z "$(git status --porcelain)"
+          mkdir -p artifacts
+          git rev-parse HEAD > artifacts/checkout-sha.txt
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13.15'
+      - name: Install local OCR engines
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
+      - name: Install project and test dependencies
+        run: pip install -e ".[dev]"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install real browser
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Fresh-fixture Capture to Confirmation browser gate
+        run: python scripts/run_owner_e2e.py
+      - name: Isolated source queue and service outage browser gate
+        run: python scripts/run_source_queue_e2e.py
+      - name: Isolated personal task access and restore browser gate
+        run: python scripts/run_personal_tasks_e2e.py
+      - name: Isolated source-linked DirectExpense recovery browser gate
+        run: python scripts/run_expense_recovery_e2e.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-r2-fresh-browser-verification
+          path: artifacts/
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: greenhouse_owner_os_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d greenhouse_owner_os_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Record exact clean checkout
+        run: |
+          test "$(git rev-parse HEAD)" = '${{ github.event.pull_request.head.sha || github.sha }}'
+          test -z "$(git status --porcelain)"
+          mkdir -p artifacts
+          git rev-parse HEAD > artifacts/checkout-sha.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - name: Install local OCR engines
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
       - name: Install project and test dependencies
         run: pip install -e ".[dev]"
       - name: Verify disposable local PostgreSQL target
@@ -66,8 +137,8 @@ jobs:
           from sqlalchemy import create_engine, text
           with create_engine(os.environ['DATABASE_URL']).connect() as conn:
               revisions = conn.execute(text('SELECT version_num FROM public.alembic_version')).scalars().all()
-          assert revisions == ['20261006_0022'], 'Unexpected Alembic revision'
-          print('Alembic head: 20261006_0022')
+          assert revisions == ['20261011_0030'], 'Unexpected Alembic revision'
+          print('Alembic head: 20261011_0030')
           PY
       - name: Operational API smoke and reference safety
         run: pytest tests/integration/test_postgres_readiness.py -v
@@ -75,26 +146,38 @@ jobs:
         run: pytest tests/integration/test_postgres_opening.py -v
       - name: PostgreSQL integration and concurrency tests
         run: |
-          timeout --signal=TERM --kill-after=10s 300s pytest tests/integration -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/integration.xml"
+          timeout --signal=TERM --kill-after=10s 600s pytest tests/integration -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/integration.xml"
           python - <<'PY'
           import os
           import xml.etree.ElementTree as ET
           cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'integration.xml')).findall('.//testcase')
-          assert len(cases) >= 522, 'PostgreSQL tests did not execute'
+          assert len(cases) >= 608, 'PostgreSQL tests did not execute'
           assert not any(case.find('skipped') is not None for case in cases), 'PostgreSQL tests skipped'
           workers = [case for case in cases if 'test_postgres_workers' in case.get('classname', '')]
           assert len(workers) >= 125, 'Workers adversarial gate did not execute'
+          assert sum('test_postgres_owner_expense_recovery' in case.get('classname', '') for case in cases) >= 54, 'DirectExpense recovery authority gate did not execute'
+          for module, minimum in [('test_postgres_owner_language_benchmark', 21), ('test_postgres_owner_language_preparation', 11), ('test_postgres_owner_actor_scope', 3), ('test_postgres_owner_worker_identity', 1), ('test_postgres_owner_friction_evidence', 1), ('test_postgres_owner_relative_irrigation', 15)]:
+              assert sum(module in case.get('classname', '') for case in cases) >= minimum, 'Owner language boundary gate did not execute: ' + module
           PY
       - name: Complete regression suite
         run: |
-          timeout --signal=TERM --kill-after=10s 300s pytest -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/finance.xml"
+          timeout --signal=TERM --kill-after=10s 900s pytest -v -o faulthandler_timeout=60 --junitxml="$RUNNER_TEMP/finance.xml"
           python - <<'PY'
           import os
           import xml.etree.ElementTree as ET
           cases = ET.parse(os.path.join(os.environ['RUNNER_TEMP'], 'finance.xml')).findall('.//testcase')
-          assert len(cases) >= 659, 'Complete regression suite did not execute'
+          assert len(cases) >= 1247, 'Complete regression suite did not execute'
           assert not any(case.find('skipped') is not None for case in cases), 'Finance tests skipped'
           PY
+      - name: Owner language training and generated-variant safety gate
+        run: |
+          mkdir -p artifacts/owner-language
+          python scripts/generate_owner_language_variants.py
+          python scripts/owner_language_benchmark.py --require-safety --out artifacts/owner-language/train-report.json
+          python scripts/owner_language_benchmark.py --require-safety --corpus artifacts/owner-language/semantic_variants.jsonl --out artifacts/owner-language/semantic-report.json
+          python scripts/owner_language_benchmark.py --require-safety --corpus artifacts/owner-language/noise_variants.jsonl --out artifacts/owner-language/noise-report.json
+      - name: Preserve raw exposed failures and verify separate audience diagnostic
+        run: python scripts/run_owner_language_exposed_ci.py
       - name: Verify artifacts
         run: python scripts/verify_artifacts.py
       - name: Validate owner-confirmed opening in disposable database only
@@ -110,6 +193,8 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Owner mobile critical E2E with synthetic reversal cleanup
         run: python scripts/run_owner_e2e.py
+      - name: Harvest coverage and UNKNOWN browser gate
+        run: python scripts/run_harvest_coverage_e2e.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

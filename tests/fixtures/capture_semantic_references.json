@@ -1,0 +1,144 @@
+{
+  "areas": [
+    {
+      "id": "612f2fd1-00bc-5a6f-ae16-8dfe5d4aa787",
+      "name": "Özvadi",
+      "active": true,
+      "kind": "greenhouse"
+    },
+    {
+      "id": "f24a874d-baeb-53f9-8c60-d2779f2b6468",
+      "name": "Yeşilöz",
+      "active": true,
+      "kind": "greenhouse"
+    },
+    {
+      "id": "e13137ac-0431-5362-87e0-aae1079ff291",
+      "name": "İmamlı",
+      "active": true,
+      "kind": "greenhouse"
+    }
+  ],
+  "counterparties": [
+    {
+      "id": "78728224-092c-57ae-a0a7-77fa391b3e7e",
+      "name": "Серкан",
+      "active": true,
+      "counterparty_type": "supplier"
+    },
+    {
+      "id": "d8d3307b-055d-571d-a94f-93f56cfea02a",
+      "name": "Кемаль",
+      "active": true,
+      "counterparty_type": "supplier"
+    },
+    {
+      "id": "9b28760a-97a7-58cd-a821-c444affae15a",
+      "name": "Шенол",
+      "active": true,
+      "counterparty_type": "depot"
+    },
+    {
+      "id": "7ff4758c-ec9b-5102-a353-acce0ac33662",
+      "name": "Ариф",
+      "active": true,
+      "counterparty_type": "supplier"
+    }
+  ],
+  "workers": [
+    {
+      "id": "464c5b41-a1cb-53d3-ad56-5b2b8a80130c",
+      "display_name": "Умар",
+      "native_name": "Umar",
+      "active": true,
+      "language": "fa"
+    },
+    {
+      "id": "7b45e0f6-6e90-55e0-abf4-33faed84dded",
+      "display_name": "Мухаммед",
+      "native_name": "Muhammed",
+      "active": true,
+      "language": "fa"
+    },
+    {
+      "id": "36158335-a71a-5afd-9d76-f3213fc5486e",
+      "display_name": "Инаят",
+      "native_name": "Inayat",
+      "active": true,
+      "language": "fa"
+    }
+  ],
+  "products": [
+    {
+      "id": "e5e3cc82-f207-535b-8cd5-452552f77375",
+      "name": "калиевая селитра",
+      "active": true,
+      "aliases": [
+        "селитра",
+        "калиевой селитры",
+        "селитры"
+      ],
+      "base_unit": "kg"
+    },
+    {
+      "id": "1faff677-790d-511b-be02-8f4d6338e099",
+      "name": "Multilex",
+      "active": true,
+      "aliases": [
+        "мультилекс"
+      ],
+      "base_unit": "L"
+    },
+    {
+      "id": "7bd3839e-533e-5163-8059-d9aa59f2e2b3",
+      "name": "Atocrop",
+      "active": true,
+      "aliases": [
+        "атокроп"
+      ],
+      "base_unit": "kg"
+    }
+  ],
+  "locations": [
+    {
+      "id": "e71cce75-f280-542c-be77-c1a1ccaf9b13",
+      "name": "Склад Озвади",
+      "active": true,
+      "aliases": [
+        "склада Озвади"
+      ]
+    },
+    {
+      "id": "df7ee358-f84a-570b-a830-6c907e26b193",
+      "name": "Склад Ешилоз",
+      "active": true,
+      "aliases": [
+        "склада Ешилоз"
+      ]
+    },
+    {
+      "id": "41d5dabe-5aa7-52ec-a9c2-565add99efa3",
+      "name": "Склад Имамлы",
+      "active": true,
+      "aliases": [
+        "склада Имамлы"
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "id": "9e8d75ae-a23e-5450-8036-3c75938fac7c",
+      "name": "Касса TRY",
+      "active": true,
+      "currency": "TRY",
+      "account_type": "cash"
+    },
+    {
+      "id": "675dc090-7143-581b-9e8c-49e414735852",
+      "name": "Банк TRY",
+      "active": true,
+      "currency": "TRY",
+      "account_type": "bank"
+    }
+  ]
+}

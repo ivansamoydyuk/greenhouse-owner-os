@@ -1,0 +1,155 @@
+name: R3 connected TEST pilot
+on:
+  push:
+    branches: [06-owner-r3-connected-test-pilot, 06-owner-r3-capture-friction, 03-harvest-owner-journey-monthly, 09-owner-overnight-connected-program, 10-consolidated-owner-integration]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: r3-connected-pilot-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+  OWNER_PREVIEW_FEATURE_SHA: ${{ github.sha }}
+jobs:
+  connected-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install existing dependencies and local OCR
+        run: |
+          pip install -e '.[dev]'
+          npm ci
+          sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
+          npx playwright install --with-deps chromium webkit
+      - name: Before evidence on immutable delivered baseline
+        if: github.ref_name == '06-owner-r3-capture-friction'
+        env:
+          BASELINE_SHA: 296833f0ed4eca252dcbbda3bff4dc9797423d9d
+        run: |
+          set -euo pipefail
+          BEFORE="$RUNNER_TEMP/r3-friction-before"
+          git worktree add --detach "$BEFORE" "$BASELINE_SHA"
+          cp tests/e2e/r3-capture-before.mjs "$BEFORE/tests/e2e/r3-capture-before.mjs"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$BEFORE/node_modules"
+          cd "$BEFORE"
+          mkdir -p artifacts/r3-connected "$GITHUB_WORKSPACE/artifacts/friction-before"
+          export PYTHONPATH="$BEFORE/src:$BEFORE"
+          export OWNER_PREVIEW_FEATURE_SHA="$BASELINE_SHA"
+          # This is a fresh loopback-only synthetic baseline, never the old preview.
+          export PREVIEW_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          echo "::add-mask::$PREVIEW_SECRET"
+          trap 'kill "$(cat "$RUNNER_TEMP/r3-connected-server.pid")" 2>/dev/null || true; docker stop "r3-connected-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >/dev/null 2>&1 || true; docker rm -v "r3-connected-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >/dev/null 2>&1 || true' EXIT
+          bash scripts/start_r3_connected_ci.sh
+          export TEST_DATABASE_URL="$(sed -n 's/^TEST_DATABASE_URL=//p' "$GITHUB_ENV" | tail -1)"
+          export BASELINE_FIXTURE_SCRIPT="$GITHUB_WORKSPACE/scripts/r3_capture_baseline_fixture.py"
+          PREVIEW_URL=http://127.0.0.1:4173 E2E_ARTIFACTS="$GITHUB_WORKSPACE/artifacts/friction-before" node tests/e2e/r3-capture-before.mjs
+          cp "$RUNNER_TEMP/r3-connected-server.log" "$GITHUB_WORKSPACE/artifacts/friction-before/server.log"
+      - name: Targeted connected boundary and complete frontend gate
+        run: |
+          mkdir -p artifacts/r3-connected
+          git rev-parse HEAD > artifacts/r3-connected/checkout-sha.txt
+          pytest -q tests/test_r3_preview_boundary.py tests/test_r3_connected_preview_access.py tests/unit/test_r3_preview_launch_workflow.py tests/unit/test_openapi_and_migrations.py --junitxml=artifacts/r3-connected/boundary.xml
+          npm run test:ui > artifacts/r3-connected/frontend.log 2>&1
+      - name: Start fresh non-superuser synthetic TEST backend
+        run: bash scripts/start_r3_connected_ci.sh
+      - name: Actual Chromium and WebKit connected journeys
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/r3-connected
+        run: node tests/e2e/r3-connected.mjs
+      - name: Prove SQL effects and reconciliation
+        run: python scripts/r3_connected_sql_evidence.py artifacts/r3-connected/browser-results.json artifacts/r3-connected/sql-evidence.json
+      - name: Overnight Stage C worker received and report journey
+        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration'
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/overnight-workers
+        run: |
+          python scripts/overnight_workers_sql_evidence.py --before artifacts/overnight-workers/before-snapshot.json
+          node tests/e2e/overnight-workers.mjs
+          python scripts/overnight_workers_sql_evidence.py artifacts/overnight-workers/workers-results.json artifacts/overnight-workers/sql-evidence.json artifacts/overnight-workers/before-snapshot.json
+      - name: Three owner capture cases on the candidate
+        if: github.ref_name == '06-owner-r3-capture-friction' || github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration'
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/friction-after
+        run: |
+          node tests/e2e/r3-capture-friction.mjs
+          python scripts/r3_capture_sql_evidence.py artifacts/friction-after/capture-friction-results.json artifacts/friction-after/sql-evidence.json
+      - name: Overnight Stage D fertilizer plan to actual
+        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration'
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/overnight-fertilizer
+        run: |
+          python scripts/overnight_fertilizer_sql_evidence.py --prepare artifacts/overnight-fertilizer
+          node tests/e2e/overnight-fertilizer.mjs
+          python scripts/overnight_fertilizer_sql_evidence.py artifacts/overnight-fertilizer/fertilizer-results.json artifacts/overnight-fertilizer/sql-evidence.json artifacts/overnight-fertilizer/before.json
+      - name: Complete Harvest owner journey and source accounting proof
+        if: github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration'
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/harvest-journey
+        run: |
+          python scripts/harvest_journey_sql_evidence.py --before artifacts/harvest-journey/before-snapshot.json
+          node tests/e2e/harvest-owner-journey.mjs
+          python scripts/harvest_journey_sql_evidence.py artifacts/harvest-journey/harvest-journey-results.json artifacts/harvest-journey/sql-evidence.json artifacts/harvest-journey/before-snapshot.json
+      - name: Overnight Stage A money and financial analytics
+        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration'
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/overnight-finance
+        run: |
+          node tests/e2e/overnight-finance.mjs
+          python scripts/overnight_finance_sql_evidence.py artifacts/overnight-finance/finance-results.json artifacts/overnight-finance/sql-evidence.json
+      - name: Overnight Stage B purchase and inventory history
+        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration'
+        env:
+          PREVIEW_URL: http://127.0.0.1:4173
+          E2E_ARTIFACTS: artifacts/overnight-purchases
+        run: |
+          node tests/e2e/overnight-purchases.mjs
+          python scripts/overnight_purchases_sql_evidence.py artifacts/overnight-purchases/purchases-results.json artifacts/overnight-purchases/sql-evidence.json
+      - name: Capture owned runtime diagnostics
+        if: always()
+        run: |
+          mkdir -p artifacts/r3-connected
+          if [ -f "$RUNNER_TEMP/r3-connected-server.log" ]; then cp "$RUNNER_TEMP/r3-connected-server.log" artifacts/r3-connected/server.log; fi
+          if [ -n "${R3_PILOT_CONTAINER:-}" ]; then docker logs "$R3_PILOT_CONTAINER" > artifacts/r3-connected/postgres.log 2>&1 || true; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r3-connected-browser-${{ github.sha }}
+          path: |
+            artifacts/r3-connected/
+            artifacts/friction-before/
+            artifacts/friction-after/
+            artifacts/harvest-journey/
+            artifacts/overnight-finance/
+            artifacts/overnight-purchases/
+            artifacts/overnight-workers/
+            artifacts/overnight-fertilizer/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Preserve diagnostics and stop only owned runtime
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/r3-connected-server.log" ]; then tail -100 "$RUNNER_TEMP/r3-connected-server.log"; fi
+          if [ -f "$RUNNER_TEMP/r3-connected-server.pid" ]; then kill "$(cat "$RUNNER_TEMP/r3-connected-server.pid")" || true; fi
+          if [ -n "${R3_PILOT_CONTAINER:-}" ]; then
+            docker logs "$R3_PILOT_CONTAINER" 2>&1 | tail -80 || true
+            docker stop "$R3_PILOT_CONTAINER" || true
+            docker rm -v "$R3_PILOT_CONTAINER" || true
+          fi
