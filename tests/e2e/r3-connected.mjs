@@ -1,3 +1,4 @@
+import {observeBrowserDiagnostics} from './helpers/browser-diagnostics.mjs';
 import {PilotCipher} from '../../src/greenhouse_owner_os/web/pilot-storage.js';
 const pilotLocalKeys=new Map();
 import {resetFixtureRateLimits,pilotMode,ownerLogin,ownerDraftScope,redactPilot} from './helpers/pilot-auth.mjs';
@@ -64,6 +65,7 @@ const read = async (ctx, url) => {
   return r.json();
 };
 let activePage;
+const diagnostics=[];
 async function snap(page, name) {
   await page.locator("#toast.show").waitFor({ state: "hidden" });
   await page.screenshot({
@@ -230,6 +232,8 @@ try {
     });
     const page = await context.newPage();
     activePage = page;
+    const diagnostic=await observeBrowserDiagnostics(page);
+    diagnostics.push({engine,observer:diagnostic});
     page.on("pageerror", (error) =>
       result.applicationFailures.push({ engine, message: error.message }),
     );
@@ -821,10 +825,13 @@ try {
     let postLost = false;
     await page.route("**/v1/payments/" + paymentId + "/post?*", async (r) => {
       if (!postLost) {
+        diagnostic.checkpoint('payment-loss-handler');
         postLost = true;
         const response = await r.fetch();
         assert.equal(response.status(), 200);
+        diagnostic.checkpoint('payment-post-ack');
         await r.abort("failed");
+        diagnostic.checkpoint('payment-post-aborted');
       } else await r.continue();
     });
     await click(page, "Подтвердить оплату в TEST");
@@ -832,8 +839,11 @@ try {
       .locator("#action-error")
       .filter({ hasText: "Ответ сервера не получен" })
       .waitFor();
+    diagnostic.checkpoint('payment-reload-start');
     await page.reload();
+    diagnostic.checkpoint('payment-reload-return');
     await page.unroute("**/v1/payments/" + paymentId + "/post?*");
+    diagnostic.checkpoint('payment-unroute-return');
     await page
       .getByText(
         "Сервер подтвердил платёж. Повтор не создаёт вторую проводку.",
@@ -1141,6 +1151,7 @@ try {
       name: "offline persisted original reload session expiry recovery",
       pass: true,
     });
+    diagnostics.at(-1).completed=await diagnostic.capture();
     await context.close();
     await browser.close();
   }
@@ -1157,4 +1168,9 @@ try {
     path.join(out, "browser-results.json"),
     JSON.stringify(result, null, 2),
   );
+  // Optional diagnostics must not replace the primary result or its failure.
+  try {
+    const metadata=await Promise.all(diagnostics.map(async({engine,observer,completed})=>({engine,...(completed||await observer.capture())})));
+    await fs.writeFile(path.join(out,"browser-diagnostics.json"),JSON.stringify({sha:result.sha,engines:metadata},null,2));
+  } catch {}
 }

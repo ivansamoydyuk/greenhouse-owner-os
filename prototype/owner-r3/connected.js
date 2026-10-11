@@ -198,15 +198,20 @@ function go(to) {
   location.hash = to;
 }
 async function configureOwnerSession() {
+  app.dataset.bootstrapStage = 'config-read';
   const next = await api.get('/preview/config');
   if (next.daily_pilot) {
+    app.dataset.bootstrapStage = 'draft-key-read';
     const localKey = await api.get('/pilot/draft-key');
     if (localKey.participant_id !== next.participant_id || localKey.algorithm !== 'AES-GCM' || !/^[A-Za-z0-9_-]{43}$/.test(localKey.key || ''))
       throw Error('Не подтверждён ключ этой учётной записи. Войдите снова.');
     next.draft_key = localKey.key;
   }
+  app.dataset.bootstrapStage = 'configure';
   api.configure(next);
   config = next;
+  app.dataset.bootstrapStage = 'configured';
+  app.dataset.bootstrapGeneration = String(api.generation);
 }
 async function refreshData() {
   const generation = api.generation;
@@ -2464,15 +2469,25 @@ window.addEventListener("keydown", (event) => {
     shell(Header("Загружаем", "Проверяем TEST-сессию"), true);
     await configureOwnerSession();
     const generation = api.generation;
+    app.dataset.bootstrapStage = 'refresh-data';
     await refreshData();
+    app.dataset.bootstrapStage = 'harvest-navigation-read';
     const navigation=await api.readDraft("harvest-navigation");
+    app.dataset.bootstrapStage = 'finance-navigation-read';
     const financeNavigation=await api.readDraft("finance-navigation");
-    if (generation !== api.generation) return;
+    if (generation !== api.generation) {
+      app.dataset.bootstrapStage = 'generation-mismatch';
+      app.dataset.bootstrapGeneration = String(api.generation);
+      return;
+    }
     lastHarvestRoute=navigation?.route || "harvest";
     lastFinanceRoute=financeNavigation?.route || "money";
     ready = true;
+    app.dataset.bootstrapStage = 'render';
     await render();
+    app.dataset.bootstrapStage = 'render-returned';
   } catch (error) {
+    app.dataset.bootstrapStage = 'error';
     shell(errorBox(error));
   }
 })();
