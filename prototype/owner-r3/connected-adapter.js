@@ -259,6 +259,7 @@ export class ConnectedAPI {
   } = {}) {
     this.fetcher = fetcher;
     this.store = store;
+    this.baseStore = store;
     this.onAuth = onAuth;
     this.scope = null;
     this.generation = 0;
@@ -274,21 +275,40 @@ export class ConnectedAPI {
       config.actual_operations !== false
     )
       throw Error("Не подтверждён изолированный CONNECTED TEST.");
-    const next = `${config.entity_id}:${config.owner_id}`;
+    if (config.daily_pilot && !config.participant_id) throw Error("Не подтверждён участник TEST.");
+    const next = `${config.entity_id}:${config.owner_id}` + (config.daily_pilot ? `:${config.participant_id}` : "");
     if (this.scope !== next) {
       this.generation++;
       this.scope = next;
     }
+    this.participantId=config.participant_id;
+    this.dailyPilot = config.daily_pilot === true;
+    if(this.dailyPilot && this.secureParticipant!==config.participant_id){
+      const raw=this.baseStore,participant=config.participant_id,key=config.draft_key;
+      let pending;
+      const secured=()=>pending||(pending=import('/assets/pilot-storage.js').then(({EncryptedRecordStore})=>new EncryptedRecordStore(raw,participant,key)));
+      this.store=Object.fromEntries(['put','get','delete','all','claim'].map(method=>[method,async(...args)=>(await secured())[method](...args)]));
+      this.secureParticipant=participant;
+    }
     this.entity = config.entity_id;
     this.root = `/v1/entities/${this.entity}`;
   }
+  clearIdentity(){this.generation++;this.scope=null;this.participantId=null;this.secureParticipant=null;this.store=this.baseStore;this.inflight.clear();}
   async request(path, options = {}) {
+    const requestGeneration=this.generation,requestParticipant=this.participantId;
+    if(this.dailyPilot&&path.startsWith('/v1/')){
+      const sessionResponse=await this.fetcher('/pilot/session',{credentials:'same-origin',cache:'no-store'});
+      const session=sessionResponse.ok?await sessionResponse.json():null;
+      if(requestGeneration!==this.generation)throw new ApiError('Ответ прежней сессии отклонён.',409);
+      if(!session||session.role!=='owner'||session.participant_id!==requestParticipant){this.generation++;await this.onAuth();throw new ApiError('Сессия изменилась. Войдите снова.',401);}
+    }
     let response;
     try {
       response = await this.fetcher(path, {
         credentials: "same-origin",
         cache: "no-store",
         ...options,
+        headers:{...options.headers,...(this.dailyPilot&&!['GET','HEAD'].includes((options.method||'GET').toUpperCase())?{'X-Pilot-Participant':requestParticipant}:{})},
       });
     } catch {
       throw new ApiError(
@@ -300,9 +320,9 @@ export class ConnectedAPI {
     }
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      if (response.status === 401) {
+      if (response.status === 401 && requestGeneration === this.generation) {
         this.generation++;
-        this.onAuth();
+        await this.onAuth();
       }
       const reason =
         data?.error?.message ||
@@ -338,6 +358,7 @@ export class ConnectedAPI {
   async mutate(path, body, intent) {
     if (!this.scope) throw Error("Сначала войдите.");
     if (!intent) throw Error("Нужен стабильный идентификатор действия.");
+    const store = this.store;
     const scope = this.scope,
       generation = this.generation,
       payload = canonical(body);
@@ -348,6 +369,7 @@ export class ConnectedAPI {
       new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
       (x) => x.toString(16).padStart(2, "0"),
     ).join("");
+    if(this.scope!==scope||this.generation!==generation)throw Error("Сессия изменилась. Запрос не отправлен.");
     const key = `${scope}:request:${digest}`;
     const pending = this.inflight.get(key);
     if (pending) {
@@ -368,7 +390,7 @@ export class ConnectedAPI {
         state: "PENDING",
         created: new Date().toISOString(),
       };
-      const saved = await this.store.claim(proposed);
+      const saved = await store.claim(proposed);
       if (canonical(saved.body) !== payload)
         throw Error(
           "Предыдущая отправка этого действия ещё не разрешена. Повторите исходный запрос; не меняйте факты до проверки результата.",
@@ -376,6 +398,13 @@ export class ConnectedAPI {
       if (this.scope !== scope || this.generation !== generation)
         throw Error("Сессия изменилась. Повторите после входа.");
       try {
+        if (this.dailyPilot && saved.attempted) {
+          await this.request('/pilot/receipts', {method:'POST',headers:{'Content-Type':'application/json'},body:canonical({path,key:saved.keyHeader})});
+          if(this.scope!==scope||this.generation!==generation)throw Error('Сессия изменилась. Повтор не отправлен.');
+        }
+        saved.attempted=true;
+        await store.put(saved);
+        if(this.scope!==scope||this.generation!==generation)throw Error("Сессия изменилась. Запрос не отправлен.");
         const result = await this.request(path, {
           method: "POST",
           headers: {
@@ -384,7 +413,7 @@ export class ConnectedAPI {
           },
           body: payload,
         });
-        await this.store.put({ ...saved, state: "ACK", result });
+        await store.put({ ...saved, state: "ACK", result });
         if (this.scope !== scope || this.generation !== generation)
           throw Error(
             "Ответ прежней сессии сохранён. Обновите текущую запись.",
@@ -392,19 +421,19 @@ export class ConnectedAPI {
         return result;
       } catch (error) {
         if ([400, 413, 415, 422].includes(error.status))
-          await this.store.put({
+          await store.put({
             ...saved,
             state: "REJECTED",
             error: error.message,
           });
         else if (error.status === 409)
-          await this.store.put({
+          await store.put({
             ...saved,
             state: "CONFLICT",
             error: error.message,
           });
         else if (error.status !== 401)
-          await this.store.put({ ...saved, error: error.message });
+          await store.put({ ...saved, error: error.message });
         throw error;
       }
     })();
@@ -442,7 +471,10 @@ export class ConnectedAPI {
     return record?.value;
   }
   async records() {
-    return (await this.store.all()).filter((x) => x.scope === this.scope);
+    const store=this.store,scope=this.scope,generation=this.generation;
+    const records=await store.all();
+    if(scope!==this.scope||generation!==this.generation)throw Error('Сессия изменилась. Копии прежнего владельца не показаны.');
+    return records.filter((x) => x.scope === scope);
   }
   async pendingRequests() {
     return (await this.records()).filter(

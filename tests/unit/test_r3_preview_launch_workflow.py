@@ -7,7 +7,15 @@ def test_program_workflow_has_no_public_preview_or_access_artifact():
     raw = Path('.github/workflows/r3-connected-pilot.yml').read_text()
     workflow = yaml.safe_load(raw)
     assert workflow['permissions'] == {'contents': 'read'}
-    assert set(workflow['jobs']) == {'connected-browser'}
+    assert set(workflow['jobs']) == {'connected-browser','private-daily-browser'}
+    daily=workflow['jobs']['private-daily-browser']
+    assert daily['needs']=='connected-browser'
+    assert daily['env']['PILOT_LOCAL_TEST']=='1' and daily['env']['PREVIEW_BIND']=='127.0.0.1'
+    guard=next(x for x in daily['steps'] if x.get('id')=='private_evidence_guard')
+    assert guard['if']=='always()'
+    upload=next(x for x in daily['steps'] if x.get('uses')=='actions/upload-artifact@v4')
+    assert upload['if']=="always() && steps.private_evidence_guard.outcome == 'success'"
+    assert 'RUNNER_TEMP' in '\n'.join(x.get('run','') for x in daily['steps'])
     for forbidden in ('cloudflared', 'trycloudflare', 'connected-preview:', 'private-access.txt', 'r3_connected_preview_access.py open'):
         assert forbidden not in raw
 

@@ -1,3 +1,4 @@
+import {resetFixtureRateLimits,pilotMode,ownerLogin,redactPilot} from './helpers/pilot-auth.mjs';
 import {freshRoute} from './helpers/fresh-route.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -8,20 +9,21 @@ import {syntheticPixelPng} from '../fixtures/owner-r3-media.mjs';
 import {exactDecimalString} from '../../prototype/owner-r3/connected-adapter.js';
 const canonicalQuantity=value=>{const s=exactDecimalString(value);assert.ok(s!==null);return s.includes('.')?s.replace(/0+$/,'').replace(/\.$/,''):s;};
 const base=process.env.PREVIEW_URL||'http://127.0.0.1:4173',out=process.env.E2E_ARTIFACTS||'artifacts/overnight-purchases';await fs.mkdir(out,{recursive:true});
-const result={sha:process.env.OWNER_PREVIEW_FEATURE_SHA,status:'RUNNING',records:[],layouts:[],screenshots:[],errors:[]};let active;
+const result={sha:process.env.OWNER_PREVIEW_FEATURE_SHA,mode:pilotMode?'PRIVATE_DAILY_TEST':'CONNECTED_TEST',status:'RUNNING',records:[],layouts:[],screenshots:[],errors:[]};let active;
 try{for(const [engine,type] of [['chromium',chromium],['webkit',webkit]]){
+ await resetFixtureRateLimits();
  const browser=await type.launch(),context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();active=page;page.on('pageerror',e=>result.errors.push(String(e)));
  const ready=async prefix=>page.waitForFunction(p=>location.hash.slice(1).startsWith(p)&&document.querySelector('#main')?.dataset.renderedRoute===location.hash.slice(1),prefix);
  const goto=hash=>freshRoute(page,base,hash,ready);
  const read=async url=>{const r=await context.request.get(base+url);assert.equal(r.status(),200,await r.text());return r.json();};
- const seed=async(url,body,key)=>{const r=await context.request.post(base+url,{data:body,headers:{'Idempotency-Key':'stage-b-'+engine+'-'+key,Origin:base}});assert.ok([200,201].includes(r.status()),await r.text());return r.json();};
+ const seed=async(url,body,key)=>{const r=await context.request.post(base+url,{data:body,headers:{'Idempotency-Key':'stage-b-'+engine+'-'+key,Origin:base,...(pilotMode?{'X-Pilot-Participant':config.participant_id}:{})}});assert.ok([200,201].includes(r.status()),await r.text());return r.json();};
  const click=async name=>{const x=page.getByRole('button',{name,exact:true});await x.scrollIntoViewIfNeeded();await x.click();};
  const readyAction=async name=>page.waitForFunction(label=>[...document.querySelectorAll('button')].some(b=>b.textContent.trim()===label&&!b.disabled),name);
  const fill=async(name,value)=>page.locator('[name="'+name+'"]').fill(value);
  const snap=async name=>{await page.locator('#toast.show').waitFor({state:'hidden'});const file=engine+'-'+page.viewportSize().width+'-'+name+'.png';await page.screenshot({path:path.join(out,file),fullPage:true});result.screenshots.push(file);};
  const layouts=async name=>{for(const width of [320,390,768,1280]){await page.setViewportSize({width,height:844});const bounds=await page.evaluate(()=>({viewport:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(bounds.scroll<=bounds.viewport,JSON.stringify({name,bounds}));result.layouts.push({engine,width,name,...bounds});if(width===320||width===390)await snap(name);}await page.setViewportSize({width:390,height:844});};
  const upload=async(bytes,name,form)=>{await page.locator('[name=file]').setInputFiles({name,mimeType:'image/png',buffer:bytes});await page.waitForFunction(f=>document.querySelector('[data-form="'+f+'"] [name=file]')?.dataset.attachmentState==='ready',form);};
- await page.goto(base+'/r3/');await page.locator('#secret').fill(process.env.PREVIEW_SECRET);await click('Войти');await page.waitForURL('**/connected.html');await page.getByText('Добрый день',{exact:true}).waitFor();
+ await ownerLogin(page,base);await page.getByText('Добрый день',{exact:true}).waitFor();
  const config=await read('/preview/config'),root='/v1/entities/'+config.entity_id;assert.equal(config.feature_sha,result.sha);
  const destination=await seed(root+'/inventory/locations',{name:'TEST '+engine+' destination',source:'TEST stage B synthetic reference'},'destination');
  const supplier=await seed(root+'/counterparties',{name:'TEST '+engine+' supplier invoice',role:'supplier',source:'TEST stage B synthetic reference'},'supplier');
@@ -62,4 +64,4 @@ try{for(const [engine,type] of [['chromium',chromium],['webkit',webkit]]){
  const transfer=await read(root+'/inventory/events/'+record.transfer_id);assert.equal(transfer.movements.length,2);assert.equal(transfer.evidence.structured_original.form_kind,'inventory_transfer');assert.equal(transfer.evidence.structured_original.fields.quantity,'20,00');assert.equal(transfer.evidence.structured_original.fields.destination_id,destination.id);
  await goto('stock-history/all/all/'+productId);await layouts('stock-history');const history=await read(root+'/inventory/history?product_id='+productId);assert.equal(history.total,2);assert.equal(canonicalQuantity(history.stock.find(x=>x.location_id===origin.id).quantity),'80');assert.equal(canonicalQuantity(history.stock.find(x=>x.location_id===destination.id).quantity),'20');await page.getByRole('link',{name:/Перемещение ·/}).click();await ready('stock-event/');await page.getByRole('link',{name:'Назад к истории',exact:true}).click();await ready('stock-history/');assert.ok(page.url().includes(productId));
  purchase=await read(root+'/purchases/'+receiptId);assert.equal(purchase.invoice_links.length,2);assert.equal(purchase.linked_documents.length,1);assert.equal(purchase.linked_documents[0].remaining_amount,'300.00');record.purchase=purchase;result.records.push(record);await browser.close();
-}assert.deepEqual(result.errors,[]);result.status='PASS';}catch(error){result.status='FAIL';result.failure=String(error.stack||error);if(active&&!active.isClosed())await active.screenshot({path:path.join(out,'failure.png'),fullPage:true}).catch(()=>{});throw error;}finally{await fs.writeFile(path.join(out,'purchases-results.json'),JSON.stringify(result,null,2));}
+}assert.deepEqual(result.errors,[]);result.status='PASS';}catch(error){result.status='FAIL';result.failure=redactPilot(error.stack||error);if(active&&!active.isClosed())await active.screenshot({path:path.join(out,'failure.png'),fullPage:true}).catch(()=>{});throw error;}finally{await fs.writeFile(path.join(out,'purchases-results.json'),JSON.stringify(result,null,2));}

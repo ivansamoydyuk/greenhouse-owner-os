@@ -16,5 +16,6 @@ export class FertilizerDraftWrites {
     record.tail.catch(()=>{});return record.tail;
   }
   async flush(route){let record=this.records.get(this.key(route));while(record){const tail=record.tail;await tail;if(tail===record.tail)return;record=this.records.get(this.key(route));}}
+  async settle(){await Promise.allSettled([...this.records.values()].map(record=>record.tail));}
   protectUnload(route,event){if(!this.unsaved(route))return false;event.preventDefault();event.returnValue='';return true;}
 }

@@ -68,9 +68,18 @@ let config = null,
 const api = new ConnectedAPI({
   onAuth: () => {
     ready = false;
+    app.style.visibility="hidden";
     epoch++;
     clearTimeout(readTimer);
-    location.assign("/r3/?return=" + encodeURIComponent(location.hash));
+    // Fence server responses immediately, then finish local writes before login.
+    // A storage failure keeps the current form visible instead of discarding it.
+    return (async () => { try {
+      await fertilizerWrites.settle();
+      if (draft) await api.draft(route, structuredClone(draft));
+      api.clearIdentity();fertilizerWrites.records.clear();draft=null;current=null;data={};if(config)delete config.draft_key;
+      location.assign((config?.daily_pilot?"/pilot/?return=":"/r3/?return=") + encodeURIComponent(location.hash));
+    } catch (error) { if(config?.daily_pilot)participantNotice('Сессия закончилась. Черновик пока не сохранён: оставьте окно открытым и повторите проверку.');else{app.style.visibility='visible';showError(error, document.querySelector('[data-form]'));} } })();
+
   },
 });
 const title = {
@@ -176,7 +185,7 @@ function setRadial(open) {
 }
 const fertilizerWrites=new FertilizerDraftWrites(api,(savedRoute,state,error)=>{
   if(savedRoute!==route)return;
-  const form=document.querySelector('[data-form^="fertilizer-"]');if(!form)return;
+  const form=document.querySelector('[data-form]');if(!form)return;
   let badge=form.querySelector('[data-fertilizer-draft-status]');
   if(!badge){badge=document.createElement('p');badge.dataset.fertilizerDraftStatus='';badge.setAttribute('role','status');form.prepend(badge);}
   badge.dataset.state=state;
@@ -198,6 +207,7 @@ async function refreshData() {
     queue: "/owner/confirmations",
     sources: "/owner/captures",
   };
+  if(config?.daily_pilot){try{const participants=await api.get('/pilot/participants');if(generation===api.generation){data.participants=participants;delete failures.participants;}}catch(error){if(generation===api.generation)failures.participants=error;}}
   await Promise.all(
     Object.entries(names).map(async ([key, path]) => {
       try {
@@ -1027,11 +1037,15 @@ function personalDetail(t) {
     )
   );
 }
+function pilotParticipants(){
+ if(!config?.daily_pilot)return '';
+ return panel('<h2>Доступ к закрытому TEST</h2><p>Каждый участник входит со своей учётной записью. Приглашения не отправляются.</p>'+ (failures.participants?'<p role="alert">Не удалось проверить список доступа.</p>':(data.participants?.participants||[]).map(p=>`<div class="list-row"><strong>${e(p.display_name)}</strong><small>${p.role==='worker'?'Работник':'Владелец'} · ${p.enabled?'Доступ открыт':'Доступ отозван'}</small>${p.enabled&&p.id!==config.participant_id?btn('Отозвать TEST-доступ','pilot-revoke:'+p.id,'secondary'):''}</div>`).join('')));
+}
 function workers() {
   const w = data.workers;
   if (!w) return unavailable("Работники");
   return (
-    Header("Работники", "Получение и отчёт · CONNECTED TEST") +
+    Header("Работники", "Получение и отчёт · CONNECTED TEST") + pilotParticipants() +
     notice(
       "Назначение и внутренний жизненный цикл сохраняются в TEST. Внешняя отправка, Telegram и новое понимание Dari: NOT AVAILABLE.",
     ) +
@@ -1040,7 +1054,7 @@ function workers() {
       `<h2>Поручения</h2>${taskRows(w.tasks, true) || "<p>Пока нет задач.</p>"}`,
     ) +
     panel(
-      `<h2>Работники TEST</h2>${w.workers.map((x) => `<div class="list-row"><strong>${e(x.display_name)}</strong><small>${e(x.language)} · ${x.active ? "активен" : "неактивен"}</small>${x.active ? btn("TEST-вход работника", "worker-session:" + x.id, "secondary") : ""}</div>`).join("")}`,
+      `<h2>Работники TEST</h2>${w.workers.map((x) => `<div class="list-row"><strong>${e(x.display_name)}</strong><small>${e(x.language)} · ${x.active ? "активен" : "неактивен"}</small>${x.active && !config?.daily_pilot ? btn("TEST-вход работника", "worker-session:" + x.id, "secondary") : ""}</div>`).join("")}`,
     )
   );
 }
@@ -1455,6 +1469,7 @@ async function action(run, node = null) {
     b.disabled = true;
   });
   try {
+    await fertilizerWrites.flush(route);
     await run();
   } catch (error) {
     showError(error, node);
@@ -1496,7 +1511,7 @@ async function saveDraft(snapshot) {
   await attachmentReads.merge(scope, route, draft, file);
   if (scope !== api.scope || generation !== api.generation)
     throw Error("Сессия изменилась. Исходник прежнего владельца не отправлен.");
-  if(route.startsWith('fertilizer-'))await fertilizerWrites.enqueue(route,draft);else await api.draft(route, draft);
+  if(route.startsWith('fertilizer-'))await fertilizerWrites.enqueue(route,draft);else await fertilizerWrites.enqueue(route, draft);
 }
 async function clearDraft(id) {
   const scope = api.scope, generation = api.generation;
@@ -2073,7 +2088,7 @@ document.addEventListener("input", (event) => {
   Object.assign(draft, fields);
   if(formEl.dataset.form.startsWith('fertilizer-')){if(formEl.dataset.form==='fertilizer-plan'){invalidateFertilizerReview(draft,event.target.name);for(const box of formEl.querySelectorAll('[name^=reviewed_]'))box.checked=draft[box.name]==='on';}delete draft.actual_preview;delete draft.actual_input;delete draft.plan_preview;draft.review_mode=false;const confirm=document.querySelector('[data-action=fert-confirm-actual]');if(confirm)confirm.disabled=true;}
   if(formEl.dataset.form.startsWith('fertilizer-'))fertilizerWrites.enqueue(route,draft).catch(()=>{});
-  else api.draft(route, draft).catch((error) => showError(error, formEl));
+  else fertilizerWrites.enqueue(route, draft).catch((error) => showError(error, formEl));
   if (formEl.dataset.form === "payment") {
     const total = document.querySelector("#payment-total");
     if (total) total.textContent = paymentTotal() + " " + route.split("/")[3];
@@ -2263,7 +2278,8 @@ document.addEventListener("click", (event) => {
     if (name === "refresh") {
       if (!api.scope) {
         config = await api.get("/preview/config");
-        api.configure(config);
+        if(config.daily_pilot){const localKey=await api.get('/pilot/draft-key');if(localKey.participant_id!==config.participant_id)throw Error('Учётная запись изменилась. Войдите снова.');config.draft_key=localKey.key;}
+    api.configure(config);
       }
       const generation = api.generation;
       await refreshData();
@@ -2271,9 +2287,18 @@ document.addEventListener("click", (event) => {
       ready = true;
       return render();
     }
+    if(name==='pilot-revoke'){
+      const participant=data.participants?.participants?.find(p=>p.id===arg);
+      if(!config?.daily_pilot||!participant||participant.id===config.participant_id)throw Error('Участник недоступен для отзыва.');
+      await api.request('/pilot/participants/'+encodeURIComponent(participant.id)+'/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected_version:participant.version})});
+      await refreshData();await render();toast('TEST-доступ отозван. Активные сессии прекращены.');return;
+    }
     if (name === "logout") {
-      await api.request("/preview/logout", { method: "POST" });
-      location.assign("/r3/");
+      await fertilizerWrites.flush(route);
+      await api.request(config?.daily_pilot?"/pilot/logout":"/preview/logout", { method: "POST" });
+      api.clearIdentity();fertilizerWrites.records.clear();draft=null;current=null;data={};if(config)delete config.draft_key;
+      if(config?.daily_pilot)pilotChannel?.postMessage({changed:true});
+      location.assign(config?.daily_pilot?"/pilot/":"/r3/");
       return;
     }
     if (name === "prepare") {
@@ -2373,6 +2398,7 @@ document.addEventListener("click", (event) => {
     if (name === "retry-request") {
       const record = (await api.records()).find((r) => r.key === arg);
       if (!record) throw Error("Запрос не найден");
+      if(config?.daily_pilot)await api.request('/pilot/receipts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:record.path,key:record.keyHeader})});
       const response = await api.request(record.path, {
         method: "POST",
         headers: {
@@ -2466,3 +2492,16 @@ function revealFocusedCaptureField() {
   if (point < top || point > bottom) window.scrollBy({top: point - (top + bottom) / 2, behavior: 'instant'});
 }
 document.addEventListener('focusin', () => requestAnimationFrame(revealFocusedCaptureField));
+
+function participantNotice(message){
+ let banner=document.querySelector('#pilot-session-status');if(!banner){banner=document.createElement('section');banner.id='pilot-session-status';banner.setAttribute('role','alert');app.before(banner);}banner.replaceChildren();const text=document.createElement('p');text.textContent=message;const retry=document.createElement('button');retry.type='button';retry.className='btn primary';retry.textContent='Проверить вход ещё раз';retry.onclick=()=>verifyVisibleParticipant();banner.append(text,retry);
+}
+async function verifyVisibleParticipant(){
+ if(!config?.daily_pilot)return;
+ app.style.visibility='hidden';ready=false;
+ try{const response=await fetch('/pilot/session',{credentials:'same-origin',cache:'no-store'});const session=response.ok?await response.json():null;if(!session||session.role!=='owner'||session.participant_id!==config.participant_id){epoch++;await fertilizerWrites.settle();if(draft)await api.draft(route,structuredClone(draft));api.clearIdentity();fertilizerWrites.records.clear();draft=null;current=null;data={};delete config.draft_key;location.replace('/pilot/');return;}document.querySelector('#pilot-session-status')?.remove();ready=true;app.style.visibility='visible';}catch{participantNotice('Не удалось проверить вход или сохранить черновик. Данные временно скрыты, введённое осталось в открытом окне. Повторите после восстановления связи или памяти.');}
+}
+window.addEventListener('pagehide',()=>{if(config?.daily_pilot)app.style.visibility='hidden';});
+window.addEventListener('pageshow',event=>{if(event.persisted)verifyVisibleParticipant();});
+const pilotChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('greenhouse-pilot-session'):null;
+pilotChannel?.addEventListener('message',()=>verifyVisibleParticipant());

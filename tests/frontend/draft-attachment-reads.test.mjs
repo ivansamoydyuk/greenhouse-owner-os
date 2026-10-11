@@ -31,7 +31,7 @@ test('file capture does not use busy-dropping action and fences session before p
  assert.ok(!file.includes('action(async'));assert.ok(file.includes('attachmentReads.begin'));
  assert.ok(file.indexOf('scope !== api.scope || generation !== api.generation')<file.indexOf('await api.draft(savedRoute, target)'));
  assert.ok(ui.includes('await attachmentReads.merge(scope, route, draft, file)'));
- const save=ui.slice(ui.indexOf('async function saveDraft('),ui.indexOf('async function clearDraft('));assert.ok(save.indexOf('generation !== api.generation')<save.indexOf('await api.draft(route, draft)'));
+ const save=ui.slice(ui.indexOf('async function saveDraft('),ui.indexOf('async function clearDraft('));assert.ok(save.indexOf('generation !== api.generation')<save.indexOf('await fertilizerWrites.enqueue(route, draft)'));
  assert.ok(ui.includes('latestReceipt?.id !== submittedDraft.id'));assert.ok(!ui.includes('latestReceipt : submittedDraft'));
 });
 test('actual saveDraft rejects session switch during selected-file read before any persistence',async()=>{

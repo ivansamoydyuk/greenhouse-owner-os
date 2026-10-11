@@ -1,3 +1,6 @@
+import {PilotCipher} from '../../src/greenhouse_owner_os/web/pilot-storage.js';
+const pilotLocalKeys=new Map();
+import {resetFixtureRateLimits,pilotMode,ownerLogin,ownerDraftScope,redactPilot} from './helpers/pilot-auth.mjs';
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
@@ -35,7 +38,7 @@ const out = process.env.E2E_ARTIFACTS || "artifacts/r3-connected";
 await fs.mkdir(out, { recursive: true });
 const result = {
   sha: process.env.OWNER_PREVIEW_FEATURE_SHA,
-  mode: "CONNECTED_TEST",
+  mode: pilotMode?"PRIVATE_DAILY_TEST":"CONNECTED_TEST",
   journeys: [],
   records: {
     expenses: [],
@@ -66,6 +69,7 @@ async function snap(page, name) {
   await page.screenshot({
     path: path.join(out, name + ".png"),
     fullPage: true,
+    mask:[page.locator("#username,#password,#secret")],
   });
   result.screenshots.push(name + ".png");
 }
@@ -107,8 +111,10 @@ async function waitRenderedRoute(page, prefix) {
 }
 async function readStoredDraft(page, scope, id = "capture/text") {
   // Read-only observation of durable state, never an injected UI/API fixture.
-  return page.evaluate(
-    async ({ scope, id }) => {
+  let cipher,address=`${scope}:draft:${id}`;
+  if(pilotMode){if(!pilotLocalKeys.has(scope)){const response=await page.request.get(base+'/pilot/draft-key');assert.equal(response.status(),200);const k=await response.json();pilotLocalKeys.set(scope,new PilotCipher(k.participant_id,k.key));}cipher=pilotLocalKeys.get(scope);address=await cipher.address(address);}
+  const raw=await page.evaluate(
+    async ({ address }) => {
       const db = await new Promise((resolve, reject) => {
         const request = indexedDB.open("r3-connected-test-v1", 1);
         request.onsuccess = () => resolve(request.result);
@@ -116,7 +122,7 @@ async function readStoredDraft(page, scope, id = "capture/text") {
       });
       return new Promise((resolve, reject) => {
         const tx = db.transaction("records", "readonly");
-        const request = tx.objectStore("records").get(`${scope}:draft:${id}`);
+        const request = tx.objectStore("records").get(address);
         let record;
         request.onsuccess = () => {
           record = request.result;
@@ -131,8 +137,9 @@ async function readStoredDraft(page, scope, id = "capture/text") {
         };
       });
     },
-    { scope, id },
+    { address },
   );
+  return raw&&cipher?(await cipher.open(raw)).value:raw;
 }
 async function waitHash(page, starts) {
   await waitRenderedRoute(page, starts);
@@ -215,6 +222,7 @@ try {
     ["chromium", chromium],
     ["webkit", webkit],
   ]) {
+    await resetFixtureRateLimits();
     const browser = await browserType.launch();
     const context = await browser.newContext({
       viewport: { width: 390, height: 844 },
@@ -225,10 +233,7 @@ try {
     page.on("pageerror", (error) =>
       result.applicationFailures.push({ engine, message: error.message }),
     );
-    await page.goto(base + "/r3/");
-    await page.locator("#secret").fill(process.env.PREVIEW_SECRET);
-    await click(page, "Войти");
-    await page.waitForURL("**/connected.html");
+    await ownerLogin(page,base);
     await page.getByText("Добрый день", { exact: true }).waitFor();
     const config = await read(context, "/preview/config"),
       root = "/v1/entities/" + config.entity_id;
@@ -667,7 +672,7 @@ try {
     captionCheck.storedCaption = (
       await readStoredDraft(
         page,
-        `${config.entity_id}:${config.owner_id}`,
+        ownerDraftScope(config),
         "attach-depot/" + reportId,
       )
     ).value.caption;
@@ -1044,12 +1049,12 @@ try {
       await page.locator("[name=text]").inputValue(),
       offlineOriginal,
     );
-    const ownerScope = `${config.entity_id}:${config.owner_id}`;
+    const ownerScope = ownerDraftScope(config);
     const beforeExpiry = await readStoredDraft(page, ownerScope);
     assert.equal(beforeExpiry.value.text, offlineOriginal);
     await context.clearCookies();
     await click(page, "Сохранить оригинал");
-    await page.waitForURL("**/r3/?return=*");
+    await page.waitForURL(pilotMode?"**/pilot/?return=*":"**/r3/?return=*");
     const afterExpiry = await readStoredDraft(page, ownerScope);
     assert.deepEqual(afterExpiry, beforeExpiry);
     let releaseConfig, observeConfig;
@@ -1064,9 +1069,7 @@ try {
       await configHeld;
       await interception.continue();
     });
-    await page.locator("#secret").fill(process.env.PREVIEW_SECRET);
-    await click(page, "Войти");
-    await page.waitForURL("**/connected.html");
+    await ownerLogin(page,base,{navigate:false});
     await configRequested;
     await page.goto(base + "/r3/connected.html#capture/text");
     await page.getByText("Проверяем TEST-сессию", { exact: true }).waitFor();
@@ -1118,7 +1121,7 @@ try {
   result.status = "PASS";
 } catch (error) {
   result.status = "FAIL";
-  result.errors.push({ message: error.message, stack: error.stack });
+  result.errors.push({ message: redactPilot(error.message), stack: redactPilot(error.stack) });
   if (activePage && !activePage.isClosed())
     await snap(activePage, "failure").catch(() => {});
   throw error;
