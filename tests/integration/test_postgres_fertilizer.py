@@ -87,10 +87,11 @@ def test_partial_problem_zero_unknown_and_selected_scope_remainder(fertilizer):
  respond(f,p,b,'PARTIAL',comment='',quantities=[dict(component_id=b['components'][0]['component_id'],quantity='4,00')])
  d=current(f,p);assert all(x['quantity'] is None for x in d['proposed_actual_lines'] if x['unit']=='L')
  payload=actual_input(f,p).model_dump(mode='json');payload['completed_card_ids']=[];payload['lines']=payload['lines'][:1];payload['lines'][0].update(quantity='0',disposition='NOT_APPLIED',reason='TEST confirmed not applied');inp=ActualInput(**payload)
- preview=f['svc'].actual_preview(f['e'],f['a'],UUID(p['id']),inp);assert 'ALL_ZERO_APPLICATION_UNSUPPORTED' in preview['issues']
+ preview=f['svc'].actual_preview(f['e'],f['a'],UUID(p['id']),inp);assert preview['can_confirm'] and not preview['inventory_effect']['lines'] and preview['zero_lines'][0]['quantity']=='0'
  payload=actual_input(f,p).model_dump(mode='json');payload['completed_card_ids']=[];payload['lines']=payload['lines'][2:3];payload['lines'][0].update(quantity='4,00',reason='TEST explicitly reviewed partial quantity');selected=ActualInput(**payload)
- confirm(f,p,selected);d=current(f,p);assert d['status']=='PARTIALLY_APPLIED' and len(d['remainder'])==3 and not d['subsequent_scope_supported']
- newer=actual_input(f,p);preview=f['svc'].actual_preview(f['e'],f['a'],UUID(p['id']),newer);assert 'SUBSEQUENT_SAME_PLAN_SCOPE_UNSUPPORTED' in preview['issues']
+ confirm(f,p,selected);d=current(f,p);assert d['status']=='PARTIALLY_APPLIED' and len(d['remainder'])==4 and d['subsequent_scope_supported']
+ assert next(x for x in d['execution_summary'] if x['card_id']==b['card_id'] and x['unit']=='kg')['remaining_quantity']=='6'
+ newer=actual_input(f,p);preview=f['svc'].actual_preview(f['e'],f['a'],UUID(p['id']),newer);assert 'EXPLICIT_ADDITIONAL_EXECUTION_REQUIRED' in preview['issues'] and 'PHYSICAL_SCOPE_ALREADY_CONFIRMED' in preview['issues']
 
 def test_actual_retry_concurrency_changed_source_and_stale_new_report(fertilizer):
  f=fertilizer;p=ready(f);b=actual_input(f,p);view=f['svc'].actual_preview(f['e'],f['a'],UUID(p['id']),b)
@@ -131,8 +132,10 @@ def test_raw_sql_and_worker_entity_scope_and_immutable_history(fertilizer):
 def test_actual_reversal_is_history_not_new_plan_eligibility(fertilizer):
  f=fertilizer;p=ready(f);actual=confirm(f,p,actual_input(f,p))
  InventoryService(lambda:SqlAlchemyUnitOfWork(f['sf'])).reverse(f['e'],f['a'],'reverse-actual',UUID(actual['application_id']),InventoryReverse(event_date=date(2026,10,10),reason='TEST audited physical correction'))
- d=current(f,p);assert d['actual']['inventory_status']=='reversed' and not d['subsequent_scope_supported'] and d['actual']['input']['lines']
- with pytest.raises(ValidationError):f['svc'].save(f['e'],f['a'],'edit-after-actual',f['body'].model_copy(update={'source':FormSource(**source())}),UUID(p['id']),d['version'])
+ d=current(f,p);assert d['actual']['inventory_status']=='reversed' and d['subsequent_scope_supported'] and d['actual']['input']['lines']
+ assert all(x['confirmed_quantity']=='0' for x in d['execution_summary'])
+ revised=f['svc'].save(f['e'],f['a'],'edit-after-actual',f['body'].model_copy(update={'source':FormSource(**source())}),UUID(p['id']),d['version'])
+ assert revised['revision']==2 and revised['actual']['input']==d['actual']['input'] and revised['current_dispatch_id'] is None
 
 
 def test_existing_reversal_replacement_preserves_original_fertilizer_approval(fertilizer):

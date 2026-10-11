@@ -44,7 +44,7 @@ test('CURRENT topology preserves four Imamli parts and distinct canonical refere
   assert.equal(record.areaMode, 'reference');
   set(state, record, 'part', true, { groupId: 'mix-1', partId: 'demo-reference-imamli-1' });
   assert.equal(calculateFertilizer(state, record).needs[0].quantity, '50');
-  assert.match(calculateFertilizer(state, record).warnings.join(' '), /схема полива/);
+  assert.doesNotMatch(calculateFertilizer(state, record).warnings.join(' '), /бочк/);
   assert.equal(calculateFertilizer(state, record).calculable, true);
   assert.match(renderFertilizer(state, record.id), /CURRENT.*справочная/);
 });
@@ -128,13 +128,12 @@ test('different preparations and one part dose override remain independent', () 
   assert.deepEqual(result.needs.map((need) => need.quantity), ['161.25', '25']);
 });
 
-test('duplicate physical part/product across mixtures warns, blocks confirmation and suppresses misleading total', () => {
+test('same product in explicit separate applications retains distinct composition and additive overview', () => {
   const { state, record } = example(); dose(state, record, '1'); addFertilizerGroup(state, record.id);
   addFertilizerComponent(state, record.id, 'mix-2', 'kno3'); dose(state, record, '2', record.groups[1].components[0], record.groups[1]);
   set(state, record, 'part', true, { groupId: 'mix-2', partId: 'p1' });
-  const result = calculateFertilizer(state, record); assert.equal(result.overlapping, true); assert.equal(result.needs[0].quantity, null);
-  assert.match(result.issues.join(' '), /повтор/); reviewed(state, record);
-  assert.throws(() => confirmFertilizer(state, record.id, record.revision), /повтор/);
+  const result = calculateFertilizer(state, record); assert.equal(result.overlapping, false); assert.equal(result.needs[0].quantity, '15');
+  assert.equal(result.groups.length,2);assert.notEqual(result.groups[0].id,result.groups[1].id);reviewed(state, record);confirmFertilizer(state, record.id, record.revision);assert.equal(record.confirmedPacket.groups.length,2);
 });
 
 test('worker mapping uses stable R3 IDs, with no routine picker and no fuzzy fallback', () => {
@@ -228,16 +227,15 @@ test('DOM test IDs are unique and greenhouse, recipient and explicit scope prece
   assert.throws(() => addFertilizerComponent(state, record.id, 'mix-1', 'missing-stock-id'), /не найдено/);
 });
 
-test('known CURRENT area supports local per-part confirmation after UNKNOWN physical mapping acknowledgement', () => {
+test('known CURRENT area supports per-part confirmation without tank acknowledgement', () => {
   const state = fresh(), before = ledger(state), record = startFertilizerDraft(state, 'kno3');
   dose(state, record, '1'); set(state, record, 'allParts', true, { groupId: 'mix-1' });
   const result = calculateFertilizer(state, record);
   assert.equal(result.calculable, true); assert.equal(result.totalAreaDa, '20');
   assert.equal(result.needs[0].quantity, '20'); assert.equal(result.groups[0].parts.length, 4);
-  assert.match(result.warnings.join(' '), /объединение в бочку и способ выполнения не определены/);
+  assert.doesNotMatch(result.warnings.join(' '), /бочк/);
   set(state, record, 'dari', 'چهار بخش؛ هر بخش 5 kg. بشکه و آبیاری نامعلوم است.');
   set(state, record, 'dariReviewed', true); set(state, record, 'ownerReviewed', true);
-  assert.throws(() => confirmFertilizer(state, record.id, record.revision), /неизвестной схеме полива/);
   set(state, record, 'warningsReviewed', true); confirmFertilizer(state, record.id, record.revision);
   assert.equal(record.confirmedPacket.areaMode, 'reference'); assert.equal(record.status, 'confirmed');
   assert.ok(record.confirmedPacket.groups[0].parts.every((part) => part.barrelGroupId == null && part.irrigationGroupId == null));
@@ -259,16 +257,16 @@ test('compact product selection preserves separately readable place, stock and d
   assert.match(html, /L\/da/);
 });
 
-test('shared unknown physical mapping warning is displayed once with all affected parts', () => {
+test('one tank decision removes tank warnings without removing part detail', () => {
   const state = fresh(), record = startFertilizerDraft(state, 'kno3');
   dose(state, record, '1'); set(state, record, 'allParts', true, { groupId: 'mix-1' });
   const result = calculateFertilizer(state, record);
   const mappingWarnings = result.warnings.filter(warning => warning.includes('схема полива / бочка неизвестны'));
-  assert.equal(mappingWarnings.length, 4, 'Underlying evidence remains per part');
+  assert.equal(mappingWarnings.length, 0, 'Tank choice is not a missing fact');
   const html = renderFertilizer(state, record.id);
-  assert.equal((html.match(/схема полива \/ бочка неизвестны/g) || []).length, 1, 'Common warning is concise');
+  assert.equal((html.match(/схема полива \/ бочка неизвестны/g) || []).length, 0, 'No tank confirmation is requested');
   for (const warning of mappingWarnings) assert.ok(html.includes(warning.split(':')[0]));
-  assert.equal((html.match(/Полив неизвестен/g) || []).length, 4, 'Each calculated part still shows UNKNOWN');
+  assert.equal(result.groups[0].parts.length,4,'Per-part calculations remain');assert.doesNotMatch(html,/Бочка [1-9]|Добавить бочку/);
 });
 
 test('new stock draft has zero owner-selected parts and cannot turn entered doses into a scoped total', () => {
@@ -368,7 +366,7 @@ test('editor keeps optional formulas and source in secondary disclosure while fu
   assert.match(review, /lang="fa" dir="rtl"/); assert.match(review, /Автоперевода нет/);
 });
 
-test('compact review keeps known synthetic irrigation and barrel mappings; confirmed task retains every source', () => {
+test('compact review omits equipment selection while preserving every part and product source', () => {
   const { state, record } = example(); addThree(state, record); set(state, record, 'allParts', true, { groupId: 'mix-1' });
   for (const stage of ['review', 'task']) {
     if (stage === 'task') { reviewed(state, record); confirmFertilizer(state, record.id, record.revision); }
@@ -376,7 +374,7 @@ test('compact review keeps known synthetic irrigation and barrel mappings; confi
     for (const part of ['1', '2', '3']) {
       const card = html.match(new RegExp(`data-testid="worker-part-mix-1-p${part}">([\\s\\S]*?)</article>`))?.[1];
       assert.ok(card, `${stage}: part ${part} retained`);
-      assert.match(card, new RegExp(`Полив ${part}`)); assert.match(card, new RegExp(`Бочка ${part}`));
+      assert.doesNotMatch(card, /Полив [1-9]|Бочка [1-9]/);assert.match(card,/da/);
       if (stage === 'task') { assert.match(card, /Источник: İmamlı/); assert.match(card, /Источник: DEMO центральный склад/); }
     }
   }

@@ -229,11 +229,10 @@ export function calculateFertilizer(state, recordOrId) {
       let area = null;
       if (part.areaDa == null) issues.push(`${part.label}: площадь неизвестна; итог не вычислен.`);
       else { try { area = decimal(part.areaDa, { positive: true }); } catch { issues.push(`${part.label}: площадь не подтверждена.`); } }
-      if (!part.irrigationGroupId || !part.barrelGroupId) warnings.push(`${part.label}: схема полива / бочка неизвестны. Расчёт только по части; объединение в бочку и способ выполнения не определены.`);
       const components = group.components.map((component) => {
         const product = products.find((row) => row.id === component.stockId);
         const name = product?.name || component.original?.name || 'Товар неизвестен';
-        const key = `${component.productId}|${part.id}`;
+        const key = `${group.id}|${component.productId}|${part.id}`;
         if (productParts.has(key)) { issues.push(`${name} · ${part.label}: повтор в нескольких строках / смесях. Уточните отдельные внесения.`); overlapping = true; }
         productParts.add(key);
         const override = component.overrides[part.id];
@@ -292,7 +291,7 @@ export function confirmFertilizer(state, id, expectedRevision) {
   if (result.issues.length) error(result.issues[0]);
   if (!record.dari.trim() || !record.dariReviewed) error('Добавьте отдельно подготовленный текст на дари и подтвердите его ручную проверку.');
   if (!record.ownerReviewed) error('Проверьте получателя, части и дозировки.');
-  if (result.warnings.length && !record.warningsReviewed) error('Подтвердите, что видите предупреждения о запасе, месте хранения и неизвестной схеме полива / бочках.');
+  if (result.warnings.length && !record.warningsReviewed) error('Подтвердите, что видите предупреждения о запасе и месте хранения.');
   record.confirmedPacket = fertilizerWorkerPacket(state, record);
   record.confirmedRevision = record.revision;
   record.status = 'confirmed';
