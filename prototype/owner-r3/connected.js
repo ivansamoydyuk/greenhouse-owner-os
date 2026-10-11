@@ -2461,6 +2461,7 @@ window.addEventListener("keydown", (event) => {
 });
 (async () => {
   try {
+    shell(Header("Загружаем", "Проверяем TEST-сессию"), true);
     await configureOwnerSession();
     const generation = api.generation;
     await refreshData();
