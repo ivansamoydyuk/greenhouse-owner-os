@@ -1,0 +1,83 @@
+name: Private daily temporary TEST access
+on:
+  push:
+    branches: [13-private-daily-temporary-preview]
+    paths:
+      - .github/workflows/private-daily-temporary-preview.yml
+      - scripts/private_daily_temporary_preview.py
+permissions:
+  contents: read
+concurrency:
+  group: private-daily-temporary-preview
+  cancel-in-progress: false
+jobs:
+  temporary-access:
+    if: github.repository == 'ivansamoydyuk/greenhouse-owner-os' && github.event.repository.private == true && github.event_name == 'push' && github.ref == 'refs/heads/13-private-daily-temporary-preview' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 48
+    env:
+      APP_SHA: 9a981766f217fe33364f32b601bfc2a4468b4f59
+      APP_TREE: a1d3f68efb3995154868b7d9ec045d50acb974de
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Read operational wrapper from exact triggering commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: ops
+          persist-credentials: false
+      - name: Independently check out immutable merged application
+        uses: actions/checkout@v4
+        with:
+          ref: 9a981766f217fe33364f32b601bfc2a4468b4f59
+          path: app
+          persist-credentials: false
+      - name: Verify both exact identities before installing or starting anything
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C ops rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C app rev-parse HEAD)" = "$APP_SHA"
+          test "$(git -C app rev-parse HEAD^{tree})" = "$APP_TREE"
+          test -z "$(git -C app status --porcelain)"
+          test -z "$(git -C ops status --porcelain)"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - name: Install existing dependencies before the access window starts
+        working-directory: app
+        run: |
+          pip install -e '.[dev]'
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
+      - name: Download previously approved version-pinned tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 2 --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/cloudflared" https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-linux-amd64
+          chmod 700 "$RUNNER_TEMP/cloudflared"
+          "$RUNNER_TEMP/cloudflared" --version | grep -F 'cloudflared version 2026.9.3 '
+      - name: Launch fresh owned synthetic TEST and verify narrow HTTPS access
+        id: launch
+        env:
+          APP_ROOT: ${{ github.workspace }}/app
+        run: python ops/scripts/private_daily_temporary_preview.py launch
+      - name: Publish secret-free URL identity expiry and checks before waiting
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-daily-temporary-metadata-${{ github.run_id }}
+          path: ${{ steps.launch.outputs.metadata_dir }}/
+          retention-days: 1
+          if-no-files-found: error
+      - name: Publish temporary TEST logins only in dedicated private repository artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-daily-temporary-access-${{ github.run_id }}
+          path: ${{ steps.launch.outputs.access_dir }}/
+          retention-days: 1
+          if-no-files-found: error
+      - name: Keep access available only until the already fixed expiry
+        run: python ops/scripts/private_daily_temporary_preview.py hold
+      - name: Always stop only this run's app tunnel and owned TEST container
+        if: always()
+        run: python ops/scripts/private_daily_temporary_preview.py cleanup
