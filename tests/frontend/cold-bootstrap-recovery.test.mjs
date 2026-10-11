@@ -217,3 +217,37 @@ test('completed cold guards allow captured success and normal mutations have no 
   assert.deepEqual(methods,['GET','POST']);
   generation++; assert.throws(()=>attempt.check(),/Сессия изменилась/);
 });
+
+for(const boundary of ['response','session-preflight'])for(const cancellation of ['native-stream','reject','throw','pending','null-body','locked-stream']){
+  test(`expired ${boundary} cancels unused body once (${cancellation}) without JSON, auth, state change or waiting`,async()=>{
+    const entered=deferred(),held=deferred(),original=Error('expired captured attempt');
+    let expired=false,cancels=0,jsonReads=0,auth=0;
+    const calls=[],cancel=()=>{cancels++;if(cancellation==='reject')return Promise.reject(Error('cancel rejected'));if(cancellation==='throw')throw Error('cancel threw');if(cancellation==='pending')return new Promise(()=>{});};
+    const body=cancellation==='null-body'?null:['native-stream','locked-stream'].includes(cancellation)?new ReadableStream({cancel}):{cancel};
+    const reader=cancellation==='locked-stream'?body.getReader():null;
+    const api=new ConnectedAPI({store:{},onAuth:()=>auth++,fetcher:async path=>{
+      calls.push(path);entered.resolve();await held.promise;
+      return {ok:true,status:200,body,json:async()=>{jsonReads++;return {role:'owner',participant_id:'old'};}};
+    }});
+    api.dailyPilot=boundary==='session-preflight';api.participantId='old';api.scope='old-scope';api.generation=4;
+    api.bootstrapGuard=()=>{if(expired)throw original;};
+    const request=api.get('/v1/read');await entered.promise;expired=true;held.resolve();
+    await assert.rejects(request,error=>error===original);
+    assert.equal(cancels,['null-body','locked-stream'].includes(cancellation)?0:1);assert.equal(jsonReads,0);assert.equal(auth,0);
+    assert.equal(api.scope,'old-scope');assert.equal(api.participantId,'old');assert.equal(api.generation,4);
+    assert.deepEqual(calls,[boundary==='session-preflight'?'/pilot/session':'/v1/read']);
+    reader?.releaseLock();
+  });
+}
+
+test('ordinary reads and mutation responses consume JSON without bootstrap cancellation',async()=>{
+  let cancels=0,jsonReads=0;
+  const api=new ConnectedAPI({store:{},fetcher:async()=>({ok:true,body:{cancel:()=>cancels++},json:async()=>{jsonReads++;return {exact:'value'};}})});
+  assert.deepEqual(await api.get('/ordinary'),{exact:'value'});
+  const attempt=new ColdBootstrapAttempt({generation:()=>1,failed:()=>assert.fail('Unexpected bootstrap failure'),schedule:()=>1,cancel(){}});
+  attempt.finish();api.bootstrapGuard=()=>attempt.check();
+  assert.deepEqual(await api.get('/completed-bootstrap'),{exact:'value'});
+  api.bootstrapGuard=()=>{throw Error('expired read attempt');};
+  assert.deepEqual(await api.request('/command',{method:'POST'}),{exact:'value'});
+  assert.equal(jsonReads,3);assert.equal(cancels,0);
+});

@@ -174,6 +174,19 @@ export class ApiError extends Error {
     this.data = data;
   }
 }
+function checkBootstrapResponse(guard, response) {
+  try {
+    guard?.();
+  } catch (error) {
+    // This expired read will never consume its body. Release the transport
+    // without waiting for cancellation or replacing the original fence error.
+    try {
+      const body = response?.body;
+      Promise.resolve(body?.cancel()).catch(() => {});
+    } catch {}
+    throw error;
+  }
+}
 export class BrowserStore {
   async db() {
     return new Promise((resolve, reject) => {
@@ -311,7 +324,7 @@ export class ConnectedAPI {
       try{
         sessionResponse=await this.fetcher('/pilot/session',{credentials:'same-origin',cache:'no-store'});
       }catch{bootstrapGuard?.();throw networkError();}
-      bootstrapGuard?.();
+      checkBootstrapResponse(bootstrapGuard, sessionResponse);
       try{
         session=sessionResponse.ok?await sessionResponse.json():null;
       }catch{bootstrapGuard?.();throw networkError();}
@@ -331,7 +344,7 @@ export class ConnectedAPI {
       bootstrapGuard?.();
       throw networkError();
     }
-    bootstrapGuard?.();
+    checkBootstrapResponse(bootstrapGuard, response);
     const data = await response.json().catch(() => ({}));
     bootstrapGuard?.();
     if (!response.ok) {
