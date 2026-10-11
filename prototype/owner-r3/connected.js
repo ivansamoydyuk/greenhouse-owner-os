@@ -1,3 +1,4 @@
+import {FertilizerDraftWrites} from './fertilizer-draft-writes.js';
 import {fertilizerDraft,fertilizerDraftAction,fertilizerCopyDraft,fertilizerResolutionInput,fertilizerResolutionView,fertilizerEditRestriction,invalidateFertilizerReview,fertilizerPlanInput,fertilizerEditorView,fertilizerPreviewView,fertilizerCalendarView,fertilizerDetailView,fertilizerReferenceView,fertilizerActualDraft,fertilizerActualInput,fertilizerActualView,exactFertilizerNumber} from './fertilizer-connected.js';
 import {historySelection,historyRoute,historyQuery,purchaseHistoryView,purchaseDetailView,stockEventView,invoiceTargetMatches} from "./purchases-connected.js";
 import { financeAnalyticsView, financeDocumentView, financeSelection, financeRoute, financeQuery, financeBackRoute } from "./finance-connected.js";
@@ -173,6 +174,16 @@ function setRadial(open) {
     .querySelector(".capture-toggle")
     ?.setAttribute("aria-expanded", String(open));
 }
+const fertilizerWrites=new FertilizerDraftWrites(api,(savedRoute,state,error)=>{
+  if(savedRoute!==route)return;
+  const form=document.querySelector('[data-form^="fertilizer-"]');if(!form)return;
+  let badge=form.querySelector('[data-fertilizer-draft-status]');
+  if(!badge){badge=document.createElement('p');badge.dataset.fertilizerDraftStatus='';badge.setAttribute('role','status');form.prepend(badge);}
+  badge.dataset.state=state;
+  badge.textContent=state==='saving'?'Сохраняем черновик на этом устройстве…':state==='saved'?'Черновик сохранён на этом устройстве. Серверное подтверждение отдельно.':'Черновик не сохранён на устройстве. Оставьте окно открытым и повторите сохранение.';
+  if(error)showError(error,form);
+});
+window.addEventListener('beforeunload',event=>fertilizerWrites.protectUnload(route,event));
 function go(to) {
   if (location.hash.slice(1) === to) return render();
   location.hash = to;
@@ -1152,6 +1163,7 @@ function more() {
   );
 }
 async function render() {
+  try{await fertilizerWrites.flush(route);}catch(error){showError(error,document.querySelector("[data-form]"));return;}
   const token = ++epoch;
   clearTimeout(readTimer);
   estimateReview=null;
@@ -1484,7 +1496,7 @@ async function saveDraft(snapshot) {
   await attachmentReads.merge(scope, route, draft, file);
   if (scope !== api.scope || generation !== api.generation)
     throw Error("Сессия изменилась. Исходник прежнего владельца не отправлен.");
-  await api.draft(route, draft);
+  if(route.startsWith('fertilizer-'))await fertilizerWrites.enqueue(route,draft);else await api.draft(route, draft);
 }
 async function clearDraft(id) {
   const scope = api.scope, generation = api.generation;
@@ -2060,7 +2072,8 @@ document.addEventListener("input", (event) => {
   delete fields.file;
   Object.assign(draft, fields);
   if(formEl.dataset.form.startsWith('fertilizer-')){if(formEl.dataset.form==='fertilizer-plan'){invalidateFertilizerReview(draft,event.target.name);for(const box of formEl.querySelectorAll('[name^=reviewed_]'))box.checked=draft[box.name]==='on';}delete draft.actual_preview;delete draft.actual_input;delete draft.plan_preview;draft.review_mode=false;const confirm=document.querySelector('[data-action=fert-confirm-actual]');if(confirm)confirm.disabled=true;}
-  api.draft(route, draft).catch((error) => showError(error, formEl));
+  if(formEl.dataset.form.startsWith('fertilizer-'))fertilizerWrites.enqueue(route,draft).catch(()=>{});
+  else api.draft(route, draft).catch((error) => showError(error, formEl));
   if (formEl.dataset.form === "payment") {
     const total = document.querySelector("#payment-total");
     if (total) total.textContent = paymentTotal() + " " + route.split("/")[3];
@@ -2112,10 +2125,10 @@ document.addEventListener("change", (event) => {
       "";
   }
   if(event.target.closest('[data-form=fertilizer-plan]') && draft) {
-    if(event.target.name==='greenhouse' || event.target.name==='date' || event.target.name.startsWith('part_') || event.target.name.startsWith('product_')) return action(async()=>{Object.assign(draft,values(event.target.closest('form')));if(event.target.name==='greenhouse'){for(const key of Object.keys(draft))if(/^(part_|worker_|reviewed_)/.test(key)&&!['part_cards'].includes(key))delete draft[key];}invalidateFertilizerReview(draft,event.target.name);delete draft.plan_preview;draft.review_mode=false;await api.draft(route,draft);await render();},event.target.closest('form'));
+    if(event.target.name==='greenhouse' || event.target.name==='date' || event.target.name.startsWith('part_') || event.target.name.startsWith('product_')) return action(async()=>{await fertilizerWrites.flush(route);Object.assign(draft,values(event.target.closest('form')));if(event.target.name==='greenhouse'){for(const key of Object.keys(draft))if(/^(part_|worker_|reviewed_)/.test(key)&&!['part_cards'].includes(key))delete draft[key];}invalidateFertilizerReview(draft,event.target.name);delete draft.plan_preview;draft.review_mode=false;await api.draft(route,draft);await render();},event.target.closest('form'));
   }
   if(event.target.closest('[data-form=fertilizer-reference]') && event.target.name==='canonical_key' && draft){
-    const c=current.refs.canonical_candidates.find(c=>c.key===event.target.value);if(c){draft.canonical_key=c.key;draft.area_da=c.area_da||'';draft.verification=c.provenance||'Проверено соответствие CURRENT';const f=event.target.closest('form');f.querySelector('[name=area_da]').value=draft.area_da;f.querySelector('[name=verification]').value=draft.verification;api.draft(route,draft).catch(error=>showError(error,f));}
+    const c=current.refs.canonical_candidates.find(c=>c.key===event.target.value);if(c){draft.canonical_key=c.key;draft.area_da=c.area_da||'';draft.verification=c.provenance||'Проверено соответствие CURRENT';const f=event.target.closest('form');f.querySelector('[name=area_da]').value=draft.area_da;f.querySelector('[name=verification]').value=draft.verification;fertilizerWrites.enqueue(route,draft).catch(()=>{});}
   }
   if (event.target.name === "product" && draft) {
     draft.product = event.target.value;
@@ -2138,6 +2151,7 @@ document.addEventListener("click", (event) => {
   const [name, ...rest] = command.split(":"),
     arg = rest.join(":");
   if(name.startsWith('fert-')) return action(async()=>{
+    await fertilizerWrites.flush(route);
     const origin=route,scope=api.scope,generation=api.generation,plan=current?.plan;
     const guard=()=>{if(scope!==api.scope||generation!==api.generation)throw Error('Сессия изменилась.');};
     if(name==='fert-select-known'){
@@ -2374,9 +2388,11 @@ document.addEventListener("click", (event) => {
     }
   });
 });
-window.addEventListener("hashchange", () => {
-  route = location.hash.slice(1) || "home";
-  render();
+window.addEventListener("hashchange", async () => {
+  const previous=route,next=location.hash.slice(1)||'home';
+  try{await fertilizerWrites.flush(previous);}catch(error){history.replaceState(null,'','#'+previous);showError(error,document.querySelector('[data-form]'));return;}
+  if((location.hash.slice(1)||'home')!==next)return;
+  route=next;render();
 });
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
