@@ -1,7 +1,7 @@
 // Only the initial authenticated read path has this deadline. Business requests
 // are never retried or timed out by this boundary. Retry creates a new document.
 export class ColdBootstrapAttempt {
-  constructor({ generation, failed, timeoutMs = 15000, schedule = setTimeout, cancel = clearTimeout }) {
+  constructor({ generation, failed, timeoutMs = 15000, schedule = setTimeout, cancel = handle => globalThis.clearTimeout(handle) }) {
     this.readGeneration = generation;
     this.generation = generation();
     this.failed = failed;

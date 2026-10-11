@@ -15,6 +15,29 @@ const settings = {entity_id:'e',owner_id:'o',participant_id:'p',daily_pilot:true
 const secret = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
 const deferred = () => { let resolve, reject; const promise = new Promise((r,j) => {resolve=r;reject=j;}); return {promise, resolve, reject}; };
 
+test('default timer cancellation keeps the browser receiver for completion and deadline recovery', () => {
+  const attemptSource=fs.readFileSync(new URL('../../prototype/owner-r3/cold-bootstrap.js',import.meta.url),'utf8').replace('export class ColdBootstrapAttempt','class ColdBootstrapAttempt');
+  for(const boundary of ['finish','deadline']){
+    const ctx={};
+    vm.runInNewContext(`
+      globalThis.cancelled=[];globalThis.failures=[];
+      globalThis.setTimeout=function(callback,ms){globalThis.fire=callback;globalThis.delay=ms;return 73;};
+      globalThis.clearTimeout=function(handle){'use strict';if(this!==globalThis)throw TypeError('Illegal invocation');globalThis.cancelled.push(handle);};
+      ${attemptSource}
+      globalThis.attempt=new ColdBootstrapAttempt({generation:()=>1,failed:error=>globalThis.failures.push(error.message)});
+    `,ctx);
+    assert.equal(ctx.delay,15000);
+    if(boundary==='finish')assert.doesNotThrow(()=>ctx.attempt.finish());
+    else assert.doesNotThrow(()=>ctx.fire());
+    assert.deepEqual([...ctx.cancelled],[73]);
+    assert.equal(ctx.attempt.state,boundary==='finish'?'complete':'failed');
+    assert.equal(ctx.failures.length,boundary==='finish'?0:1);
+    assert.doesNotThrow(()=>ctx.fire());
+    assert.deepEqual([...ctx.cancelled],[73]);
+    assert.equal(ctx.failures.length,boundary==='finish'?0:1);
+  }
+});
+
 async function harness(hold = null, retainedRows = null) {
   const entered = deferred(), gate = deferred(), calls = [], timers = new Map(), events = {};
   let timerId = 0, storageWrites = 0;
