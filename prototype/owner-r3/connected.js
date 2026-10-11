@@ -197,6 +197,17 @@ function go(to) {
   if (location.hash.slice(1) === to) return render();
   location.hash = to;
 }
+async function configureOwnerSession() {
+  const next = await api.get('/preview/config');
+  if (next.daily_pilot) {
+    const localKey = await api.get('/pilot/draft-key');
+    if (localKey.participant_id !== next.participant_id || localKey.algorithm !== 'AES-GCM' || !/^[A-Za-z0-9_-]{43}$/.test(localKey.key || ''))
+      throw Error('Не подтверждён ключ этой учётной записи. Войдите снова.');
+    next.draft_key = localKey.key;
+  }
+  api.configure(next);
+  config = next;
+}
 async function refreshData() {
   const generation = api.generation;
   const names = {
@@ -2294,9 +2305,7 @@ document.addEventListener("click", (event) => {
     const { current, draft, route } = snapshot;
     if (name === "refresh") {
       if (!api.scope) {
-        config = await api.get("/preview/config");
-        if(config.daily_pilot){const localKey=await api.get('/pilot/draft-key');if(localKey.participant_id!==config.participant_id)throw Error('Учётная запись изменилась. Войдите снова.');config.draft_key=localKey.key;}
-    api.configure(config);
+        await configureOwnerSession();
       }
       const generation = api.generation;
       await refreshData();
@@ -2452,8 +2461,7 @@ window.addEventListener("keydown", (event) => {
 });
 (async () => {
   try {
-    config = await api.get("/preview/config");
-    api.configure(config);
+    await configureOwnerSession();
     const generation = api.generation;
     await refreshData();
     const navigation=await api.readDraft("harvest-navigation");
