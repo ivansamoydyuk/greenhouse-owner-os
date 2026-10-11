@@ -164,7 +164,6 @@ jobs:
             docker rm -v "$R3_PILOT_CONTAINER" || true
           fi
   private-daily-browser:
-    needs: connected-browser
     if: github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '01-architecture-database'
     runs-on: ubuntu-latest
     timeout-minutes: 30

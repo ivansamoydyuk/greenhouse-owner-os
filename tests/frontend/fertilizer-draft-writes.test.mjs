@@ -10,3 +10,34 @@ test('session and entity generation fences prevent queued prior-owner writes and
 test('pending and failed drafts guard unload, durable completion clears guard',async()=>{const gate=deferred(),api={scope:'o',generation:1,draft:()=>gate.promise},w=new FertilizerDraftWrites(api);let prevented=0;const event={preventDefault:()=>prevented++};const p=w.enqueue('f',{});assert.equal(w.protectUnload('f',event),true);assert.equal(event.returnValue,'');gate.resolve();await p;assert.equal(w.protectUnload('f',event),false);assert.equal(prevented,1);api.draft=async()=>{throw Error('disk');};await assert.rejects(w.enqueue('f',{}));assert.equal(w.protectUnload('f',event),true);});
 test('fertilizer actions, saves and navigation are wired to durable ordering without clearing failed forms',()=>{const source=readFileSync(new URL('../../prototype/owner-r3/connected.js',import.meta.url),'utf8');assert.match(source,/if\(name\.startsWith\('fert-'\)\) return action\(async\(\)=>\{\s*await fertilizerWrites\.flush\(route\)/);assert.match(source,/if\(route\.startsWith\('fertilizer-'\)\)await fertilizerWrites\.enqueue\(route,draft\)/);assert.match(source,/await fertilizerWrites\.flush\(previous\);\}catch\(error\)\{history\.replaceState/);assert.match(source,/beforeunload.*fertilizerWrites\.protectUnload/);assert.match(source,/Серверное подтверждение отдельно/);});
 test('derived fertilizer reference fields follow the input snapshot in the same write queue',async()=>{const seen=[],api={scope:'o',generation:1,draft:async(_,value)=>seen.push(value)},w=new FertilizerDraftWrites(api);const draft={canonical_key:'part'};const first=w.enqueue('fertilizer-references',draft);Object.assign(draft,{area_da:'5',verification:'Проверено соответствие CURRENT'});const derived=w.enqueue('fertilizer-references',draft);await Promise.all([first,derived]);assert.equal(seen.at(-1).area_da,'5');assert.equal(seen.at(-1).verification,'Проверено соответствие CURRENT');const source=readFileSync(new URL('../../prototype/owner-r3/connected.js',import.meta.url),'utf8');assert.match(source,/value=draft\.verification;fertilizerWrites\.enqueue\(route,draft\)/);});
+
+test('a burst keeps only the newest waiting snapshot and all superseded callers await its durable commit',async()=>{
+  const gates=[deferred(),deferred()],seen=[],states=[];
+  const api={scope:'owner',generation:1,draft:async(_,value)=>{const index=seen.length;seen.push(value);await gates[index].promise;}};
+  const writes=new FertilizerDraftWrites(api,(_,state)=>states.push(state));
+  const first=writes.enqueue('attach-depot/report',{kg:'1'}),pending=[];
+  let acknowledged=0;
+  for(let n=2;n<=100;n++)pending.push(writes.enqueue('attach-depot/report',{kg:String(n)}).then(()=>acknowledged++));
+  assert.deepEqual(seen,[{kg:'1'}]);gates[0].resolve();await first;await tick();
+  assert.deepEqual(seen,[{kg:'1'},{kg:'100'}]);assert.equal(acknowledged,0);assert.equal(writes.state('attach-depot/report'),'saving');
+  let flushed=false;const flush=writes.flush('attach-depot/report').then(()=>flushed=true);await tick();assert.equal(flushed,false);
+  gates[1].resolve();await Promise.all(pending);await flush;
+  assert.equal(acknowledged,99);assert.equal(states.filter(state=>state==='saved').length,1);assert.equal(writes.unsaved('attach-depot/report'),false);
+});
+
+test('failed coalesced latest snapshot rejects every covered caller, protects unload, and retries unchanged facts',async()=>{
+  const gates=[deferred(),deferred()],seen=[];
+  const api={scope:'o',generation:1,draft:async(_,value)=>{const index=seen.length;seen.push(value);await gates[index].promise;}};
+  const writes=new FertilizerDraftWrites(api),first=writes.enqueue('r',{kg:'1'});
+  const superseded=writes.enqueue('r',{kg:'2'}),latest=writes.enqueue('r',{kg:'300'});
+  gates[0].resolve();await first;gates[1].reject(Error('quota'));
+  await assert.rejects(superseded,/quota/);await assert.rejects(latest,/quota/);await assert.rejects(writes.flush('r'),/quota/);
+  assert.deepEqual(seen,[{kg:'1'},{kg:'300'}]);assert.equal(writes.protectUnload('r',{preventDefault(){}}),true);
+  api.draft=async(_,value)=>seen.push(value);await writes.enqueue('r',{kg:'300'});await writes.flush('r');assert.deepEqual(seen.at(-1),{kg:'300'});assert.equal(writes.state('r'),'saved');
+});
+
+test('an edit queued by a durable acknowledgement is drained before flush returns',async()=>{
+  const seen=[],api={scope:'o',generation:1,draft:async(_,value)=>seen.push(value)},writes=new FertilizerDraftWrites(api);
+  const first=writes.enqueue('r',{kg:'1'});const next=first.then(()=>writes.enqueue('r',{kg:'300'}));
+  await first;await writes.flush('r');await next;assert.deepEqual(seen,[{kg:'1'},{kg:'300'}]);assert.equal(writes.state('r'),'saved');
+});
