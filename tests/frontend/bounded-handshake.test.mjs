@@ -27,10 +27,10 @@ test('handshake persists a checkpoint before starting work and records completio
 test('stuck handshake rejects at the existing budget, records failure, clears timer and never converts late completion to success',async()=>{
   const entries=[],timer=clock(),held=deferred();
   const run=boundedHandshake({checkpoint:async entry=>entries.push(entry),schedule:timer.schedule,cancel:timer.cancel});
-  const pending=run('late-response-finished',()=>held.promise);
+  const pending=run('late-response-terminal',()=>held.promise);
   await timer.ready;timer.fire();
-  await assert.rejects(pending,/Bootstrap recovery handshake timed out: late-response-finished/);
-  assert.deepEqual(entries,[{phase:'late-response-finished',state:'started'},{phase:'late-response-finished',state:'failed',timedOut:true}]);
+  await assert.rejects(pending,/Bootstrap recovery handshake timed out: late-response-terminal/);
+  assert.deepEqual(entries,[{phase:'late-response-terminal',state:'started'},{phase:'late-response-terminal',state:'failed',timedOut:true}]);
   assert.deepEqual(timer.cancelled,[9]);held.resolve('late');await Promise.resolve();
   assert.equal(entries.length,2);
 });

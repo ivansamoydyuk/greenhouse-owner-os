@@ -1,6 +1,6 @@
 const phases = new Set([
   'records-before', 'install-held-route', 'reload-held', 'warmup-entered',
-  'recovery-visible', 'recovery-evidence', 'late-response-finished',
+  'recovery-visible', 'recovery-evidence', 'late-response-terminal',
   'remove-held-route', 'late-records', 'manual-reload', 'posted-confirmation',
   'records-after', 'cleanup-route',
 ]);

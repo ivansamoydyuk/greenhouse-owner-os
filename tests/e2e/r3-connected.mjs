@@ -1,5 +1,6 @@
 import {observeBrowserDiagnostics} from './helpers/browser-diagnostics.mjs';
 import {boundedHandshake} from './helpers/bounded-handshake.mjs';
+import {observeDiscardedReadTerminal} from './helpers/discarded-read-terminal.mjs';
 import {PilotCipher} from '../../src/greenhouse_owner_os/web/pilot-storage.js';
 const pilotLocalKeys=new Map();
 import {resetFixtureRateLimits,pilotMode,ownerLogin,ownerDraftScope,redactPilot} from './helpers/pilot-auth.mjs';
@@ -869,13 +870,14 @@ try {
     const bootstrapPosts = [];
     const observeBootstrapPost = request => { if(request.method()==='POST')bootstrapPosts.push(new URL(request.url()).pathname); };
     page.on('request', observeBootstrapPost);
-    let releaseWarmup, enterWarmup, handshakeError;
+    let releaseWarmup, enterWarmup, handshakeError, heldRequest;
     const warmupHeld = new Promise(resolve => releaseWarmup = resolve);
     const warmupEntered = new Promise(resolve => enterWarmup = resolve);
     const warmupPath = root + '/owner/captures';
     const warmupMatcher = url => url.pathname === warmupPath;
     try {
       await handshake('install-held-route',()=>page.route(warmupMatcher, async intercepted => {
+        heldRequest = intercepted.request();
         enterWarmup();
         await warmupHeld;
         await intercepted.continue();
@@ -889,11 +891,15 @@ try {
         assert.equal(page.url().split('#')[1],paymentHash);
         await snap(page, engine + '-390-bootstrap-timeout-recovery');
       });
-      await handshake('late-response-finished',async()=>{
-        const lateResponse = page.waitForResponse(response => new URL(response.url()).pathname === warmupPath);
-        releaseWarmup();
-        await (await lateResponse).finished();
-      });
+      assert.equal(new URL(heldRequest.url()).pathname,warmupPath);
+      const terminalObserver = observeDiscardedReadTerminal(page,heldRequest);
+      let lateRead;
+      try {
+        lateRead = await handshake('late-response-terminal',()=>{
+          releaseWarmup();
+          return terminalObserver.promise;
+        });
+      } finally { terminalObserver.dispose(); }
       await handshake('remove-held-route',()=>page.unroute(warmupMatcher));
       await handshake('late-records',async()=>{
         assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');
@@ -904,7 +910,7 @@ try {
       assert.equal(page.url().split('#')[1],paymentHash);
       assert.deepEqual(await handshake('records-after',rawRecords),beforeBootstrapRecovery);
       assert.deepEqual(bootstrapPosts,[]);
-      result.bootstrapRecovery.push({engine,hash:paymentHash,unchangedRecordsSha256:createHash('sha256').update(JSON.stringify(beforeBootstrapRecovery)).digest('hex'),businessPosts:0,pass:true});
+      result.bootstrapRecovery.push({engine,hash:paymentHash,lateRead,unchangedRecordsSha256:createHash('sha256').update(JSON.stringify(beforeBootstrapRecovery)).digest('hex'),businessPosts:0,pass:true});
       result.journeys.push({engine,name:'bounded cold-bootstrap read timeout manual reload preserves original pending commands',pass:true});
     } catch(error) {
       handshakeError=error;
