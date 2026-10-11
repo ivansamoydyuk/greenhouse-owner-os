@@ -1,3 +1,9 @@
+import {observeBrowserDiagnostics} from './helpers/browser-diagnostics.mjs';
+import {boundedHandshake} from './helpers/bounded-handshake.mjs';
+import {observeDiscardedReadTerminal} from './helpers/discarded-read-terminal.mjs';
+import {PilotCipher} from '../../src/greenhouse_owner_os/web/pilot-storage.js';
+const pilotLocalKeys=new Map();
+import {resetFixtureRateLimits,pilotMode,ownerLogin,ownerDraftScope,redactPilot} from './helpers/pilot-auth.mjs';
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
@@ -35,7 +41,7 @@ const out = process.env.E2E_ARTIFACTS || "artifacts/r3-connected";
 await fs.mkdir(out, { recursive: true });
 const result = {
   sha: process.env.OWNER_PREVIEW_FEATURE_SHA,
-  mode: "CONNECTED_TEST",
+  mode: pilotMode?"PRIVATE_DAILY_TEST":"CONNECTED_TEST",
   journeys: [],
   records: {
     expenses: [],
@@ -52,6 +58,7 @@ const result = {
   screenshots: [],
   homeMetrics: [],
   draftRecovery: [],
+  bootstrapRecovery: [],
   captionChecks: [],
   applicationFailures: [],
 };
@@ -61,11 +68,14 @@ const read = async (ctx, url) => {
   return r.json();
 };
 let activePage;
+const diagnostics=[];
+const recoveryProgress=[];
 async function snap(page, name) {
   await page.locator("#toast.show").waitFor({ state: "hidden" });
   await page.screenshot({
     path: path.join(out, name + ".png"),
     fullPage: true,
+    mask:[page.locator("#username,#password,#secret")],
   });
   result.screenshots.push(name + ".png");
 }
@@ -107,8 +117,10 @@ async function waitRenderedRoute(page, prefix) {
 }
 async function readStoredDraft(page, scope, id = "capture/text") {
   // Read-only observation of durable state, never an injected UI/API fixture.
-  return page.evaluate(
-    async ({ scope, id }) => {
+  let cipher,address=`${scope}:draft:${id}`;
+  if(pilotMode){if(!pilotLocalKeys.has(scope)){const response=await page.request.get(base+'/pilot/draft-key');assert.equal(response.status(),200);const k=await response.json();pilotLocalKeys.set(scope,new PilotCipher(k.participant_id,k.key));}cipher=pilotLocalKeys.get(scope);address=await cipher.address(address);}
+  const raw=await page.evaluate(
+    async ({ address }) => {
       const db = await new Promise((resolve, reject) => {
         const request = indexedDB.open("r3-connected-test-v1", 1);
         request.onsuccess = () => resolve(request.result);
@@ -116,7 +128,7 @@ async function readStoredDraft(page, scope, id = "capture/text") {
       });
       return new Promise((resolve, reject) => {
         const tx = db.transaction("records", "readonly");
-        const request = tx.objectStore("records").get(`${scope}:draft:${id}`);
+        const request = tx.objectStore("records").get(address);
         let record;
         request.onsuccess = () => {
           record = request.result;
@@ -131,8 +143,9 @@ async function readStoredDraft(page, scope, id = "capture/text") {
         };
       });
     },
-    { scope, id },
+    { address },
   );
+  return raw&&cipher?(await cipher.open(raw)).value:raw;
 }
 async function waitHash(page, starts) {
   await waitRenderedRoute(page, starts);
@@ -215,6 +228,7 @@ try {
     ["chromium", chromium],
     ["webkit", webkit],
   ]) {
+    await resetFixtureRateLimits();
     const browser = await browserType.launch();
     const context = await browser.newContext({
       viewport: { width: 390, height: 844 },
@@ -222,13 +236,12 @@ try {
     });
     const page = await context.newPage();
     activePage = page;
+    const diagnostic=await observeBrowserDiagnostics(page);
+    diagnostics.push({engine,observer:diagnostic});
     page.on("pageerror", (error) =>
       result.applicationFailures.push({ engine, message: error.message }),
     );
-    await page.goto(base + "/r3/");
-    await page.locator("#secret").fill(process.env.PREVIEW_SECRET);
-    await click(page, "Войти");
-    await page.waitForURL("**/connected.html");
+    await ownerLogin(page,base);
     await page.getByText("Добрый день", { exact: true }).waitFor();
     const config = await read(context, "/preview/config"),
       root = "/v1/entities/" + config.entity_id;
@@ -572,6 +585,32 @@ try {
       product_id: fixture.product.id,
       location_id: fixture.locations[1].id,
     });
+    if (pilotMode) {
+      // Private pilot intentionally cannot enter the legacy root application.
+      await page.goto(base + '/');
+      await page.waitForURL('**/pilot/');
+      await page.locator('#pilot-login').waitFor();
+      assert.equal(await page.locator('#app,#sheet,#sheet-title').count(), 0);
+      assert.equal(await page.getByRole('heading', {name:'Моя теплица',exact:true}).count(), 0);
+      const dialogs=[];
+      const onDialog=async dialog=>{dialogs.push(dialog.type());await dialog.dismiss();};
+      page.on('dialog',onDialog);
+      await route(page,'inventory');
+      const maliciousRow=page.locator('.list-row').filter({has:page.locator(`a[href="#quick/receipt/${product.id}"]`)});
+      assert.equal(await maliciousRow.locator('strong').first().textContent(),productName);
+      assert.equal(await maliciousRow.locator('img').count(),0);
+      const ordinaryRow=page.locator('.list-row').filter({has:page.locator(`a[href="#quick/receipt/${fixture.product.id}"]`)});
+      assert.equal(await ordinaryRow.locator('strong').first().textContent(),fixture.product.name);
+      assert.equal(await ordinaryRow.locator('img').count(),0);
+      const csp=(await context.request.get(base+'/r3/connected.html')).headers()['content-security-policy'];
+      assert.ok(csp.includes("script-src 'self'"));
+      const scriptPolicy=csp.split(';').find(part=>part.trim().startsWith('script-src '));
+      assert.ok(!scriptPolicy.includes("'unsafe-inline'")&&!scriptPolicy.includes("'unsafe-eval'"));
+      await snap(page,engine+'-390-private-literal-product');
+      assert.deepEqual(dialogs,[]);
+      page.off('dialog',onDialog);
+      result.journeys.push({engine,name:'AUD011 private legacy boundary and R3 literal product CSP',pass:true});
+    } else {
     // AUD011: malicious stored product also remains literal in the reachable old modal.
     await page.goto(base + "/");
     await page
@@ -608,6 +647,7 @@ try {
       name: "AUD011 stored adversarial and ordinary legacy modal title",
       pass: true,
     });
+    }
     // C: immutable field original, new depot document with actual binary and caption, explicit link.
     await route(page, "quick/harvest");
     await select(page, "greenhouse", fixture.areas[0].id);
@@ -667,7 +707,7 @@ try {
     captionCheck.storedCaption = (
       await readStoredDraft(
         page,
-        `${config.entity_id}:${config.owner_id}`,
+        ownerDraftScope(config),
         "attach-depot/" + reportId,
       )
     ).value.caption;
@@ -789,10 +829,13 @@ try {
     let postLost = false;
     await page.route("**/v1/payments/" + paymentId + "/post?*", async (r) => {
       if (!postLost) {
+        diagnostic.checkpoint('payment-loss-handler');
         postLost = true;
         const response = await r.fetch();
         assert.equal(response.status(), 200);
+        diagnostic.checkpoint('payment-post-ack');
         await r.abort("failed");
+        diagnostic.checkpoint('payment-post-aborted');
       } else await r.continue();
     });
     await click(page, "Подтвердить оплату в TEST");
@@ -800,14 +843,84 @@ try {
       .locator("#action-error")
       .filter({ hasText: "Ответ сервера не получен" })
       .waitFor();
+    diagnostic.checkpoint('payment-reload-start');
     await page.reload();
+    diagnostic.checkpoint('payment-reload-return');
     await page.unroute("**/v1/payments/" + paymentId + "/post?*");
+    diagnostic.checkpoint('payment-unroute-return');
     await page
       .getByText(
         "Сервер подтвердил платёж. Повтор не создаёт вторую проводку.",
         { exact: true },
       )
       .waitFor();
+    // A stalled read after reload must reach a usable, fail-closed recovery
+    // boundary. This is separate from (and retains) the lost-post assertion above.
+    const paymentHash = page.url().split('#')[1];
+    const handshake = boundedHandshake({checkpoint:async entry => {
+      recoveryProgress.push({engine,...entry,atMs:Date.now()});
+      if(recoveryProgress.length>80)recoveryProgress.shift();
+      await fs.writeFile(path.join(out,'bootstrap-recovery-progress.json'),JSON.stringify({sha:result.sha,mode:result.mode,entries:recoveryProgress},null,2));
+    }});
+    const rawRecords = () => page.evaluate(async () => {
+      const {BrowserStore} = await import('/r3/connected-adapter.js');
+      return (await new BrowserStore().all()).sort((a,b) => a.key.localeCompare(b.key));
+    });
+    const beforeBootstrapRecovery = await handshake('records-before',rawRecords);
+    const bootstrapPosts = [];
+    const observeBootstrapPost = request => { if(request.method()==='POST')bootstrapPosts.push(new URL(request.url()).pathname); };
+    page.on('request', observeBootstrapPost);
+    let releaseWarmup, enterWarmup, handshakeError, heldRequest;
+    const warmupHeld = new Promise(resolve => releaseWarmup = resolve);
+    const warmupEntered = new Promise(resolve => enterWarmup = resolve);
+    const warmupPath = root + '/owner/captures';
+    const warmupMatcher = url => url.pathname === warmupPath;
+    try {
+      await handshake('install-held-route',()=>page.route(warmupMatcher, async intercepted => {
+        heldRequest = intercepted.request();
+        enterWarmup();
+        await warmupHeld;
+        await intercepted.continue();
+      }));
+      await handshake('reload-held',()=>page.reload());
+      await handshake('warmup-entered',()=>warmupEntered);
+      await handshake('recovery-visible',()=>page.getByRole('button', {name:'Повторить загрузку страницы', exact:true}).waitFor());
+      await handshake('recovery-evidence',async()=>{
+        assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');
+        assert.equal(await page.locator('form,input,textarea,select,.dock').count(),0);
+        assert.equal(page.url().split('#')[1],paymentHash);
+        await snap(page, engine + '-390-bootstrap-timeout-recovery');
+      });
+      assert.equal(new URL(heldRequest.url()).pathname,warmupPath);
+      const terminalObserver = observeDiscardedReadTerminal(page,heldRequest);
+      let lateRead;
+      try {
+        lateRead = await handshake('late-response-terminal',()=>{
+          releaseWarmup();
+          return terminalObserver.promise;
+        });
+      } finally { terminalObserver.dispose(); }
+      await handshake('remove-held-route',()=>page.unroute(warmupMatcher));
+      await handshake('late-records',async()=>{
+        assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');
+        assert.deepEqual(await rawRecords(),beforeBootstrapRecovery);
+      });
+      await handshake('manual-reload',()=>click(page,'Повторить загрузку страницы'));
+      await handshake('posted-confirmation',()=>page.getByText('Сервер подтвердил платёж. Повтор не создаёт вторую проводку.',{exact:true}).waitFor());
+      assert.equal(page.url().split('#')[1],paymentHash);
+      assert.deepEqual(await handshake('records-after',rawRecords),beforeBootstrapRecovery);
+      assert.deepEqual(bootstrapPosts,[]);
+      result.bootstrapRecovery.push({engine,hash:paymentHash,lateRead,unchangedRecordsSha256:createHash('sha256').update(JSON.stringify(beforeBootstrapRecovery)).digest('hex'),businessPosts:0,pass:true});
+      result.journeys.push({engine,name:'bounded cold-bootstrap read timeout manual reload preserves original pending commands',pass:true});
+    } catch(error) {
+      handshakeError=error;
+      throw error;
+    } finally {
+      releaseWarmup();
+      page.off('request',observeBootstrapPost);
+      try { await handshake('cleanup-route',()=>page.unroute(warmupMatcher)); }
+      catch(error) { if(!handshakeError)throw error; }
+    }
     result.records.payments.push(paymentId);
     await route(page, "sources");
     await page
@@ -1044,12 +1157,12 @@ try {
       await page.locator("[name=text]").inputValue(),
       offlineOriginal,
     );
-    const ownerScope = `${config.entity_id}:${config.owner_id}`;
+    const ownerScope = ownerDraftScope(config);
     const beforeExpiry = await readStoredDraft(page, ownerScope);
     assert.equal(beforeExpiry.value.text, offlineOriginal);
     await context.clearCookies();
     await click(page, "Сохранить оригинал");
-    await page.waitForURL("**/r3/?return=*");
+    await page.waitForURL(pilotMode?"**/pilot/?return=*":"**/r3/?return=*");
     const afterExpiry = await readStoredDraft(page, ownerScope);
     assert.deepEqual(afterExpiry, beforeExpiry);
     let releaseConfig, observeConfig;
@@ -1064,9 +1177,7 @@ try {
       await configHeld;
       await interception.continue();
     });
-    await page.locator("#secret").fill(process.env.PREVIEW_SECRET);
-    await click(page, "Войти");
-    await page.waitForURL("**/connected.html");
+    await ownerLogin(page,base,{navigate:false});
     await configRequested;
     await page.goto(base + "/r3/connected.html#capture/text");
     await page.getByText("Проверяем TEST-сессию", { exact: true }).waitFor();
@@ -1111,6 +1222,7 @@ try {
       name: "offline persisted original reload session expiry recovery",
       pass: true,
     });
+    diagnostics.at(-1).completed=await diagnostic.capture();
     await context.close();
     await browser.close();
   }
@@ -1118,13 +1230,18 @@ try {
   result.status = "PASS";
 } catch (error) {
   result.status = "FAIL";
-  result.errors.push({ message: error.message, stack: error.stack });
+  result.errors.push({ message: redactPilot(error.message), stack: redactPilot(error.stack) });
   if (activePage && !activePage.isClosed())
     await snap(activePage, "failure").catch(() => {});
-  throw error;
+  throw Error(redactPilot(error.stack || error));
 } finally {
   await fs.writeFile(
     path.join(out, "browser-results.json"),
     JSON.stringify(result, null, 2),
   );
+  // Optional diagnostics must not replace the primary result or its failure.
+  try {
+    const metadata=await Promise.all(diagnostics.map(async({engine,observer,completed})=>({engine,...(completed||await observer.capture())})));
+    await fs.writeFile(path.join(out,"browser-diagnostics.json"),JSON.stringify({sha:result.sha,engines:metadata},null,2));
+  } catch {}
 }

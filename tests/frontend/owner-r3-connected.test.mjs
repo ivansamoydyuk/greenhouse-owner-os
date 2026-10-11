@@ -699,3 +699,43 @@ test("estimate confirmation rejects dismissed, different route, record or sessio
   for(const changed of [{route:"other"},{settlementId:"other"},{generation:4}]) assert.throws(()=>estimateConfirmation(review,{...context,...changed}),/текущую оценку/);
   assert.throws(()=>estimateConfirmation(null,context),/текущую оценку/);
 });
+
+test("private session transport failure is recoverable without sending the command or logging out", async () => {
+  let offline=true,auth=0;
+  const calls=[],store=new Store(),body={text:"TEST offline original remains exact"};
+  const api=create(async(path,options)=>{
+    calls.push({path,options});
+    if(path==='/pilot/session'){
+      if(offline)throw new TypeError('Failed to fetch');
+      return response({role:'owner',participant_id:'participant'});
+    }
+    if(path==='/pilot/receipts')return response({state:'NOT_FOUND'});
+    return response({id:'saved'});
+  },store,()=>auth++);
+  api.dailyPilot=true;api.participantId='participant';
+  const generation=api.generation,scope=api.scope;
+  await assert.rejects(api.mutate('/v1/command',body,'same-intent'),error=>error instanceof ApiError&&error.status===0&&/Ответ сервера не получен/.test(error.message));
+  assert.deepEqual(calls.map(call=>call.path),['/pilot/session']);assert.equal(auth,0);assert.equal(api.scope,scope);assert.equal(api.generation,generation);
+  const pending=(await api.pendingRequests())[0];assert.deepEqual(pending.body,body);assert.equal(pending.state,'PENDING');assert.equal(pending.result,undefined);
+  offline=false;
+  assert.deepEqual(await api.mutate('/v1/command',body,'same-intent'),{id:'saved'});
+  const command=calls.filter(call=>call.path==='/v1/command');assert.equal(command.length,1);assert.equal(command[0].options.headers['Idempotency-Key'],pending.keyHeader);assert.equal(command[0].options.body,JSON.stringify(body));
+  assert.deepEqual(calls.map(call=>call.path),['/pilot/session','/pilot/receipts','/pilot/session','/v1/command']);
+  const receipt=JSON.parse(calls[1].options.body);assert.equal(receipt.key,pending.keyHeader);assert.equal(receipt.path,'/v1/command');assert.equal((await api.records())[0].state,'ACK');assert.equal(auth,0);
+});
+
+for(const kind of ['fetch','body'])test('private session '+kind+' read failure keeps typed read error and never claims a business commit',async()=>{
+  let auth=0;const calls=[];
+  const api=create(async path=>{calls.push(path);if(kind==='fetch')throw new TypeError('Failed to fetch');return {ok:true,json:async()=>{throw new TypeError('body interrupted');}};},new Store(),()=>auth++);
+  api.dailyPilot=true;api.participantId='participant';
+  await assert.rejects(api.get('/v1/entities/entity/owner/home'),error=>error instanceof ApiError&&error.status===0&&/Не удалось получить данные/.test(error.message)&&!/Действие могло/.test(error.message));
+  assert.deepEqual(calls,['/pilot/session']);assert.equal(auth,0);
+});
+
+for(const state of ['expired','foreign','generation'])test('private session '+state+' rejection retains its auth or identity ApiError',async()=>{
+  let auth=0;const calls=[];
+  const api=create(async path=>{calls.push(path);if(state==='generation')api.generation++;return state==='expired'?response({},401):response({role:'owner',participant_id:state==='foreign'?'other':'participant'});},new Store(),()=>auth++);
+  api.dailyPilot=true;api.participantId='participant';
+  await assert.rejects(api.request('/v1/command',{method:'POST'}),error=>error instanceof ApiError&&error.status===(state==='generation'?409:401)&&!/Ответ сервера не получен/.test(error.message));
+  assert.deepEqual(calls,['/pilot/session']);assert.equal(auth,state==='generation'?0:1);
+});

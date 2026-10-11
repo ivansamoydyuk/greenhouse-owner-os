@@ -1,7 +1,7 @@
 name: R3 connected TEST pilot
 on:
   push:
-    branches: [06-owner-r3-connected-test-pilot, 06-owner-r3-capture-friction, 03-harvest-owner-journey-monthly, 09-owner-overnight-connected-program, 10-consolidated-owner-integration, 11-fertilizer-execution-completion]
+    branches: [06-owner-r3-connected-test-pilot, 06-owner-r3-capture-friction, 03-harvest-owner-journey-monthly, 09-owner-overnight-connected-program, 10-consolidated-owner-integration, 11-fertilizer-execution-completion, 12-private-daily-test-pilot, 01-architecture-database]
   workflow_dispatch:
 permissions:
   contents: read
@@ -72,7 +72,7 @@ jobs:
       - name: Prove SQL effects and reconciliation
         run: python scripts/r3_connected_sql_evidence.py artifacts/r3-connected/browser-results.json artifacts/r3-connected/sql-evidence.json
       - name: Overnight Stage C worker received and report journey
-        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion'
+        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '01-architecture-database'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/overnight-workers
@@ -81,7 +81,7 @@ jobs:
           node tests/e2e/overnight-workers.mjs
           python scripts/overnight_workers_sql_evidence.py artifacts/overnight-workers/workers-results.json artifacts/overnight-workers/sql-evidence.json artifacts/overnight-workers/before-snapshot.json
       - name: Three owner capture cases on the candidate
-        if: github.ref_name == '06-owner-r3-capture-friction' || github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion'
+        if: github.ref_name == '06-owner-r3-capture-friction' || github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '01-architecture-database'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/friction-after
@@ -89,7 +89,7 @@ jobs:
           node tests/e2e/r3-capture-friction.mjs
           python scripts/r3_capture_sql_evidence.py artifacts/friction-after/capture-friction-results.json artifacts/friction-after/sql-evidence.json
       - name: Overnight Stage D fertilizer plan to actual
-        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion'
+        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '01-architecture-database'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/overnight-fertilizer
@@ -98,7 +98,7 @@ jobs:
           node tests/e2e/overnight-fertilizer.mjs
           python scripts/overnight_fertilizer_sql_evidence.py artifacts/overnight-fertilizer/fertilizer-results.json artifacts/overnight-fertilizer/sql-evidence.json artifacts/overnight-fertilizer/before.json
       - name: Complete Harvest owner journey and source accounting proof
-        if: github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion'
+        if: github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '01-architecture-database'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/harvest-journey
@@ -107,7 +107,7 @@ jobs:
           node tests/e2e/harvest-owner-journey.mjs
           python scripts/harvest_journey_sql_evidence.py artifacts/harvest-journey/harvest-journey-results.json artifacts/harvest-journey/sql-evidence.json artifacts/harvest-journey/before-snapshot.json
       - name: Overnight Stage A money and financial analytics
-        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion'
+        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '01-architecture-database'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/overnight-finance
@@ -115,7 +115,7 @@ jobs:
           node tests/e2e/overnight-finance.mjs
           python scripts/overnight_finance_sql_evidence.py artifacts/overnight-finance/finance-results.json artifacts/overnight-finance/sql-evidence.json
       - name: Overnight Stage B purchase and inventory history
-        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion'
+        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '01-architecture-database'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/overnight-purchases
@@ -123,7 +123,7 @@ jobs:
           node tests/e2e/overnight-purchases.mjs
           python scripts/overnight_purchases_sql_evidence.py artifacts/overnight-purchases/purchases-results.json artifacts/overnight-purchases/sql-evidence.json
       - name: Fertilizer completion partial remainder and distinct applications
-        if: github.ref_name == '11-fertilizer-execution-completion'
+        if: github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '01-architecture-database'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/fertilizer-completion
@@ -163,3 +163,98 @@ jobs:
             docker stop "$R3_PILOT_CONTAINER" || true
             docker rm -v "$R3_PILOT_CONTAINER" || true
           fi
+  private-daily-browser:
+    if: github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '01-architecture-database'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      R3_CONNECTED_PILOT: '1'
+      R3_DAILY_PILOT: '1'
+      PILOT_LOCAL_TEST: '1'
+      PREVIEW_BIND: 127.0.0.1
+      PREVIEW_PORT: '4173'
+      PREVIEW_URL: http://127.0.0.1:4173
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install existing TEST dependencies
+        run: |
+          pip install -e '.[dev]'
+          npm ci
+          sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
+          npx playwright install --with-deps chromium webkit
+      - name: Fixed daily pilot expiry and private credential paths
+        run: |
+          mkdir -p artifacts/r3-connected artifacts/private-daily-pilot
+          echo "PILOT_EXPIRES_AT=$(python -c 'from datetime import datetime,timedelta,timezone;print((datetime.now(timezone.utc)+timedelta(hours=4)).isoformat())')" >> "$GITHUB_ENV"
+          echo "PILOT_E2E_CREDENTIALS=$RUNNER_TEMP/pilot-private-credentials.json" >> "$GITHUB_ENV"
+          echo "PILOT_PROVISION_SCRIPT=$GITHUB_WORKSPACE/scripts/private_daily_pilot_provision.py" >> "$GITHUB_ENV"
+          git rev-parse HEAD > artifacts/private-daily-pilot/checkout-sha.txt
+      - name: Start separate persistent synthetic TEST database and authenticated app
+        run: |
+          bash scripts/start_r3_connected_ci.sh
+          export TEST_DATABASE_URL='postgresql+psycopg://postgres@127.0.0.1:5432/greenhouse_owner_os_test'
+          python scripts/private_daily_pilot_sql_evidence.py --prepare artifacts/private-daily-pilot --credentials "$PILOT_E2E_CREDENTIALS"
+      - name: Five connected domains with owner cookie authentication
+        run: |
+          python scripts/private_daily_pilot_provision.py --reset-fixture-rate-limits
+          E2E_ARTIFACTS=artifacts/daily-connected node tests/e2e/r3-connected.mjs
+          python scripts/r3_connected_sql_evidence.py artifacts/daily-connected/browser-results.json artifacts/daily-connected/sql-evidence.json
+          python scripts/private_daily_pilot_provision.py --reset-fixture-rate-limits
+          E2E_ARTIFACTS=artifacts/daily-purchases node tests/e2e/overnight-purchases.mjs
+          python scripts/overnight_purchases_sql_evidence.py artifacts/daily-purchases/purchases-results.json artifacts/daily-purchases/sql-evidence.json
+          python scripts/private_daily_pilot_provision.py --reset-fixture-rate-limits
+          python scripts/overnight_fertilizer_sql_evidence.py --prepare artifacts/daily-fertilizer
+          E2E_ARTIFACTS=artifacts/daily-fertilizer node tests/e2e/overnight-fertilizer.mjs
+          python scripts/overnight_fertilizer_sql_evidence.py artifacts/daily-fertilizer/fertilizer-results.json artifacts/daily-fertilizer/sql-evidence.json artifacts/daily-fertilizer/before.json
+      - name: Independent owner worker access source and revocation journey
+        env:
+          E2E_ARTIFACTS: artifacts/private-daily-pilot
+        run: |
+          python scripts/private_daily_pilot_provision.py --reset-fixture-rate-limits
+          python scripts/private_daily_pilot_sql_evidence.py --before artifacts/private-daily-pilot/before-auth.json
+          node tests/e2e/private-daily-pilot.mjs
+          python scripts/private_daily_pilot_sql_evidence.py --verify artifacts/private-daily-pilot/pilot-results.json --output artifacts/private-daily-pilot/sql-evidence.json --baseline artifacts/private-daily-pilot/before-auth.json
+      - name: Restart only owned app and PostgreSQL without resetting data or expiry
+        run: |
+          python scripts/private_daily_pilot_restart_proof.py --write artifacts/private-daily-pilot/restart-before.json
+          kill "$(cat "$RUNNER_TEMP/r3-connected-server.pid")"
+          for i in $(seq 1 30); do if ! kill -0 "$(cat "$RUNNER_TEMP/r3-connected-server.pid")" 2>/dev/null; then break; fi; sleep 1; done
+          docker restart "$R3_PILOT_CONTAINER" > /dev/null
+          for i in $(seq 1 60); do if docker exec "$R3_PILOT_CONTAINER" pg_isready -h 127.0.0.1 -U postgres -d greenhouse_owner_os_test >/dev/null 2>&1; then break; fi; sleep 1; done
+          python -m greenhouse_owner_os.preview > "$RUNNER_TEMP/r3-connected-restarted.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/r3-connected-server.pid"
+          for i in $(seq 1 60); do if curl --silent --fail http://127.0.0.1:4173/health >/dev/null; then break; fi; sleep 1; done
+          curl --silent --fail http://127.0.0.1:4173/health >/dev/null
+          python scripts/private_daily_pilot_restart_proof.py --compare artifacts/private-daily-pilot/restart-before.json > artifacts/private-daily-pilot/restart-proof.log
+          E2E_ARTIFACTS=artifacts/private-daily-pilot node tests/e2e/private-daily-pilot.mjs --phase after-restart
+      - name: Guard private evidence
+        id: private_evidence_guard
+        if: always()
+        run: |
+          python scripts/private_daily_pilot_artifact_guard.py artifacts
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.private_evidence_guard.outcome == 'success'
+        with:
+          name: private-daily-pilot-${{ github.sha }}
+          path: |
+            artifacts/private-daily-pilot/
+            artifacts/daily-connected/
+            artifacts/daily-purchases/
+            artifacts/daily-fertilizer/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Stop only owned TEST runtime
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/r3-connected-server.pid" ]; then kill "$(cat "$RUNNER_TEMP/r3-connected-server.pid")" || true; fi
+          if [ -n "${R3_PILOT_CONTAINER:-}" ]; then docker stop "$R3_PILOT_CONTAINER" || true; docker rm -v "$R3_PILOT_CONTAINER" || true; fi

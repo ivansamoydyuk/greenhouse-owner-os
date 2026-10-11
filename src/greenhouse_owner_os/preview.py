@@ -131,7 +131,7 @@ _LOGIN_JS = """document.getElementById('login').addEventListener('submit',async 
 _LOGIN_CSS = """body{margin:0;background:#f6f7f3;color:#173a2b;font:16px system-ui,sans-serif}main{max-width:28rem;margin:12vh auto;padding:1.5rem}h1{font-size:1.6rem}form{display:grid;gap:1rem}input,button{box-sizing:border-box;width:100%;padding:.9rem;border:1px solid #738b7c;border-radius:.7rem;font:inherit}button{background:#173a2b;color:white}#error{color:#943721}button:disabled{opacity:.6}"""
 
 
-def _mount_connected_ui(app, owner, cookie_value):
+def _mount_connected_ui(app, owner, cookie_value, pilot_auth=None):
     directory = (Path(__file__).resolve().parents[2] / 'prototype' / 'owner-r3').resolve()
 
     @app.get('/r3')
@@ -140,6 +140,12 @@ def _mount_connected_ui(app, owner, cookie_value):
 
     @app.get('/r3/')
     def connected_login(request: Request):
+        if pilot_auth:
+            try:
+                identity=pilot_auth.authenticate(request)
+                return RedirectResponse('/r3/connected.html' if identity['role']=='owner' else '/worker',status_code=303)
+            except HTTPException:
+                return RedirectResponse('/pilot/',status_code=303)
         if hmac.compare_digest(request.cookies.get('preview_session',''), cookie_value):
             return RedirectResponse('/r3/connected.html', status_code=303)
         return HTMLResponse(_LOGIN_HTML)
@@ -162,6 +168,13 @@ def _mount_connected_ui(app, owner, cookie_value):
 def build_preview(database_url, secret, *, environment, public_origin=None):
     require_disposable_database(database_url, environment)
     connected = os.getenv('R3_CONNECTED_PILOT') == '1'
+    daily = os.getenv('R3_DAILY_PILOT') == '1'
+    if daily and not connected:
+        raise ValueError('Daily pilot requires the synthetic connected TEST adapter')
+    if daily and not public_origin and os.getenv('PREVIEW_BIND','127.0.0.1') not in ('127.0.0.1','localhost'):
+        raise ValueError('Local daily TEST must bind only to loopback')
+    if daily and not public_origin and os.getenv('PILOT_LOCAL_TEST')!='1':
+        raise ValueError('Daily pilot requires an explicit HTTPS origin or isolated local TEST mode')
     if connected:
         from sqlalchemy.engine import make_url
         if make_url(database_url).query:
@@ -252,8 +265,18 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
         review_fixture={'worker_id':worker['id'],'task_id':example['id'],'source_id':source['id'],
             'translation_scope':'ONE_AUTHORED_TEST_EXAMPLE','real_dispatch':False}
 
+    pilot_auth=None
+    if daily:
+        from greenhouse_owner_os.daily_pilot import PilotAuth
+        pilot_auth=PilotAuth(factory,eid,actor,expires_at=os.environ.get('PILOT_EXPIRES_AT'),
+            build_sha=os.getenv('OWNER_PREVIEW_FEATURE_SHA',os.getenv('GITHUB_SHA')),secure=bool(public_origin))
     cookie_value=secrets.token_urlsafe(48)
     async def owner(request:Request):
+        if pilot_auth:
+            participant=pilot_auth.authenticate(request)
+            if participant['role']!='owner':raise HTTPException(403,'Только владелец имеет доступ к этому разделу.')
+            await _require_pilot_scope(request,eid,factory)
+            return participant['actor_id']
         if connected and time.monotonic() >= deadline:
             raise HTTPException(410, 'TEST preview expired')
         if not hmac.compare_digest(request.cookies.get('preview_session',''),cookie_value):
@@ -263,6 +286,10 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
         return actor
     worker_sessions={}
     def worker_identity(request:Request):
+        if pilot_auth:
+            participant=pilot_auth.authenticate(request)
+            if participant['role']!='worker':raise HTTPException(403,'Требуется вход работника.')
+            return participant['entity_id'],participant['worker_id'],participant['actor_id']
         from greenhouse_owner_os.services.inventory import rows
         token=request.headers.get('authorization','').removeprefix('Bearer ')
         session=worker_sessions.get(token)
@@ -275,6 +302,7 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
     app=create_app(finance_service=finance,reference_service=refs,actor_provider=owner,worker_provider=worker_identity)
     @app.post('/preview/workers/{worker_id}/session')
     def worker_session(worker_id:UUID,actor_id=Depends(owner)):
+        if pilot_auth:raise HTTPException(404,'Legacy TEST token access is disabled in daily pilot')
         from greenhouse_owner_os.services.inventory import rows
         with factory() as u:
             rs=rows(u,'SELECT * FROM workers.people WHERE id=:w AND entity_id=:e AND active',w=worker_id,e=eid)
@@ -289,7 +317,30 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
 
     @app.middleware('http')
     async def preview_boundary(request, call_next):
-        if connected and time.monotonic() >= deadline:
+        if pilot_auth:
+            try:
+                pilot_auth.live()
+                path=request.url.path
+                if path in ('/preview/login','/preview/logout') or path.startswith('/preview/workers/'):
+                    raise HTTPException(404,'Legacy preview access is disabled in daily pilot')
+                if request.method not in ('GET','HEAD','OPTIONS'):
+                    expected=public_origin or str(request.base_url).rstrip('/')
+                    if request.headers.get('origin','').rstrip('/')!=expected or request.headers.get('sec-fetch-site')=='cross-site':
+                        raise HTTPException(403,'same-origin required')
+                    if request.headers.get('content-type','').split(';')[0].strip()!='application/json':
+                        raise HTTPException(415,'JSON required')
+                public_paths={'/pilot/','/pilot/public-config','/pilot/login','/health','/assets/pilot-login.html','/assets/pilot-login.js','/assets/pilot-login.css'}
+                if path not in public_paths:
+                    participant=pilot_auth.authenticate(request)
+                    pilot_auth.require_expected_participant(request,participant,required=request.method not in ('GET','HEAD','OPTIONS'))
+                    if participant['role']=='worker' and not (path.startswith('/v1/worker/') or path.startswith('/pilot/') or path.startswith('/assets/') or path=='/worker'):
+                        raise HTTPException(403,'Worker access is limited to assigned tasks')
+                if path=='/':return _preview_headers(RedirectResponse('/pilot/',status_code=303))
+            except HTTPException as exc:
+                if exc.status_code==401 and request.method=='GET' and request.url.path in ('/r3/','/r3','/r3/connected.html','/worker','/'):
+                    return _preview_headers(RedirectResponse('/pilot/',status_code=303))
+                return _preview_headers(JSONResponse({'detail':exc.detail},status_code=exc.status_code))
+        if connected and not pilot_auth and time.monotonic() >= deadline:
             response = JSONResponse({'error': {'code': 'expired', 'message': 'TEST preview expired'}}, status_code=410)
             return _preview_headers(response)
         if request.method not in ('GET','HEAD','OPTIONS'):
@@ -323,7 +374,7 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
         r=JSONResponse({'ok':True});r.delete_cookie('preview_session');return r
 
     @app.get('/preview/config')
-    def config(actor_id=Depends(owner)):
+    def config(request:Request,actor_id=Depends(owner)):
         result = {'entity_id':str(eid),'environment':'TEST_PREVIEW','actual_operations':False,'r2_fixtures':not connected and os.getenv('R2_REVIEW_FIXTURES')=='1','worker_assignment_fixture':review_fixture,'feature_sha':os.getenv('OWNER_PREVIEW_FEATURE_SHA',os.getenv('GITHUB_SHA'))}
         if connected:
             from datetime import datetime, timezone
@@ -333,6 +384,9 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
                     'inventory':True, 'personal_tasks':True, 'worker_tasks':'R1_AND_R2_INTERNAL_TEST',
                     'fertilizer_planning':'CONNECTED_TEST_BOUNDED_ACTUAL_SCOPE', 'real_dispatch':False, 'external_integrations':False},
                 synthetic_fixture=profile)
+        if pilot_auth:
+            participant=pilot_auth.authenticate(request)
+            result.update(daily_pilot=True,participant_id=str(participant['id']),deployment_id=str(pilot_auth.deployment_id),session=pilot_auth.view(participant),expires_at=pilot_auth.expires_at.isoformat())
         return result
 
     @app.get('/preview/fixtures/gorgun.png')
@@ -355,7 +409,15 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
     @app.get('/')
     def index():return FileResponse(web/'index.html')
     if connected:
-        _mount_connected_ui(app, owner, cookie_value)
+        _mount_connected_ui(app, owner, cookie_value, pilot_auth)
+    if pilot_auth:
+        pilot_auth.mount(app)
+    else:
+        # Shared worker assets discover their adapter without a failed request.
+        # This public mode marker exposes no identity, fixture or business data.
+        @app.get('/pilot/public-config')
+        def legacy_pilot_mode():
+            return {'mode':'LEGACY_TEST_PREVIEW','daily_pilot':False}
     return app
 
 

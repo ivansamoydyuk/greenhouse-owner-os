@@ -107,10 +107,15 @@ def test_r3_static_assets_are_opt_in_authenticated_and_traversal_safe():
     assert client.get('/r3/login.js').status_code == 200
     assert client.get('/r3/login.css').status_code == 200
     assert client.get('/r3/styles.css').status_code == 401
+    assert client.get('/r3/cold-bootstrap.js').status_code == 401
     assert client.get('/r3/index.html').status_code == 401
     client.cookies.set('preview_session','private-cookie')
     assert client.get('/r3/',follow_redirects=False).headers['location'] == '/r3/connected.html'
     assert client.get('/r3/styles.css').status_code == 200
+    cold_bootstrap = client.get('/r3/cold-bootstrap.js')
+    assert cold_bootstrap.status_code == 200
+    assert 'javascript' in cold_bootstrap.headers['content-type']
+    assert 'export class ColdBootstrapAttempt' in cold_bootstrap.text
     assert 'Demo' in client.get('/r3/index.html').text
     assert client.get('/r3/%2e%2e/%2e%2e/config/owner_finance_opening.json').status_code == 404
     assert client.get('/r3/../preview.py').status_code == 404

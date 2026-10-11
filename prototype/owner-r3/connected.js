@@ -1,4 +1,5 @@
 import {FertilizerDraftWrites} from './fertilizer-draft-writes.js';
+import {ColdBootstrapAttempt} from './cold-bootstrap.js';
 import {fertilizerDraft,fertilizerDraftAction,fertilizerCopyDraft,fertilizerResolutionInput,fertilizerResolutionView,fertilizerEditRestriction,invalidateFertilizerReview,fertilizerPlanInput,fertilizerEditorView,fertilizerPreviewView,fertilizerCalendarView,fertilizerDetailView,fertilizerReferenceView,fertilizerActualDraft,fertilizerActualInput,fertilizerActualView,exactFertilizerNumber} from './fertilizer-connected.js';
 import {historySelection,historyRoute,historyQuery,purchaseHistoryView,purchaseDetailView,stockEventView,invoiceTargetMatches} from "./purchases-connected.js";
 import { financeAnalyticsView, financeDocumentView, financeSelection, financeRoute, financeQuery, financeBackRoute } from "./finance-connected.js";
@@ -55,6 +56,8 @@ let lastHarvestRoute = "harvest";
 let lastFinanceRoute = "money";
 const harvestScroll = new Map();
 let config = null,
+  bootstrapAttempt = null,
+  bootstrapRecovery = null,
   ready = false,
   route = location.hash.slice(1) || "home",
   epoch = 0,
@@ -68,9 +71,18 @@ let config = null,
 const api = new ConnectedAPI({
   onAuth: () => {
     ready = false;
+    app.style.visibility="hidden";
     epoch++;
     clearTimeout(readTimer);
-    location.assign("/r3/?return=" + encodeURIComponent(location.hash));
+    // Fence server responses immediately, then finish local writes before login.
+    // A storage failure keeps the current form visible instead of discarding it.
+    return (async () => { try {
+      await fertilizerWrites.settle();
+      if (draft) await api.draft(route, structuredClone(draft));
+      api.clearIdentity();fertilizerWrites.records.clear();draft=null;current=null;data={};if(config)delete config.draft_key;
+      location.assign((config?.daily_pilot?"/pilot/?return=":"/r3/?return=") + encodeURIComponent(location.hash));
+    } catch (error) { if(config?.daily_pilot)participantNotice('Сессия закончилась. Черновик пока не сохранён: оставьте окно открытым и повторите проверку.');else{app.style.visibility='visible';showError(error, document.querySelector('[data-form]'));} } })();
+
   },
 });
 const title = {
@@ -176,7 +188,7 @@ function setRadial(open) {
 }
 const fertilizerWrites=new FertilizerDraftWrites(api,(savedRoute,state,error)=>{
   if(savedRoute!==route)return;
-  const form=document.querySelector('[data-form^="fertilizer-"]');if(!form)return;
+  const form=document.querySelector('[data-form]');if(!form)return;
   let badge=form.querySelector('[data-fertilizer-draft-status]');
   if(!badge){badge=document.createElement('p');badge.dataset.fertilizerDraftStatus='';badge.setAttribute('role','status');form.prepend(badge);}
   badge.dataset.state=state;
@@ -188,7 +200,45 @@ function go(to) {
   if (location.hash.slice(1) === to) return render();
   location.hash = to;
 }
-async function refreshData() {
+function showBootstrapRecovery() {
+  shell(Header('Не удалось загрузить', 'Загрузка остановлена') + panel(
+    `<p class="form-error" role="alert">${e(bootstrapRecovery.message)}</p><p>Данные на устройстве не удалены. Повторная загрузка не подтверждает операции.</p>${btn('Повторить загрузку страницы', 'bootstrap-retry', 'primary')}`,
+  ), true);
+}
+function failOwnerBootstrap(error) {
+  bootstrapRecovery = error;
+  api.generation++;
+  epoch++;
+  ready = false;
+  clearTimeout(readTimer);
+  sheetRoot.innerHTML = '';
+  app.dataset.bootstrapStage = 'recovery';
+  app.dataset.bootstrapGeneration = String(api.generation);
+  app.style.visibility = 'visible';
+  showBootstrapRecovery();
+}
+async function configureOwnerSession(attempt = null) {
+  attempt?.check();
+  app.dataset.bootstrapStage = 'config-read';
+  const next = await api.get('/preview/config');
+  attempt?.check();
+  if (next.daily_pilot) {
+    app.dataset.bootstrapStage = 'draft-key-read';
+    const localKey = await api.get('/pilot/draft-key');
+    attempt?.check();
+    if (localKey.participant_id !== next.participant_id || localKey.algorithm !== 'AES-GCM' || !/^[A-Za-z0-9_-]{43}$/.test(localKey.key || ''))
+      throw Error('Не подтверждён ключ этой учётной записи. Войдите снова.');
+    next.draft_key = localKey.key;
+  }
+  app.dataset.bootstrapStage = 'configure';
+  api.configure(next);
+  attempt?.configured();
+  config = next;
+  app.dataset.bootstrapStage = 'configured';
+  app.dataset.bootstrapGeneration = String(api.generation);
+}
+async function refreshData(check = () => {}) {
+  check();
   const generation = api.generation;
   const names = {
     home: "/owner/home",
@@ -198,14 +248,17 @@ async function refreshData() {
     queue: "/owner/confirmations",
     sources: "/owner/captures",
   };
+  if(config?.daily_pilot){try{const participants=await api.get('/pilot/participants');check();if(generation===api.generation){data.participants=participants;delete failures.participants;}}catch(error){check();if(generation===api.generation)failures.participants=error;}}
   await Promise.all(
     Object.entries(names).map(async ([key, path]) => {
       try {
         const result = await api.entityGet(path);
+        check();
         if (generation !== api.generation) return;
         data[key] = result;
         delete failures[key];
       } catch (error) {
+        check();
         if (generation !== api.generation) return;
         failures[key] = error;
         data[key] = null;
@@ -1027,11 +1080,15 @@ function personalDetail(t) {
     )
   );
 }
+function pilotParticipants(){
+ if(!config?.daily_pilot)return '';
+ return panel('<h2>Доступ к закрытому TEST</h2><p>Каждый участник входит со своей учётной записью. Приглашения не отправляются.</p>'+ (failures.participants?'<p role="alert">Не удалось проверить список доступа.</p>':(data.participants?.participants||[]).map(p=>`<div class="list-row"><strong>${e(p.display_name)}</strong><small>${p.role==='worker'?'Работник':'Владелец'} · ${p.enabled?'Доступ открыт':'Доступ отозван'}</small>${p.enabled&&p.id!==config.participant_id?btn('Отозвать TEST-доступ','pilot-revoke:'+p.id,'secondary'):''}</div>`).join('')));
+}
 function workers() {
   const w = data.workers;
   if (!w) return unavailable("Работники");
   return (
-    Header("Работники", "Получение и отчёт · CONNECTED TEST") +
+    Header("Работники", "Получение и отчёт · CONNECTED TEST") + pilotParticipants() +
     notice(
       "Назначение и внутренний жизненный цикл сохраняются в TEST. Внешняя отправка, Telegram и новое понимание Dari: NOT AVAILABLE.",
     ) +
@@ -1040,7 +1097,7 @@ function workers() {
       `<h2>Поручения</h2>${taskRows(w.tasks, true) || "<p>Пока нет задач.</p>"}`,
     ) +
     panel(
-      `<h2>Работники TEST</h2>${w.workers.map((x) => `<div class="list-row"><strong>${e(x.display_name)}</strong><small>${e(x.language)} · ${x.active ? "активен" : "неактивен"}</small>${x.active ? btn("TEST-вход работника", "worker-session:" + x.id, "secondary") : ""}</div>`).join("")}`,
+      `<h2>Работники TEST</h2>${w.workers.map((x) => `<div class="list-row"><strong>${e(x.display_name)}</strong><small>${e(x.language)} · ${x.active ? "активен" : "неактивен"}</small>${x.active && !config?.daily_pilot ? btn("TEST-вход работника", "worker-session:" + x.id, "secondary") : ""}</div>`).join("")}`,
     )
   );
 }
@@ -1163,7 +1220,9 @@ function more() {
   );
 }
 async function render() {
-  try{await fertilizerWrites.flush(route);}catch(error){showError(error,document.querySelector("[data-form]"));return;}
+  if (bootstrapRecovery) return showBootstrapRecovery();
+  try{await fertilizerWrites.flush(route);}catch(error){if(bootstrapRecovery)return showBootstrapRecovery();showError(error,document.querySelector("[data-form]"));return;}
+  if (bootstrapRecovery) return showBootstrapRecovery();
   const token = ++epoch;
   clearTimeout(readTimer);
   estimateReview=null;
@@ -1443,18 +1502,35 @@ function showError(error, node) {
     });
   }
 }
+let ownerLoggingOut=false;
+async function logoutOwner(){
+ if(ownerLoggingOut)return;ownerLoggingOut=true;
+ const savedRoute=route,savedDraft=draft?structuredClone(draft):null,savedScope=api.scope;
+ epoch++;api.generation++;ready=false;app.inert=true;
+ try{
+  await fertilizerWrites.settle();
+  if(api.scope!==savedScope)throw Error('Сессия изменилась. Черновик не перенесён.');
+  if(savedDraft)await api.draft(savedRoute,savedDraft);
+  await api.request(config?.daily_pilot?'/pilot/logout':'/preview/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  api.clearIdentity();fertilizerWrites.records.clear();draft=null;current=null;data={};if(config)delete config.draft_key;
+  if(config?.daily_pilot)pilotChannel?.postMessage({changed:true});
+  location.assign(config?.daily_pilot?'/pilot/':'/r3/');
+ }catch(error){if(api.scope===savedScope){ready=true;showError(error,document.querySelector('[data-form]'));}}
+ finally{ownerLoggingOut=false;app.inert=false;}
+}
 async function action(run, node = null) {
   if (busy) return;
   busy = true;
   activeActionRoute = route;
   const previousInert = node?.inert;
   if (node) node.inert = true;
-  const buttons = [...document.querySelectorAll("button")];
+  const buttons = [...document.querySelectorAll("button")].filter(button=>button.dataset.action!=="logout");
   buttons.forEach((b) => {
     b.dataset.wasDisabled = b.disabled ? "1" : "0";
     b.disabled = true;
   });
   try {
+    await fertilizerWrites.flush(route);
     await run();
   } catch (error) {
     showError(error, node);
@@ -1496,7 +1572,7 @@ async function saveDraft(snapshot) {
   await attachmentReads.merge(scope, route, draft, file);
   if (scope !== api.scope || generation !== api.generation)
     throw Error("Сессия изменилась. Исходник прежнего владельца не отправлен.");
-  if(route.startsWith('fertilizer-'))await fertilizerWrites.enqueue(route,draft);else await api.draft(route, draft);
+  if(route.startsWith('fertilizer-'))await fertilizerWrites.enqueue(route,draft);else await fertilizerWrites.enqueue(route, draft);
 }
 async function clearDraft(id) {
   const scope = api.scope, generation = api.generation;
@@ -2073,7 +2149,7 @@ document.addEventListener("input", (event) => {
   Object.assign(draft, fields);
   if(formEl.dataset.form.startsWith('fertilizer-')){if(formEl.dataset.form==='fertilizer-plan'){invalidateFertilizerReview(draft,event.target.name);for(const box of formEl.querySelectorAll('[name^=reviewed_]'))box.checked=draft[box.name]==='on';}delete draft.actual_preview;delete draft.actual_input;delete draft.plan_preview;draft.review_mode=false;const confirm=document.querySelector('[data-action=fert-confirm-actual]');if(confirm)confirm.disabled=true;}
   if(formEl.dataset.form.startsWith('fertilizer-'))fertilizerWrites.enqueue(route,draft).catch(()=>{});
-  else api.draft(route, draft).catch((error) => showError(error, formEl));
+  else fertilizerWrites.enqueue(route, draft).catch((error) => showError(error, formEl));
   if (formEl.dataset.form === "payment") {
     const total = document.querySelector("#payment-total");
     if (total) total.textContent = paymentTotal() + " " + route.split("/")[3];
@@ -2148,8 +2224,13 @@ document.addEventListener("click", (event) => {
   // Also suppress defaults for shared navigation/action controls.
   event.preventDefault();
   const command = button.dataset.action;
+  if (bootstrapRecovery) {
+    if (command === 'bootstrap-retry') location.reload();
+    return;
+  }
   const [name, ...rest] = command.split(":"),
     arg = rest.join(":");
+  if(name==='logout')return logoutOwner();
   if(name.startsWith('fert-')) return action(async()=>{
     await fertilizerWrites.flush(route);
     const origin=route,scope=api.scope,generation=api.generation,plan=current?.plan;
@@ -2262,8 +2343,7 @@ document.addEventListener("click", (event) => {
     const { current, draft, route } = snapshot;
     if (name === "refresh") {
       if (!api.scope) {
-        config = await api.get("/preview/config");
-        api.configure(config);
+        await configureOwnerSession();
       }
       const generation = api.generation;
       await refreshData();
@@ -2271,10 +2351,11 @@ document.addEventListener("click", (event) => {
       ready = true;
       return render();
     }
-    if (name === "logout") {
-      await api.request("/preview/logout", { method: "POST" });
-      location.assign("/r3/");
-      return;
+    if(name==='pilot-revoke'){
+      const participant=data.participants?.participants?.find(p=>p.id===arg);
+      if(!config?.daily_pilot||!participant||participant.id===config.participant_id)throw Error('Участник недоступен для отзыва.');
+      await api.request('/pilot/participants/'+encodeURIComponent(participant.id)+'/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected_version:participant.version})});
+      await refreshData();await render();toast('TEST-доступ отозван. Активные сессии прекращены.');return;
     }
     if (name === "prepare") {
       await api.entityPost(
@@ -2373,6 +2454,7 @@ document.addEventListener("click", (event) => {
     if (name === "retry-request") {
       const record = (await api.records()).find((r) => r.key === arg);
       if (!record) throw Error("Запрос не найден");
+      if(config?.daily_pilot)await api.request('/pilot/receipts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:record.path,key:record.keyHeader})});
       const response = await api.request(record.path, {
         method: "POST",
         headers: {
@@ -2390,7 +2472,8 @@ document.addEventListener("click", (event) => {
 });
 window.addEventListener("hashchange", async () => {
   const previous=route,next=location.hash.slice(1)||'home';
-  try{await fertilizerWrites.flush(previous);}catch(error){history.replaceState(null,'','#'+previous);showError(error,document.querySelector('[data-form]'));return;}
+  if (bootstrapRecovery) { route = next; showBootstrapRecovery(); return; }
+  try{await fertilizerWrites.flush(previous);}catch(error){if(bootstrapRecovery){route=location.hash.slice(1)||'home';showBootstrapRecovery();return;}history.replaceState(null,'','#'+previous);showError(error,document.querySelector('[data-form]'));return;}
   if((location.hash.slice(1)||'home')!==next)return;
   route=next;render();
 });
@@ -2416,20 +2499,35 @@ window.addEventListener("keydown", (event) => {
   }
 });
 (async () => {
+  const attempt = bootstrapAttempt = new ColdBootstrapAttempt({
+    generation: () => api.generation,
+    failed: failOwnerBootstrap,
+  });
+  api.bootstrapGuard = () => attempt.check();
   try {
-    config = await api.get("/preview/config");
-    api.configure(config);
-    const generation = api.generation;
-    await refreshData();
+    shell(Header("Загружаем", "Проверяем TEST-сессию"), true);
+    await configureOwnerSession(attempt);
+    attempt.check();
+    app.dataset.bootstrapStage = 'refresh-data';
+    await refreshData(() => attempt.check());
+    attempt.check();
+    app.dataset.bootstrapStage = 'harvest-navigation-read';
     const navigation=await api.readDraft("harvest-navigation");
+    attempt.check();
+    app.dataset.bootstrapStage = 'finance-navigation-read';
     const financeNavigation=await api.readDraft("finance-navigation");
-    if (generation !== api.generation) return;
+    attempt.check();
     lastHarvestRoute=navigation?.route || "harvest";
     lastFinanceRoute=financeNavigation?.route || "money";
     ready = true;
+    app.dataset.bootstrapStage = 'render';
     await render();
+    attempt.check();
+    app.dataset.bootstrapStage = 'render-returned';
+    attempt.finish();
+    api.bootstrapGuard = null;
   } catch (error) {
-    shell(errorBox(error));
+    attempt.fail(error);
   }
 })();
 
@@ -2466,3 +2564,17 @@ function revealFocusedCaptureField() {
   if (point < top || point > bottom) window.scrollBy({top: point - (top + bottom) / 2, behavior: 'instant'});
 }
 document.addEventListener('focusin', () => requestAnimationFrame(revealFocusedCaptureField));
+
+function participantNotice(message){
+ let banner=document.querySelector('#pilot-session-status');if(!banner){banner=document.createElement('section');banner.id='pilot-session-status';banner.setAttribute('role','alert');app.before(banner);}banner.replaceChildren();const text=document.createElement('p');text.textContent=message;const retry=document.createElement('button');retry.type='button';retry.className='btn primary';retry.textContent='Проверить вход ещё раз';retry.onclick=()=>verifyVisibleParticipant();banner.append(text,retry);
+}
+async function verifyVisibleParticipant(){
+ if(bootstrapRecovery||bootstrapAttempt?.state==='pending')return;
+ if(!config?.daily_pilot)return;
+ app.style.visibility='hidden';ready=false;
+ try{const response=await fetch('/pilot/session',{credentials:'same-origin',cache:'no-store'});const session=response.ok?await response.json():null;if(!session||session.role!=='owner'||session.participant_id!==config.participant_id){epoch++;await fertilizerWrites.settle();if(draft)await api.draft(route,structuredClone(draft));api.clearIdentity();fertilizerWrites.records.clear();draft=null;current=null;data={};delete config.draft_key;location.replace('/pilot/');return;}document.querySelector('#pilot-session-status')?.remove();ready=true;app.style.visibility='visible';}catch{participantNotice('Не удалось проверить вход или сохранить черновик. Данные временно скрыты, введённое осталось в открытом окне. Повторите после восстановления связи или памяти.');}
+}
+window.addEventListener('pagehide',()=>{if(config?.daily_pilot)app.style.visibility='hidden';});
+window.addEventListener('pageshow',event=>{if(event.persisted)verifyVisibleParticipant();});
+const pilotChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('greenhouse-pilot-session'):null;
+pilotChannel?.addEventListener('message',()=>verifyVisibleParticipant());

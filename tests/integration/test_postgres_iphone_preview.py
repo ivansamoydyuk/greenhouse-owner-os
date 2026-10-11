@@ -56,3 +56,20 @@ def test_iphone_fixtures_never_relax_disposable_environment_guard(monkeypatch):
     import pytest
     with pytest.raises(ValueError):
         build_preview(os.environ['TEST_DATABASE_URL'],SECRET,environment='production')
+
+
+def test_legacy_worker_mode_discovery_is_data_free_without_unlocking_access(migrated_database,monkeypatch):
+    for name in ('R3_DAILY_PILOT','R3_CONNECTED_PILOT','R2_REVIEW_FIXTURES'):
+        monkeypatch.delenv(name,raising=False)
+    app=build_preview(migrated_database,SECRET,environment='test')
+    c=TestClient(app)
+    response=c.get('/pilot/public-config')
+    assert response.status_code==200
+    assert response.json()=={'mode':'LEGACY_TEST_PREVIEW','daily_pilot':False}
+    assert response.headers['cache-control']=='no-store'
+    assert response.headers['x-content-type-options']=='nosniff'
+    assert len([r for r in app.routes if getattr(r,'path',None)=='/pilot/public-config'])==1
+    assert c.get('/preview/config').status_code==401
+    assert c.get('/v1/worker/tasks').status_code==401
+    assert c.get('/pilot/session').status_code==404
+    assert c.post('/pilot/public-config',json={}).status_code==405
