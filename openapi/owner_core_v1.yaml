@@ -5277,6 +5277,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/fertilizer/plans/{plan_id}/resolutions:
+    post:
+      summary: Resolution
+      operationId: resolution_v1_entities__entity_id__fertilizer_plans__plan_id__resolutions_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Plan Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolutionInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -10624,6 +10667,14 @@ components:
       title: ActualConfirm
     ActualInput:
       properties:
+        execution_kind:
+          anyOf:
+          - type: string
+            enum:
+            - FIRST
+            - ADDITIONAL
+          - type: 'null'
+          title: Execution Kind
         source:
           $ref: '#/components/schemas/FormSource'
         expected_version:
@@ -10667,6 +10718,20 @@ components:
       title: ActualInput
     ActualLine:
       properties:
+        physical_execution_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Physical Execution Id
+        remainder_decision:
+          anyOf:
+          - type: string
+            enum:
+            - KEEP_OPEN
+            - CLOSE
+          - type: 'null'
+          title: Remainder Decision
         card_id:
           type: string
           format: uuid
@@ -10676,8 +10741,10 @@ components:
           format: uuid
           title: Component Id
         report_id:
-          type: string
-          format: uuid
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
           title: Report Id
         quantity:
           type: string
@@ -10699,7 +10766,6 @@ components:
       required:
       - card_id
       - component_id
-      - report_id
       - quantity
       - disposition
       title: ActualLine
@@ -10778,8 +10844,10 @@ components:
           format: uuid
           title: Source Id
         application_id:
-          type: string
-          format: uuid
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
           title: Application Id
         input:
           $ref: '#/components/schemas/ActualInput'
@@ -10867,6 +10935,29 @@ components:
       title: AreaView
     CardInput:
       properties:
+        application_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Application Id
+        application_order:
+          anyOf:
+          - type: integer
+            maximum: 50.0
+            minimum: 1.0
+          - type: 'null'
+          title: Application Order
+        mixing_intent:
+          anyOf:
+          - type: string
+            enum:
+            - SINGLE
+            - TOGETHER
+            - SEPARATE
+            - UNRESOLVED
+          - type: 'null'
+          title: Mixing Intent
         card_id:
           type: string
           format: uuid
@@ -10936,6 +11027,29 @@ components:
       title: CardInput
     CardView:
       properties:
+        application_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Application Id
+        application_order:
+          anyOf:
+          - type: integer
+            maximum: 50.0
+            minimum: 1.0
+          - type: 'null'
+          title: Application Order
+        mixing_intent:
+          anyOf:
+          - type: string
+            enum:
+            - SINGLE
+            - TOGETHER
+            - SEPARATE
+            - UNRESOLVED
+          - type: 'null'
+          title: Mixing Intent
         card_id:
           type: string
           format: uuid
@@ -11255,6 +11369,26 @@ components:
       title: DispatchView
     FertilizerResponseInput:
       properties:
+        physical_execution_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Physical Execution Id
+        late_evidence:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Late Evidence
+        quantity_mode:
+          anyOf:
+          - type: string
+            enum:
+            - INCREMENTAL
+            - CUMULATIVE
+            - UNSPECIFIED
+          - type: 'null'
+          title: Quantity Mode
         client_response_id:
           type: string
           format: uuid
@@ -11465,12 +11599,33 @@ components:
       title: PlanPreview
     PlanView:
       properties:
+        actuals:
+          items:
+            $ref: '#/components/schemas/ActualView'
+          type: array
+          title: Actuals
+        execution_summary:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Execution Summary
+        resolutions:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Resolutions
+        unresolved_reports:
+          items:
+            $ref: '#/components/schemas/ReportView'
+          type: array
+          title: Unresolved Reports
         late_evidence_count:
           type: integer
           title: Late Evidence Count
         late_evidence_review_supported:
           type: boolean
-          const: false
           title: Late Evidence Review Supported
         id:
           type: string
@@ -11495,6 +11650,9 @@ components:
           - APPLIED
           - ACTUAL_REVERSED
           - ACTUAL_CORRECTED
+          - REVIEWED_NOT_APPLIED
+          - CLOSED
+          - CORRECTION_PENDING
           title: Status
         input:
           $ref: '#/components/schemas/PlanInput'
@@ -11558,7 +11716,6 @@ components:
           title: Remainder
         subsequent_scope_supported:
           type: boolean
-          const: false
           title: Subsequent Scope Supported
       additionalProperties: false
       type: object
@@ -11803,6 +11960,26 @@ components:
       title: ReferenceView
     ReportOriginal:
       properties:
+        physical_execution_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Physical Execution Id
+        late_evidence:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Late Evidence
+        quantity_mode:
+          anyOf:
+          - type: string
+            enum:
+            - INCREMENTAL
+            - CUMULATIVE
+            - UNSPECIFIED
+          - type: 'null'
+          title: Quantity Mode
         client_response_id:
           type: string
           format: uuid
@@ -12074,6 +12251,70 @@ components:
       - cards
       - reports
       title: WorkerPlanView
+    ResolutionInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/FormSource'
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+        revision:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Revision
+        kind:
+          type: string
+          enum:
+          - EVIDENCE_ONLY
+          - CONFLICT
+          - UNRESOLVED
+          - CORRECTION
+          - REOPEN_SCOPE
+          title: Kind
+        report_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Report Id
+        actual_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Actual Id
+        card_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Card Id
+        component_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Component Id
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - expected_version
+      - revision
+      - kind
+      - reason
+      - confirmed
+      title: ResolutionInput
   responses:
     Conflict:
       description: Version or idempotency conflict

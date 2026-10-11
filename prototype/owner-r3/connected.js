@@ -1,4 +1,4 @@
-import {fertilizerDraft,fertilizerEditRestriction,invalidateFertilizerReview,fertilizerPlanInput,fertilizerEditorView,fertilizerPreviewView,fertilizerCalendarView,fertilizerDetailView,fertilizerReferenceView,fertilizerActualDraft,fertilizerActualInput,fertilizerActualView,exactFertilizerNumber} from './fertilizer-connected.js';
+import {fertilizerDraft,fertilizerDraftAction,fertilizerCopyDraft,fertilizerResolutionInput,fertilizerResolutionView,fertilizerEditRestriction,invalidateFertilizerReview,fertilizerPlanInput,fertilizerEditorView,fertilizerPreviewView,fertilizerCalendarView,fertilizerDetailView,fertilizerReferenceView,fertilizerActualDraft,fertilizerActualInput,fertilizerActualView,exactFertilizerNumber} from './fertilizer-connected.js';
 import {historySelection,historyRoute,historyQuery,purchaseHistoryView,purchaseDetailView,stockEventView,invoiceTargetMatches} from "./purchases-connected.js";
 import { financeAnalyticsView, financeDocumentView, financeSelection, financeRoute, financeQuery, financeBackRoute } from "./finance-connected.js";
 import { monthlyHarvestView, harvestSelection, harvestQuery, harvestRoute } from "./harvest-connected.js";
@@ -1330,14 +1330,16 @@ async function render() {
       let loaded=await api.readDraft(route);
       const refs=await api.entityGet('/fertilizer/references?event_date='+(loaded?.date||plan?.input.event_date||localDay()));
       if(!loaded){loaded=fertilizerDraft(refs,{id:crypto.randomUUID(),captured_at:new Date().toISOString(),product:page==='fertilizer-new'?arg:'',location:arg2||'',input:plan?.input});await api.draft(route,loaded);}
-      if(token!==epoch)return;draft=loaded;current={refs,plan};body=draft.review_mode&&draft.plan_preview?fertilizerPreviewView(draft.plan_preview,refs,!!plan):fertilizerEditorView(draft,refs,{editing:!!plan});
+      loaded.identity_locked=!!(plan?.actuals?.length||plan?.actual);if(token!==epoch)return;draft=loaded;current={refs,plan};body=draft.review_mode&&draft.plan_preview?fertilizerPreviewView(draft.plan_preview,refs,!!plan):fertilizerEditorView(draft,refs,{editing:!!plan});
     } else if (page === 'fertilizer-plan') {
       const plan=await api.entityGet('/fertilizer/plans/'+arg);const refs=await api.entityGet('/fertilizer/references?event_date='+plan.input.event_date);
       if(token!==epoch)return;current={plan,refs};body=fertilizerDetailView(plan,refs);
     } else if (page === 'fertilizer-references') {
       const refs=await api.entityGet('/fertilizer/references?event_date='+localDay());const loaded=await getDraft(route,{effective_from:localDay()});if(token!==epoch)return;current={refs};draft=loaded;body=fertilizerReferenceView(refs,draft);
+    } else if (page === 'fertilizer-resolution') {
+      const plan=await api.entityGet('/fertilizer/plans/'+arg);const loaded=await getDraft(route,{});if((plan.resolutions||[]).some(r=>r.source_id===loaded.id||r.input?.source?.form_id===loaded.id)){if(loaded.resolution_input)await api.mutate(entityPath('/fertilizer/plans/'+arg+'/resolutions'),loaded.resolution_input,loaded.id);if(token!==epoch)return;await clearDraft(route);go('fertilizer-plan/'+arg);return;}if(token!==epoch)return;current={plan};draft=loaded;body=fertilizerResolutionView(plan,draft);
     } else if (page === 'fertilizer-actual') {
-      const plan=await api.entityGet('/fertilizer/plans/'+arg);let loaded=await api.readDraft(route);if(!loaded){loaded=fertilizerActualDraft(plan,crypto.randomUUID(),new Date().toISOString());loaded.plan_version=plan.version;await api.draft(route,loaded);}if(loaded.plan_version!==plan.version){delete loaded.actual_preview;delete loaded.actual_input;loaded.plan_version=plan.version;await api.draft(route,loaded);}if(token!==epoch)return;current={plan};draft=loaded;body=fertilizerActualView(plan,draft,draft.actual_preview);
+      const plan=await api.entityGet('/fertilizer/plans/'+arg);let loaded=await api.readDraft(route);if(!loaded){loaded=fertilizerActualDraft(plan,crypto.randomUUID(),new Date().toISOString());loaded.plan_version=plan.version;await api.draft(route,loaded);}if((plan.actuals||[]).some(a=>a.source_id===loaded.id||a.input?.source?.form_id===loaded.id)){if(loaded.actual_input&&loaded.actual_preview)await api.mutate(entityPath('/fertilizer/plans/'+arg+'/actual'),{input:loaded.actual_input,actual_preview_digest:loaded.actual_preview.actual_preview_digest,confirmed:true},loaded.id);if(token!==epoch)return;await clearDraft(route);go('fertilizer-plan/'+arg);return;}if(loaded.plan_version!==plan.version){delete loaded.actual_preview;delete loaded.actual_input;loaded.plan_version=plan.version;await api.draft(route,loaded);}if(token!==epoch)return;current={plan};draft=loaded;body=fertilizerActualView(plan,draft,draft.actual_preview);
     } else if (page === "inventory") body = inventory();
     else if (page === "quick" && ["receipt","transfer"].includes(arg)) {
       if (!data.inventory) throw Error("Склад не загружен");
@@ -1423,6 +1425,7 @@ function showError(error, node) {
     if (field) requestAnimationFrame(() => {
       if (!node.isConnected || node.inert || !field.isConnected ||
           route !== errorRoute || epoch !== errorEpoch || api.generation !== generation) return;
+      if(node.dataset?.form?.startsWith('fertilizer-'))for(let parent=field.parentElement;parent&&parent!==node;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;
       field.focus({preventScroll:true});
       field.scrollIntoView({block:"center",behavior:"instant"});
     });
@@ -1532,6 +1535,8 @@ async function submitForm(formEl, snapshot) {
     const previous=(current.refs.bindings||[]).filter(b=>b.work_area_id===v.work_area_id).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))[0];
     const body={client_reference_id:draft.id,captured_at:draft.captured_at,work_area_id:v.work_area_id,area_da:exactFertilizerNumber(v.area_da,{optional:true}),default_worker_id:v.default_worker_id||null,canonical_key:v.canonical_key||null,verification:requireText(v.verification,'основание проверки'),effective_from:v.effective_from,replaces_id:previous?.id||null,confirmed:true};
     await api.mutate(entityPath('/fertilizer/references'),body,draft.id);await clearDraft(savedRoute);if(route===savedRoute)await render();
+  } else if(name === 'fertilizer-resolution') {
+    const input=draft.resolution_input||fertilizerResolutionInput(draft,current.plan);draft.resolution_input=input;await api.draft(savedRoute,draft);try{await api.mutate(entityPath('/fertilizer/plans/'+current.plan.id+'/resolutions'),input,draft.id);}catch(error){if([400,409,422].includes(error.status)){delete draft.resolution_input;draft.id=crypto.randomUUID();draft.captured_at=new Date().toISOString();await api.draft(savedRoute,draft);}else if(route===savedRoute)await render();throw error;}assertSubmissionScope(snapshot);await clearDraft(savedRoute);if(route===savedRoute)go('fertilizer-plan/'+current.plan.id);
   } else if(name === 'fertilizer-actual') {
     const input=fertilizerActualInput(draft,current.plan);const preview=await api.request(entityPath('/fertilizer/plans/'+current.plan.id+'/actual-preview'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});assertSubmissionScope(snapshot);draft.actual_input=input;draft.actual_preview=preview;await api.draft(savedRoute,draft);if(route===savedRoute)await render();
   } else if (name === 'history-filters') {
@@ -2137,15 +2142,11 @@ document.addEventListener("click", (event) => {
     const guard=()=>{if(scope!==api.scope||generation!==api.generation)throw Error('Сессия изменилась.');};
     if(name==='fert-select-known'){
       const f=document.querySelector('[data-form=fertilizer-actual]');if(f)Object.assign(draft,values(f));
-      for(const c of plan.cards||[]){if(c.current_report?.response!=='DONE')continue;let full=true;for(const x of c.components||[]){const q=(plan.proposed_actual_lines||[]).find(l=>l.card_id===c.card_id&&l.component_id===x.component_id);if(q?.quantity==null||!/[1-9]/.test(String(q.quantity))){full=false;continue;}const key=c.card_id+'_'+x.component_id;draft['selected_'+key]='on';draft['quantity_'+key]=q.quantity;draft['disposition_'+key]='APPLIED';}if(full)draft['completed_'+c.card_id]='on';}
+      for(const c of plan.cards||[]){if(c.current_report?.response!=='DONE')continue;let full=true;for(const x of c.components||[]){const q=(plan.proposed_actual_lines||[]).find(l=>l.card_id===c.card_id&&l.component_id===x.component_id);if((plan.actuals||[]).some(a=>(a.input?.lines||a.lines||[]).some(l=>l.report_id===c.current_report.id&&l.component_id===x.component_id))){full=false;continue;}if(q?.quantity==null||!/[1-9]/.test(String(q.quantity))){full=false;continue;}const key=c.card_id+'_'+x.component_id;draft['selected_'+key]='on';draft['quantity_'+key]=q.quantity;draft['disposition_'+key]='APPLIED';draft['evidence_'+key]='REPORT';}if(full)draft['completed_'+c.card_id]='on';}
       delete draft.actual_preview;delete draft.actual_input;await api.draft(origin,draft);if(route===origin)await render();return;
     }
-    if(['fert-add','fert-remove','fert-all','fert-edit-preview'].includes(name)){
-      if(!draft)throw Error('Черновик не открыт.');const f=document.querySelector('[data-form=fertilizer-plan]');if(f)Object.assign(draft,values(f));
-      if(name==='fert-add'){const id=crypto.randomUUID();draft.components.push(id);draft['location_'+id]=draft['location_'+draft.components[0]]||'';}
-      if(name==='fert-remove'&&draft.components.length>1)draft.components=draft.components.filter(x=>x!==arg);
-      if(name==='fert-all')for(const p of current.refs.work_areas.filter(p=>p.parent_id===draft.greenhouse))draft['part_'+p.id]='on';
-      if(name!=='fert-edit-preview')for(const key of Object.keys(draft))if(key.startsWith('reviewed_'))draft[key]='';draft.review_mode=false;delete draft.plan_preview;await api.draft(origin,draft);if(route===origin)await render();return;
+    if(['fert-add','fert-remove','fert-all','fert-edit-preview','fert-application-add','fert-application-remove','fert-application-up','fert-customize','fert-common'].includes(name)){
+      if(!draft)throw Error('Черновик не открыт.');const f=document.querySelector('[data-form=fertilizer-plan]');if(f)Object.assign(draft,values(f));fertilizerDraftAction(draft,name,arg,current.refs);await api.draft(origin,draft);guard();if(route===origin)await render();return;
     }
     if(name==='fert-save'){
       if(!draft?.plan_preview||!draft.plan_input)throw Error('Сначала рассчитайте текущие поля.');const body=plan?{expected_version:draft.expected_version,input:draft.plan_input}:draft.plan_input;
@@ -2156,8 +2157,7 @@ document.addEventListener("click", (event) => {
       const key='fert-dispatch:'+plan.id+':'+plan.version;let command=await api.readDraft(key);guard();if(!command){command={client_approval_id:crypto.randomUUID(),captured_at:new Date().toISOString(),expected_version:plan.version,revision:plan.revision,preview_digest:plan.preview_digest,confirmed:true};await api.draft(key,command);}guard();await api.mutate(entityPath('/fertilizer/plans/'+plan.id+'/dispatch'),command,command.client_approval_id);guard();if(route===origin)await render();return;
     }
     if(name==='fert-copy'){
-      const restriction=fertilizerEditRestriction(plan.input);if(restriction)throw Error(restriction);
-      const next=fertilizerDraft(current.refs,{id:crypto.randomUUID(),captured_at:new Date().toISOString(),input:plan.input});next.copied_from_plan_id=plan.id;next.copied_from_revision=plan.revision;next.copy_reason='';next.date=localDay();next.intended_send_at=localDay()+'T08:00';for(const k of Object.keys(next))if(k.startsWith('reviewed_'))next[k]='';next.part_cards={};next.component_cards={};const key='fertilizer-new/'+crypto.randomUUID();await api.draft(key,next);guard();go(key);return;
+      const next=fertilizerCopyDraft(current.refs,plan,{id:crypto.randomUUID(),captured_at:new Date().toISOString()});const key='fertilizer-new/'+crypto.randomUUID();await api.draft(key,next);guard();go(key);return;
     }
     if(name==='fert-confirm-actual'){
       if(!draft?.actual_preview?.can_confirm||!draft.actual_input)throw Error('Поля изменились или не готовы. Повторите проверку эффекта.');const body={input:draft.actual_input,actual_preview_digest:draft.actual_preview.actual_preview_digest,confirmed:true};await api.mutate(entityPath('/fertilizer/plans/'+plan.id+'/actual'),body,draft.id);guard();await clearDraft(origin);await finish('fertilizer-plan/'+plan.id,'Фактическое внесение подтверждено сервером.');

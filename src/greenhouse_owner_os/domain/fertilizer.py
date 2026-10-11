@@ -4,13 +4,21 @@ from datetime import date,datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
-from pydantic import Field,field_validator,model_validator
+from pydantic import Field,field_validator,model_validator,model_serializer
 from .commands import StrictModel
 
 def decimal_string(v,zero=False):
     if not isinstance(v,str) or not re.fullmatch(r'\d{1,18}(?:[.,]\d{1,12})?',v) or not (Decimal(0)<=Decimal(v.replace(',','.'))<Decimal('1e18')) or (not zero and Decimal(v.replace(',','.'))==0):
         raise ValueError('Exact supported decimal string required')
     return v # Original representation is evidence; computation is separate.
+class CompatibleModel(StrictModel):
+    """Omit only newly optional absent fields; old immutable payloads retain shape."""
+    @model_serializer(mode='wrap')
+    def serialize(self, handler):
+        result=handler(self)
+        for key in ('application_id','application_order','mixing_intent','physical_execution_id','quantity_mode','remainder_decision','execution_kind','late_evidence'):
+            if result.get(key) is None:result.pop(key,None)
+        return result
 class FormSource(StrictModel):
     form_id:UUID
     captured_at:datetime
@@ -58,7 +66,10 @@ class ComponentInput(StrictModel):
     def override(self):
         if self.quantity_override is not None and not (self.override_reason or '').strip():raise ValueError('Override reason required')
         return self
-class CardInput(StrictModel):
+class CardInput(CompatibleModel):
+    application_id:UUID|None=None
+    application_order:int|None=Field(default=None,ge=1,le=50)
+    mixing_intent:Literal['SINGLE','TOGETHER','SEPARATE','UNRESOLVED']|None=None
     card_id:UUID
     work_area_id:UUID
     area_reference_id:UUID|None=None
@@ -86,6 +97,15 @@ class PlanInput(StrictModel):
     @model_validator(mode='after')
     def valid(self):
         if self.intended_send_at and self.intended_send_at.tzinfo is None:raise ValueError('Aware intended time required')
+        application_orders={}
+        for c in self.cards:
+            if c.application_id is None and (c.application_order is not None or c.mixing_intent is not None):raise ValueError('Application identity required for ordered intent')
+            if c.application_id is not None:
+                if c.application_order is None:raise ValueError('Explicit application order required')
+                if c.application_id in application_orders and application_orders[c.application_id]!=c.application_order:raise ValueError('One order per application required')
+                application_orders[c.application_id]=c.application_order
+        if len(set(application_orders.values()))!=len(application_orders):raise ValueError('Distinct application order required')
+        if len({(c.application_id,c.work_area_id) for c in self.cards if c.application_id is not None})!=sum(c.application_id is not None for c in self.cards):raise ValueError('One card per application and part required')
         if len({c.card_id for c in self.cards})!=len(self.cards) or sum(len(c.components) for c in self.cards)>100:raise ValueError('Distinct cards and at most100 component rows required')
         if (self.copied_from_plan_id is None)!=(self.copied_from_revision is None):raise ValueError('Exact copy lineage required')
         if self.copied_from_plan_id and not (self.copy_reason or '').strip():raise ValueError('New independently reviewed copy reason required')
@@ -111,7 +131,10 @@ class ReportQuantity(StrictModel):
     @field_validator('quantity')
     @classmethod
     def qty(cls,v):return None if v is None else decimal_string(v,True)
-class FertilizerResponseInput(StrictModel):
+class FertilizerResponseInput(CompatibleModel):
+    physical_execution_id:UUID|None=None
+    late_evidence:bool|None=None
+    quantity_mode:Literal['INCREMENTAL','CUMULATIVE','UNSPECIFIED']|None=None
     client_response_id:UUID
     card_id:UUID
     expected_revision:int=Field(gt=0)
@@ -128,10 +151,12 @@ class FertilizerResponseInput(StrictModel):
         if len({q.component_id for q in self.quantities})!=len(self.quantities):raise ValueError('Distinct quantities required')
         if self.response=='DONE' and self.quantities:raise ValueError('DONE proposes plan; use PARTIAL for differences')
         return self
-class ActualLine(StrictModel):
+class ActualLine(CompatibleModel):
+    physical_execution_id:UUID|None=None
+    remainder_decision:Literal['KEEP_OPEN','CLOSE']|None=None
     card_id:UUID
     component_id:UUID
-    report_id:UUID
+    report_id:UUID|None=None
     quantity:str
     disposition:Literal['APPLIED','NOT_APPLIED']
     reason:str|None=Field(default=None,max_length=2000)
@@ -143,7 +168,8 @@ class ActualLine(StrictModel):
         if (Decimal(self.quantity.replace(',','.'))>0)!=(self.disposition=='APPLIED'):raise ValueError('APPLIED is positive; NOT_APPLIED is exact zero')
         if self.disposition=='NOT_APPLIED' and not (self.reason or '').strip():raise ValueError('Explicit zero requires owner reason')
         return self
-class ActualInput(StrictModel):
+class ActualInput(CompatibleModel):
+    execution_kind:Literal['FIRST','ADDITIONAL']|None=None
     source:FormSource
     expected_version:int=Field(gt=0)
     revision:int=Field(gt=0)
@@ -238,7 +264,7 @@ class ActualView(StrictModel):
     plan_id:UUID
     revision_id:UUID
     source_id:UUID
-    application_id:UUID
+    application_id:UUID|None
     input:ActualInput
     source_snapshot:ActualConfirm
     preview_digest:str
@@ -266,14 +292,36 @@ class RevisionView(StrictModel):
     input:PlanInput
     created_at:datetime
     created_by:UUID
+class ResolutionInput(StrictModel):
+    source:FormSource
+    expected_version:int=Field(gt=0)
+    revision:int=Field(gt=0)
+    kind:Literal['EVIDENCE_ONLY','CONFLICT','UNRESOLVED','CORRECTION','REOPEN_SCOPE']
+    report_id:UUID|None=None
+    actual_id:UUID|None=None
+    card_id:UUID|None=None
+    component_id:UUID|None=None
+    reason:str=Field(min_length=1,max_length=2000)
+    confirmed:Literal[True]
+    @model_validator(mode='after')
+    def valid(self):
+        if not self.reason.strip():raise ValueError('Reason required')
+        if self.kind=='REOPEN_SCOPE' and (self.card_id is None or self.component_id is None):raise ValueError('Exact scope required')
+        if self.kind!='REOPEN_SCOPE' and self.report_id is None:raise ValueError('Report identity required')
+        if self.kind=='CORRECTION' and self.actual_id is None:raise ValueError('Correction lineage required')
+        return self
 class PlanView(StrictModel):
+    actuals:list[ActualView]=Field(default_factory=list)
+    execution_summary:list[dict]=Field(default_factory=list)
+    resolutions:list[dict]=Field(default_factory=list)
+    unresolved_reports:list[ReportView]=Field(default_factory=list)
     late_evidence_count:int
-    late_evidence_review_supported:Literal[False]
+    late_evidence_review_supported:bool
     id:UUID
     entity_id:UUID
     revision:int
     version:int
-    status:Literal['DRAFT','APPROVED','PARTIALLY_APPLIED','APPLIED','ACTUAL_REVERSED','ACTUAL_CORRECTED']
+    status:Literal['DRAFT','APPROVED','PARTIALLY_APPLIED','APPLIED','ACTUAL_REVERSED','ACTUAL_CORRECTED','REVIEWED_NOT_APPLIED','CLOSED','CORRECTION_PENDING']
     input:PlanInput
     source_snapshot:FormSource
     preview_digest:str
@@ -288,7 +336,7 @@ class PlanView(StrictModel):
     revisions:list[RevisionView]
     proposed_actual_lines:list[ProposedActualLine]
     remainder:list[ProposedActualLine]
-    subsequent_scope_supported:Literal[False]
+    subsequent_scope_supported:bool
 class ActualPreview(StrictModel):
     input:ActualInput
     actual_preview_digest:str

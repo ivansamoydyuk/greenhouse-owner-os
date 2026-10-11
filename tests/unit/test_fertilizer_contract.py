@@ -61,3 +61,29 @@ def test_test_capability_labels_never_claim_external_delivery():
  text=Path('src/greenhouse_owner_os/preview.py').read_text()
  assert "'worker_tasks':'R1_AND_R2_INTERNAL_TEST'" in text and "'fertilizer_planning':'CONNECTED_TEST_BOUNDED_ACTUAL_SCOPE'" in text
  assert "'real_dispatch':False, 'external_integrations':False" in text
+
+def test_legacy_optional_completion_fields_do_not_rewrite_original_payload():
+ from greenhouse_owner_os.domain.fertilizer import ActualInput
+ b=dict(client_response_id=uuid4(),card_id=uuid4(),expected_revision=1,dispatch_id=uuid4(),response='DONE',captured_at=datetime.now(timezone.utc),button_label='Готово',original_language='ru')
+ raw=FertilizerResponseInput(**b).model_dump(mode='json')
+ assert 'physical_execution_id' not in raw and 'quantity_mode' not in raw and 'late_evidence' not in raw
+ actual=ActualInput(source=dict(form_id=uuid4(),captured_at=datetime.now(timezone.utc)),expected_version=3,revision=1,event_date='2026-10-11',lines=[dict(card_id=b['card_id'],component_id=uuid4(),report_id=b['client_response_id'],quantity='1',disposition='APPLIED')])
+ serialized=actual.model_dump(mode='json')
+ assert 'execution_kind' not in serialized and 'physical_execution_id' not in serialized['lines'][0] and 'remainder_decision' not in serialized['lines'][0]
+
+@pytest.mark.parametrize('defect',['duplicate_part','duplicate_order','inconsistent_order','order_without_identity'])
+def test_ordered_application_identity_is_explicit_and_consistent(defect):
+ from greenhouse_owner_os.domain.fertilizer import PlanInput
+ from copy import deepcopy
+ app=uuid4();parts=[uuid4(),uuid4()]
+ cards=[dict(card_id=uuid4(),work_area_id=p,application_id=app,application_order=1,mixing_intent='SINGLE',mix_label='Внесение 1',components=[dict(component_id=uuid4(),product_id=uuid4(),unit='kg',dose_per_da='1')]) for p in parts]
+ if defect=='duplicate_part':cards[1]['work_area_id']=parts[0]
+ if defect=='duplicate_order':cards[1]['application_id']=uuid4()
+ if defect=='inconsistent_order':cards[1]['application_order']=2
+ if defect=='order_without_identity':cards[1].pop('application_id')
+ with pytest.raises(ValidationError):PlanInput(source=dict(form_id=uuid4(),captured_at=datetime.now(timezone.utc)),greenhouse_id=uuid4(),event_date='2026-10-11',cards=cards)
+
+def test_zero_and_remainder_decision_are_independent():
+ ln=ActualLine(card_id=uuid4(),component_id=uuid4(),physical_execution_id=uuid4(),quantity='0',disposition='NOT_APPLIED',reason='В этот раз не вносили',remainder_decision='KEEP_OPEN')
+ assert ln.report_id is None and ln.quantity=='0' and ln.remainder_decision=='KEEP_OPEN'
+ assert ln.model_copy(update={'remainder_decision':'CLOSE'}).quantity=='0'

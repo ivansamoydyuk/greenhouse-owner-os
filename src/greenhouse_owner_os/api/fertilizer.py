@@ -2,7 +2,7 @@ from datetime import date,datetime,timedelta
 from zoneinfo import ZoneInfo
 from uuid import UUID
 from fastapi import Depends,Header,HTTPException,Response
-from greenhouse_owner_os.domain.fertilizer import PlanInput,RevisionInput,ReferenceInput,DispatchInput,FertilizerResponseInput,ActualInput,ActualConfirm,PlanPreview,PlanView,DispatchView,ReportView,ActualView,ActualPreview,WorkerPlanView,WorkerCalendarView,ReferenceView
+from greenhouse_owner_os.domain.fertilizer import PlanInput,RevisionInput,ReferenceInput,DispatchInput,FertilizerResponseInput,ActualInput,ActualConfirm,PlanPreview,PlanView,DispatchView,ReportView,ActualView,ActualPreview,WorkerPlanView,WorkerCalendarView,ReferenceView,ResolutionInput
 from greenhouse_owner_os.services.fertilizer import FertilizerService
 
 def mount_fertilizer(app,finance,owner_provider,worker_provider=None):
@@ -29,6 +29,8 @@ def mount_fertilizer(app,finance,owner_provider,worker_provider=None):
     def actual_preview(entity_id:UUID,plan_id:UUID,b:ActualInput,a:UUID=Depends(owner_provider)):return svc.actual_preview(entity_id,a,plan_id,b)
     @app.post(root+'/plans/{plan_id}/actual',response_model=ActualView)
     def actual(entity_id:UUID,plan_id:UUID,b:ActualConfirm,key:str=Header(alias='Idempotency-Key'),a:UUID=Depends(owner_provider)):return svc.actual(entity_id,a,key,plan_id,b)
+    @app.post(root+'/plans/{plan_id}/resolutions')
+    def resolution(entity_id:UUID,plan_id:UUID,b:ResolutionInput,key:str=Header(alias='Idempotency-Key'),a:UUID=Depends(owner_provider)):return svc.resolve(entity_id,a,key,plan_id,b)
     def photo_response(data):return Response(data[0],media_type=data[1],headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'})
     @app.get(root+'/plans/{plan_id}/revisions/{revision}/cards/{card_id}/components/{component_id}/photo')
     def photo(entity_id:UUID,plan_id:UUID,revision:int,card_id:UUID,component_id:UUID,a:UUID=Depends(owner_provider)):return photo_response(svc.photo(entity_id,a,plan_id,revision,card_id,component_id))

@@ -198,9 +198,10 @@ def test_late_problem_then_done_retains_owner_attention_without_rewriting_actual
  respond(f,p,p['cards'][0],'PROBLEM',comment='TEST late exception after accepted actual')
  respond(f,p,p['cards'][0],'DONE',comment='TEST later done does not owner-review exception')
  after=current(f,p)
- assert after['late_evidence_count']==1 and not after['late_evidence_review_supported']
- assert 'LATE_EVIDENCE_REQUIRES_REVIEW_RESOLUTION_UNSUPPORTED' in after['issues']
+ assert after['late_evidence_count']==2 and after['late_evidence_review_supported']
+ assert {r['response'] for r in after['unresolved_reports']}=={'PROBLEM','DONE'}
+ assert 'LATE_EVIDENCE_REQUIRES_REVIEW' in after['issues']
  assert after['actual']==before['actual'] and after['status']=='APPLIED' and effects(f)==physical
  calendar=f['svc'].calendar(f['e'],f['a'],date(2026,10,10),date(2026,10,10))
- assert calendar['attention']==1 and calendar['items'][0]['needs_owner_review'] and calendar['items'][0]['late_evidence_count']==1
- assert not calendar['items'][0]['late_evidence_review_supported']
+ assert calendar['attention']==1 and calendar['items'][0]['needs_owner_review'] and calendar['items'][0]['late_evidence_count']==2
+ assert calendar['items'][0]['late_evidence_review_supported']
