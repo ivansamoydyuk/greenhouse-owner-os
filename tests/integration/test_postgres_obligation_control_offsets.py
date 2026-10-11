@@ -33,7 +33,8 @@ def test_authenticated_api_denies_control_offset_and_retry_is_atomic(preview, co
         assert 'subledger control' in str(result)
         assert fingerprint(preview) == before
     result = c.get('/v1/finance/reconciliation', params={'entity_id': entity})
-    assert result.status_code == 200 and result.json() == {'ok': True, 'findings': []}
+    assert result.status_code == 200
+    assert result.json()['ok'] is True and result.json()['findings'] == []
 
 
 @pytest.mark.parametrize('code', CONTROLS)
@@ -66,4 +67,6 @@ def test_database_denies_draft_offset_switch_without_touching_original(preview, 
     assert fingerprint(preview) == before
     posted = send(c, f'/obligations/{draft["id"]}/post?expected_version=1', expected=200)
     assert posted['status'] == 'posted'
-    assert c.get('/v1/finance/reconciliation', params={'entity_id': entity}).json() == {'ok': True, 'findings': []}
+    result = c.get('/v1/finance/reconciliation', params={'entity_id': entity})
+    assert result.status_code == 200
+    assert result.json()['ok'] is True and result.json()['findings'] == []

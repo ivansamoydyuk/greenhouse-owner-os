@@ -271,7 +271,9 @@ def test_existing_nonexpense_invoice_link_does_not_guess_cost_and_reads_write_no
     assert before==fingerprint()
     assert detail['linked_documents'][0]['remaining_amount']=='900.00' and len(ps)==1
     assert analytics['economics']['operating_cost']=='0.00' and Decimal(view(i)['stock'][0]['uncosted_quantity'])==100
-    assert i['c'].get('/v1/finance/reconciliation',params={'entity_id':i['e']}).json()=={'ok':True,'findings':[]}
+    reconciliation=i['c'].get('/v1/finance/reconciliation',params={'entity_id':i['e']})
+    assert reconciliation.status_code==200
+    assert reconciliation.json()['ok'] is True and reconciliation.json()['findings']==[]
 
 
 def test_context_scope_direction_and_supplier_history_filters(inv):
