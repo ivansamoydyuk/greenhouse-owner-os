@@ -1,5 +1,6 @@
 import {resetFixtureRateLimits,pilotMode,ownerLogin,redactPilot} from './helpers/pilot-auth.mjs';
 import {freshRoute} from './helpers/fresh-route.mjs';
+import {readOwnerDrafts} from './helpers/owner-draft-observer.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -36,8 +37,9 @@ try{for(const [engine,type] of [['chromium',chromium],['webkit',webkit]]){
  await click('Создать новый товар');await page.locator('#sheet-root [name=name]').fill('TEST B '+engine+' материал');await page.locator('#sheet-root [name=unit]').selectOption('kg');await click('Создать товар');await page.locator('#sheet-root').filter({hasText:'Новый товар'}).waitFor({state:'hidden'});await readyAction('Проверить приход');
  await page.reload();await ready('quick/receipt');assert.equal(await page.locator('[name=quantity]').inputValue(),'100');await page.getByText('Копия на телефоне: TEST-B-before-product-'+engine+'.png',{exact:true}).waitFor();
  // Inspect the durable original selected through the UI before replacing it.
- const retainedOriginal=await page.evaluate(async()=>{const {BrowserStore}=await import('/r3/connected-adapter.js');const rows=await new BrowserStore().all();return rows.filter(r=>r.type==='draft'&&r.id==='quick/receipt').map(r=>r.value.file);});
+ const observedDraft=await readOwnerDrafts(page,base,config,'quick/receipt',result.sha),retainedOriginal=observedDraft.drafts.map(record=>record.value.file);
  assert.equal(retainedOriginal.length,1);assert.deepEqual(Buffer.from(retainedOriginal[0].file_base64,'base64'),firstBytes);
+ for(const original of [retainedOriginal[0].filename,firstBytes.toString('base64')])assert.equal(observedDraft.raw.includes(original),!pilotMode,'Original plaintext visibility must match TEST storage mode');
  // Hold a real chosen File read, then submit through the owner button. The
  // command must await those original bytes, never submit an absent attachment.
  await page.evaluate(()=>{const original=File.prototype.arrayBuffer;window.__releaseReceiptFile=null;File.prototype.arrayBuffer=async function(){if(this.name.includes('TEST-B-arrival-'))await new Promise(resolve=>window.__releaseReceiptFile=resolve);return original.call(this);};window.__restoreFileRead=()=>File.prototype.arrayBuffer=original;});
