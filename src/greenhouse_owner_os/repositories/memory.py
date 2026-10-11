@@ -68,6 +68,9 @@ class MemoryFinanceRepository(MemoryHistoryRepositoryMixin):
         if any(code == 'OPENING_PAYABLE_OFFSET' and aid == account_id
                for (_, _, code), aid in self.store.system_accounts.items()):
             raise ValidationError('opening offset reserved for explicit owner approval')
+        if any(code in ('AP_CONTROL', 'AR_CONTROL', 'SUPPLIER_ADVANCE', 'CUSTOMER_ADVANCE') and aid == account_id
+               for (_, _, code), aid in self.store.system_accounts.items()):
+            raise ValidationError('subledger control account cannot be an ordinary obligation offset')
 
     def __init__(self, store: MemoryStore) -> None:
         self.store = store

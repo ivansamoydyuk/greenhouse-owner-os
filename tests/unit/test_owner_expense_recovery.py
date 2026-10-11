@@ -68,6 +68,6 @@ def test_recovery_ci_gate_keeps_prior_gates_and_requires_own_native_and_pg_proof
     assert all(command in browser for command in ('python scripts/run_owner_e2e.py','python scripts/run_source_queue_e2e.py','python scripts/run_personal_tasks_e2e.py','python scripts/run_expense_recovery_e2e.py'))
     checks='\n'.join(step.get('run','') for step in workflow['jobs']['verify']['steps'])
     assert "assert sum('test_postgres_owner_expense_recovery' in case.get('classname', '') for case in cases) >= 54" in checks
-    assert "assert revisions == ['20261010_0029']" in checks
+    assert "assert revisions == ['20261011_0030']" in checks
     assert "assert not any(case.find('skipped') is not None for case in cases), 'PostgreSQL tests skipped'" in checks
     assert "assert not any(case.find('skipped') is not None for case in cases), 'Finance tests skipped'" in checks

@@ -250,8 +250,13 @@ def test_invoice_sql_link_and_finance_reversal_serialize_both_orders(inv,first):
 
 
 def test_existing_nonexpense_invoice_link_does_not_guess_cost_and_reads_write_nothing(inv):
-    i=inv;r=post(i,event(i));o=send(i['c'],'/obligations',dict(entity_id=i['e'],counterparty_id=i['cp'],direction='payable',
-        original_amount='900',currency='TRY',event_date='2026-10-06',offset_ledger_account_id=i['ids']['SUPPLIER_ADVANCE']))
+    from greenhouse_owner_os.infrastructure.models import LedgerAccountRow
+    i=inv;r=post(i,event(i));asset=uuid4()
+    # A synthetic unclassified asset is nonexpense without fabricating an advance.
+    with i['preview'][0].begin() as db:
+        db.add(LedgerAccountRow(id=asset,entity_id=UUID(i['e']),code='TEST_ASSET',name='TEST asset',account_class='asset',normal_side='debit',currency='TRY'))
+    o=send(i['c'],'/obligations',dict(entity_id=i['e'],counterparty_id=i['cp'],direction='payable',
+        original_amount='900',currency='TRY',event_date='2026-10-06',offset_ledger_account_id=str(asset)))
     o=send(i['c'],f'/obligations/{o["id"]}/post?expected_version=1',expected=200)
     s,ps=capture(i,r,'existing_payable');confirm(i,revise(i,ps['INVOICE_MATCH'],dict(receipt_id=r['id'],finance_obligation_id=o['id'])))
     sf=i['preview'][0]
@@ -266,6 +271,7 @@ def test_existing_nonexpense_invoice_link_does_not_guess_cost_and_reads_write_no
     assert before==fingerprint()
     assert detail['linked_documents'][0]['remaining_amount']=='900.00' and len(ps)==1
     assert analytics['economics']['operating_cost']=='0.00' and Decimal(view(i)['stock'][0]['uncosted_quantity'])==100
+    assert i['c'].get('/v1/finance/reconciliation',params={'entity_id':i['e']}).json()=={'ok':True,'findings':[]}
 
 
 def test_context_scope_direction_and_supplier_history_filters(inv):
