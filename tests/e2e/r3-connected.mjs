@@ -1,4 +1,5 @@
 import {observeBrowserDiagnostics} from './helpers/browser-diagnostics.mjs';
+import {boundedHandshake} from './helpers/bounded-handshake.mjs';
 import {PilotCipher} from '../../src/greenhouse_owner_os/web/pilot-storage.js';
 const pilotLocalKeys=new Map();
 import {resetFixtureRateLimits,pilotMode,ownerLogin,ownerDraftScope,redactPilot} from './helpers/pilot-auth.mjs';
@@ -67,6 +68,7 @@ const read = async (ctx, url) => {
 };
 let activePage;
 const diagnostics=[];
+const recoveryProgress=[];
 async function snap(page, name) {
   await page.locator("#toast.show").waitFor({ state: "hidden" });
   await page.screenshot({
@@ -854,45 +856,65 @@ try {
     // A stalled read after reload must reach a usable, fail-closed recovery
     // boundary. This is separate from (and retains) the lost-post assertion above.
     const paymentHash = page.url().split('#')[1];
+    const handshake = boundedHandshake({checkpoint:async entry => {
+      recoveryProgress.push({engine,...entry,atMs:Date.now()});
+      if(recoveryProgress.length>80)recoveryProgress.shift();
+      await fs.writeFile(path.join(out,'bootstrap-recovery-progress.json'),JSON.stringify({sha:result.sha,mode:result.mode,entries:recoveryProgress},null,2));
+    }});
     const rawRecords = () => page.evaluate(async () => {
       const {BrowserStore} = await import('/r3/connected-adapter.js');
       return (await new BrowserStore().all()).sort((a,b) => a.key.localeCompare(b.key));
     });
-    const beforeBootstrapRecovery = await rawRecords();
+    const beforeBootstrapRecovery = await handshake('records-before',rawRecords);
     const bootstrapPosts = [];
     const observeBootstrapPost = request => { if(request.method()==='POST')bootstrapPosts.push(new URL(request.url()).pathname); };
     page.on('request', observeBootstrapPost);
-    let releaseWarmup, enterWarmup;
+    let releaseWarmup, enterWarmup, handshakeError;
     const warmupHeld = new Promise(resolve => releaseWarmup = resolve);
     const warmupEntered = new Promise(resolve => enterWarmup = resolve);
     const warmupPath = root + '/owner/captures';
     const warmupMatcher = url => url.pathname === warmupPath;
-    await page.route(warmupMatcher, async intercepted => {
-      enterWarmup();
-      await warmupHeld;
-      await intercepted.continue();
-    });
-    await page.reload();
-    await warmupEntered;
-    await page.getByRole('button', {name:'Повторить загрузку страницы', exact:true}).waitFor();
-    assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');
-    assert.equal(await page.locator('form,input,textarea,select,.dock').count(),0);
-    assert.equal(page.url().split('#')[1],paymentHash);
-    await snap(page, engine + '-390-bootstrap-timeout-recovery');
-    const lateResponse = page.waitForResponse(response => new URL(response.url()).pathname === warmupPath);
-    releaseWarmup();
-    await (await lateResponse).finished();
-    await page.unroute(warmupMatcher);
-    assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');
-    assert.deepEqual(await rawRecords(),beforeBootstrapRecovery);
-    await click(page,'Повторить загрузку страницы');
-    await page.getByText('Сервер подтвердил платёж. Повтор не создаёт вторую проводку.',{exact:true}).waitFor();
-    assert.equal(page.url().split('#')[1],paymentHash);
-    assert.deepEqual(await rawRecords(),beforeBootstrapRecovery);
-    assert.deepEqual(bootstrapPosts,[]);
-    page.off('request',observeBootstrapPost);
-    result.bootstrapRecovery.push({engine,hash:paymentHash,unchangedRecordsSha256:createHash('sha256').update(JSON.stringify(beforeBootstrapRecovery)).digest('hex'),businessPosts:0,pass:true});
-    result.journeys.push({engine,name:'bounded cold-bootstrap read timeout manual reload preserves original pending commands',pass:true});
+    try {
+      await handshake('install-held-route',()=>page.route(warmupMatcher, async intercepted => {
+        enterWarmup();
+        await warmupHeld;
+        await intercepted.continue();
+      }));
+      await handshake('reload-held',()=>page.reload());
+      await handshake('warmup-entered',()=>warmupEntered);
+      await handshake('recovery-visible',()=>page.getByRole('button', {name:'Повторить загрузку страницы', exact:true}).waitFor());
+      await handshake('recovery-evidence',async()=>{
+        assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');
+        assert.equal(await page.locator('form,input,textarea,select,.dock').count(),0);
+        assert.equal(page.url().split('#')[1],paymentHash);
+        await snap(page, engine + '-390-bootstrap-timeout-recovery');
+      });
+      await handshake('late-response-finished',async()=>{
+        const lateResponse = page.waitForResponse(response => new URL(response.url()).pathname === warmupPath);
+        releaseWarmup();
+        await (await lateResponse).finished();
+      });
+      await handshake('remove-held-route',()=>page.unroute(warmupMatcher));
+      await handshake('late-records',async()=>{
+        assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');
+        assert.deepEqual(await rawRecords(),beforeBootstrapRecovery);
+      });
+      await handshake('manual-reload',()=>click(page,'Повторить загрузку страницы'));
+      await handshake('posted-confirmation',()=>page.getByText('Сервер подтвердил платёж. Повтор не создаёт вторую проводку.',{exact:true}).waitFor());
+      assert.equal(page.url().split('#')[1],paymentHash);
+      assert.deepEqual(await handshake('records-after',rawRecords),beforeBootstrapRecovery);
+      assert.deepEqual(bootstrapPosts,[]);
+      result.bootstrapRecovery.push({engine,hash:paymentHash,unchangedRecordsSha256:createHash('sha256').update(JSON.stringify(beforeBootstrapRecovery)).digest('hex'),businessPosts:0,pass:true});
+      result.journeys.push({engine,name:'bounded cold-bootstrap read timeout manual reload preserves original pending commands',pass:true});
+    } catch(error) {
+      handshakeError=error;
+      throw error;
+    } finally {
+      releaseWarmup();
+      page.off('request',observeBootstrapPost);
+      try { await handshake('cleanup-route',()=>page.unroute(warmupMatcher)); }
+      catch(error) { if(!handshakeError)throw error; }
+    }
     result.records.payments.push(paymentId);
     await route(page, "sources");
     await page
