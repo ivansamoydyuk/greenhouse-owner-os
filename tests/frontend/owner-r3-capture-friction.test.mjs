@@ -100,3 +100,27 @@ test('receipt review renders a real disabled attribute before duplicate review',
  const tag=render(r,realButton).match(/<button[^>]*data-action="post-receipt"[^>]*>/)[0];assert.match(tag,/\sdisabled(?:\s|>)/);assert.doesNotMatch(tag,/\strue(?:\s|>)/);
  const ordinary=render({...r,issues:['cost','review']},realButton).match(/<button[^>]*data-action="post-receipt"[^>]*>/)[0];assert.doesNotMatch(ordinary,/\sdisabled(?:\s|>)/);
 });
+
+test('actual validation action exposes text before its scheduled focus and fences stale focus targets',async()=>{
+ const ui=fs.readFileSync('prototype/owner-r3/connected.js','utf8');
+ const body=ui.slice(ui.indexOf('function showError('),ui.indexOf('function assertSubmissionScope('));
+ for(const boundary of ['current','route','epoch','session','inert','detached-form','detached-field']){
+  const frames=[],target={dataset:{},textContent:''},details={tagName:'DETAILS',open:false};let focused=false,scrolled=false;
+  const node={isConnected:true,inert:false,dataset:{form:'fertilizer-actual'},querySelector:selector=>selector==='.form-error'?target:field};details.parentElement=node;
+  const field={isConnected:true,parentElement:details,value:'bad',focus(){focused=true},scrollIntoView(){scrolled=true}};
+  const create=new Function('node','requestAnimationFrame','document',`
+   let route='fertilizer-actual/plan',epoch=1,busy=false,activeActionRoute=null;
+   const api={generation:1},fertilizerWrites={flush:async()=>{}};
+   function syncReceiptConfirmation(){}
+   ${body}
+   return {run:()=>action(async()=>{throw Object.assign(Error('Укажите точное неотрицательное количество.'),{field:'quantity_card_component'});},node),route:()=>route='home',epoch:()=>epoch++,session:()=>api.generation++};
+  `);
+  const action=create(node,callback=>frames.push(callback),{querySelectorAll:()=>[]});await action.run();
+  assert.match(target.textContent,/точное/);assert.equal(target.dataset.validationField,'quantity_card_component');assert.equal(node.inert,false);assert.equal(focused,false,'visible error does not mean the animation-frame focus has run');assert.equal(frames.length,1);
+  if(['route','epoch','session'].includes(boundary))action[boundary]();
+  if(boundary==='inert')node.inert=true;
+  if(boundary==='detached-form')node.isConnected=false;
+  if(boundary==='detached-field')field.isConnected=false;
+  frames[0]();assert.equal(focused,boundary==='current',boundary);assert.equal(scrolled,boundary==='current',boundary);assert.equal(details.open,boundary==='current',boundary);assert.equal(field.value,'bad');
+ }
+});
