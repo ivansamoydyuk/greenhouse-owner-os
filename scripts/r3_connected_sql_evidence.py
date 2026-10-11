@@ -49,11 +49,15 @@ JOURNEYS = {
     'E all tasks DONE reload completed restore',
     'two-tab old DONE replay preserves later restore and reads current state',
     'D inline product receipt exact physical movement UNKNOWN opening',
-    'AUD011 stored adversarial and ordinary legacy modal title',
     'C field original file caption explicit depot link mismatch',
     'late A detail cannot target visible B action',
     'F cold and warm secondary outage keeps Home authenticated and explicit retry recovers',
     'offline persisted original reload session expiry recovery',
+}
+
+AUD011_JOURNEYS = {
+    'CONNECTED_TEST': 'AUD011 stored adversarial and ordinary legacy modal title',
+    'PRIVATE_DAILY_TEST': 'AUD011 private legacy boundary and R3 literal product CSP',
 }
 
 
@@ -70,9 +74,10 @@ def digest(value):
     return hashlib.sha256(value.encode() if isinstance(value, str) else bytes(value)).hexdigest()
 
 
-def validate_browser(result, expected_sha):
+def validate_browser(result, expected_sha, expected_mode):
     require(re.fullmatch('[0-9a-f]{40}', expected_sha or ''), 'Exact feature SHA required')
-    require(result.get('status') == 'PASS' and result.get('mode') == 'CONNECTED_TEST'
+    require(expected_mode in AUD011_JOURNEYS, 'Known expected browser mode required')
+    require(result.get('status') == 'PASS' and result.get('mode') == expected_mode
             and result.get('sha') == expected_sha, 'Complete same-SHA connected browser PASS required')
     require(not result.get('errors') and not result.get('applicationFailures'), 'Browser failures remain')
     journeys = result['journeys']
@@ -80,8 +85,11 @@ def validate_browser(result, expected_sha):
     require(all(j.get('pass') is True for j in journeys), 'Every journey must pass')
     require(len({(j['engine'], j['name']) for j in journeys}) == len(journeys), 'Duplicate journey')
     for engine, direction in zip(ENGINES, ('payable', 'receivable')):
-        expected = JOURNEYS | {f'B {direction} partial and full allocated settlement'}
-        require(expected <= {j['name'] for j in journeys if j['engine'] == engine}, f'Incomplete {engine} journeys')
+        names = {j['name'] for j in journeys if j['engine'] == engine}
+        expected = JOURNEYS | {AUD011_JOURNEYS[expected_mode], f'B {direction} partial and full allocated settlement'}
+        require(expected <= names, f'Incomplete {engine} journeys')
+        other_audits = set(AUD011_JOURNEYS.values()) - {AUD011_JOURNEYS[expected_mode]}
+        require(not names & other_audits, f'Wrong-mode {engine} AUD011 journey')
     records = result['records']
     for key, count, id_key in (
         ('expenses', 2, 'proposal_id'), ('payments', 4, None), ('receipts', 4, 'id'),
@@ -458,7 +466,8 @@ def main():
     try:
         result = json.loads(Path(sys.argv[1]).read_text())
         proof['feature_sha'] = result.get('sha')
-        validate_browser(result, os.environ['OWNER_PREVIEW_FEATURE_SHA'])
+        expected_mode = 'PRIVATE_DAILY_TEST' if os.environ.get('R3_DAILY_PILOT') == '1' else 'CONNECTED_TEST'
+        validate_browser(result, os.environ['OWNER_PREVIEW_FEATURE_SHA'], expected_mode)
         require(os.environ.get('R3_CONNECTED_PILOT') == '1', 'Explicit connected pilot mode required')
         url = make_url(os.environ['TEST_DATABASE_URL'])
         require_disposable_database(url, os.environ.get('APP_ENV'))
