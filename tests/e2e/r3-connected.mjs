@@ -56,6 +56,7 @@ const result = {
   screenshots: [],
   homeMetrics: [],
   draftRecovery: [],
+  bootstrapRecovery: [],
   captionChecks: [],
   applicationFailures: [],
 };
@@ -850,6 +851,48 @@ try {
         { exact: true },
       )
       .waitFor();
+    // A stalled read after reload must reach a usable, fail-closed recovery
+    // boundary. This is separate from (and retains) the lost-post assertion above.
+    const paymentHash = page.url().split('#')[1];
+    const rawRecords = () => page.evaluate(async () => {
+      const {BrowserStore} = await import('/r3/connected-adapter.js');
+      return (await new BrowserStore().all()).sort((a,b) => a.key.localeCompare(b.key));
+    });
+    const beforeBootstrapRecovery = await rawRecords();
+    const bootstrapPosts = [];
+    const observeBootstrapPost = request => { if(request.method()==='POST')bootstrapPosts.push(new URL(request.url()).pathname); };
+    page.on('request', observeBootstrapPost);
+    let releaseWarmup, enterWarmup;
+    const warmupHeld = new Promise(resolve => releaseWarmup = resolve);
+    const warmupEntered = new Promise(resolve => enterWarmup = resolve);
+    const warmupPath = root + '/owner/captures';
+    const warmupMatcher = url => url.pathname === warmupPath;
+    await page.route(warmupMatcher, async intercepted => {
+      enterWarmup();
+      await warmupHeld;
+      await intercepted.continue();
+    });
+    await page.reload();
+    await warmupEntered;
+    await page.getByRole('button', {name:'Повторить загрузку страницы', exact:true}).waitFor();
+    assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');
+    assert.equal(await page.locator('form,input,textarea,select,.dock').count(),0);
+    assert.equal(page.url().split('#')[1],paymentHash);
+    await snap(page, engine + '-390-bootstrap-timeout-recovery');
+    const lateResponse = page.waitForResponse(response => new URL(response.url()).pathname === warmupPath);
+    releaseWarmup();
+    await (await lateResponse).finished();
+    await page.unroute(warmupMatcher);
+    assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');
+    assert.deepEqual(await rawRecords(),beforeBootstrapRecovery);
+    await click(page,'Повторить загрузку страницы');
+    await page.getByText('Сервер подтвердил платёж. Повтор не создаёт вторую проводку.',{exact:true}).waitFor();
+    assert.equal(page.url().split('#')[1],paymentHash);
+    assert.deepEqual(await rawRecords(),beforeBootstrapRecovery);
+    assert.deepEqual(bootstrapPosts,[]);
+    page.off('request',observeBootstrapPost);
+    result.bootstrapRecovery.push({engine,hash:paymentHash,unchangedRecordsSha256:createHash('sha256').update(JSON.stringify(beforeBootstrapRecovery)).digest('hex'),businessPosts:0,pass:true});
+    result.journeys.push({engine,name:'bounded cold-bootstrap read timeout manual reload preserves original pending commands',pass:true});
     result.records.payments.push(paymentId);
     await route(page, "sources");
     await page

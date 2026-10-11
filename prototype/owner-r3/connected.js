@@ -1,4 +1,5 @@
 import {FertilizerDraftWrites} from './fertilizer-draft-writes.js';
+import {ColdBootstrapAttempt} from './cold-bootstrap.js';
 import {fertilizerDraft,fertilizerDraftAction,fertilizerCopyDraft,fertilizerResolutionInput,fertilizerResolutionView,fertilizerEditRestriction,invalidateFertilizerReview,fertilizerPlanInput,fertilizerEditorView,fertilizerPreviewView,fertilizerCalendarView,fertilizerDetailView,fertilizerReferenceView,fertilizerActualDraft,fertilizerActualInput,fertilizerActualView,exactFertilizerNumber} from './fertilizer-connected.js';
 import {historySelection,historyRoute,historyQuery,purchaseHistoryView,purchaseDetailView,stockEventView,invoiceTargetMatches} from "./purchases-connected.js";
 import { financeAnalyticsView, financeDocumentView, financeSelection, financeRoute, financeQuery, financeBackRoute } from "./finance-connected.js";
@@ -55,6 +56,8 @@ let lastHarvestRoute = "harvest";
 let lastFinanceRoute = "money";
 const harvestScroll = new Map();
 let config = null,
+  bootstrapAttempt = null,
+  bootstrapRecovery = null,
   ready = false,
   route = location.hash.slice(1) || "home",
   epoch = 0,
@@ -197,23 +200,45 @@ function go(to) {
   if (location.hash.slice(1) === to) return render();
   location.hash = to;
 }
-async function configureOwnerSession() {
+function showBootstrapRecovery() {
+  shell(Header('Не удалось загрузить', 'Загрузка остановлена') + panel(
+    `<p class="form-error" role="alert">${e(bootstrapRecovery.message)}</p><p>Данные на устройстве не удалены. Повторная загрузка не подтверждает операции.</p>${btn('Повторить загрузку страницы', 'bootstrap-retry', 'primary')}`,
+  ), true);
+}
+function failOwnerBootstrap(error) {
+  bootstrapRecovery = error;
+  api.generation++;
+  epoch++;
+  ready = false;
+  clearTimeout(readTimer);
+  sheetRoot.innerHTML = '';
+  app.dataset.bootstrapStage = 'recovery';
+  app.dataset.bootstrapGeneration = String(api.generation);
+  app.style.visibility = 'visible';
+  showBootstrapRecovery();
+}
+async function configureOwnerSession(attempt = null) {
+  attempt?.check();
   app.dataset.bootstrapStage = 'config-read';
   const next = await api.get('/preview/config');
+  attempt?.check();
   if (next.daily_pilot) {
     app.dataset.bootstrapStage = 'draft-key-read';
     const localKey = await api.get('/pilot/draft-key');
+    attempt?.check();
     if (localKey.participant_id !== next.participant_id || localKey.algorithm !== 'AES-GCM' || !/^[A-Za-z0-9_-]{43}$/.test(localKey.key || ''))
       throw Error('Не подтверждён ключ этой учётной записи. Войдите снова.');
     next.draft_key = localKey.key;
   }
   app.dataset.bootstrapStage = 'configure';
   api.configure(next);
+  attempt?.configured();
   config = next;
   app.dataset.bootstrapStage = 'configured';
   app.dataset.bootstrapGeneration = String(api.generation);
 }
-async function refreshData() {
+async function refreshData(check = () => {}) {
+  check();
   const generation = api.generation;
   const names = {
     home: "/owner/home",
@@ -223,15 +248,17 @@ async function refreshData() {
     queue: "/owner/confirmations",
     sources: "/owner/captures",
   };
-  if(config?.daily_pilot){try{const participants=await api.get('/pilot/participants');if(generation===api.generation){data.participants=participants;delete failures.participants;}}catch(error){if(generation===api.generation)failures.participants=error;}}
+  if(config?.daily_pilot){try{const participants=await api.get('/pilot/participants');check();if(generation===api.generation){data.participants=participants;delete failures.participants;}}catch(error){check();if(generation===api.generation)failures.participants=error;}}
   await Promise.all(
     Object.entries(names).map(async ([key, path]) => {
       try {
         const result = await api.entityGet(path);
+        check();
         if (generation !== api.generation) return;
         data[key] = result;
         delete failures[key];
       } catch (error) {
+        check();
         if (generation !== api.generation) return;
         failures[key] = error;
         data[key] = null;
@@ -1193,7 +1220,9 @@ function more() {
   );
 }
 async function render() {
-  try{await fertilizerWrites.flush(route);}catch(error){showError(error,document.querySelector("[data-form]"));return;}
+  if (bootstrapRecovery) return showBootstrapRecovery();
+  try{await fertilizerWrites.flush(route);}catch(error){if(bootstrapRecovery)return showBootstrapRecovery();showError(error,document.querySelector("[data-form]"));return;}
+  if (bootstrapRecovery) return showBootstrapRecovery();
   const token = ++epoch;
   clearTimeout(readTimer);
   estimateReview=null;
@@ -2195,6 +2224,10 @@ document.addEventListener("click", (event) => {
   // Also suppress defaults for shared navigation/action controls.
   event.preventDefault();
   const command = button.dataset.action;
+  if (bootstrapRecovery) {
+    if (command === 'bootstrap-retry') location.reload();
+    return;
+  }
   const [name, ...rest] = command.split(":"),
     arg = rest.join(":");
   if(name==='logout')return logoutOwner();
@@ -2439,7 +2472,8 @@ document.addEventListener("click", (event) => {
 });
 window.addEventListener("hashchange", async () => {
   const previous=route,next=location.hash.slice(1)||'home';
-  try{await fertilizerWrites.flush(previous);}catch(error){history.replaceState(null,'','#'+previous);showError(error,document.querySelector('[data-form]'));return;}
+  if (bootstrapRecovery) { route = next; showBootstrapRecovery(); return; }
+  try{await fertilizerWrites.flush(previous);}catch(error){if(bootstrapRecovery){route=location.hash.slice(1)||'home';showBootstrapRecovery();return;}history.replaceState(null,'','#'+previous);showError(error,document.querySelector('[data-form]'));return;}
   if((location.hash.slice(1)||'home')!==next)return;
   route=next;render();
 });
@@ -2465,30 +2499,35 @@ window.addEventListener("keydown", (event) => {
   }
 });
 (async () => {
+  const attempt = bootstrapAttempt = new ColdBootstrapAttempt({
+    generation: () => api.generation,
+    failed: failOwnerBootstrap,
+  });
+  api.bootstrapGuard = () => attempt.check();
   try {
     shell(Header("Загружаем", "Проверяем TEST-сессию"), true);
-    await configureOwnerSession();
-    const generation = api.generation;
+    await configureOwnerSession(attempt);
+    attempt.check();
     app.dataset.bootstrapStage = 'refresh-data';
-    await refreshData();
+    await refreshData(() => attempt.check());
+    attempt.check();
     app.dataset.bootstrapStage = 'harvest-navigation-read';
     const navigation=await api.readDraft("harvest-navigation");
+    attempt.check();
     app.dataset.bootstrapStage = 'finance-navigation-read';
     const financeNavigation=await api.readDraft("finance-navigation");
-    if (generation !== api.generation) {
-      app.dataset.bootstrapStage = 'generation-mismatch';
-      app.dataset.bootstrapGeneration = String(api.generation);
-      return;
-    }
+    attempt.check();
     lastHarvestRoute=navigation?.route || "harvest";
     lastFinanceRoute=financeNavigation?.route || "money";
     ready = true;
     app.dataset.bootstrapStage = 'render';
     await render();
+    attempt.check();
     app.dataset.bootstrapStage = 'render-returned';
+    attempt.finish();
+    api.bootstrapGuard = null;
   } catch (error) {
-    app.dataset.bootstrapStage = 'error';
-    shell(errorBox(error));
+    attempt.fail(error);
   }
 })();
 
@@ -2530,6 +2569,7 @@ function participantNotice(message){
  let banner=document.querySelector('#pilot-session-status');if(!banner){banner=document.createElement('section');banner.id='pilot-session-status';banner.setAttribute('role','alert');app.before(banner);}banner.replaceChildren();const text=document.createElement('p');text.textContent=message;const retry=document.createElement('button');retry.type='button';retry.className='btn primary';retry.textContent='Проверить вход ещё раз';retry.onclick=()=>verifyVisibleParticipant();banner.append(text,retry);
 }
 async function verifyVisibleParticipant(){
+ if(bootstrapRecovery||bootstrapAttempt?.state==='pending')return;
  if(!config?.daily_pilot)return;
  app.style.visibility='hidden';ready=false;
  try{const response=await fetch('/pilot/session',{credentials:'same-origin',cache:'no-store'});const session=response.ok?await response.json():null;if(!session||session.role!=='owner'||session.participant_id!==config.participant_id){epoch++;await fertilizerWrites.settle();if(draft)await api.draft(route,structuredClone(draft));api.clearIdentity();fertilizerWrites.records.clear();draft=null;current=null;data={};delete config.draft_key;location.replace('/pilot/');return;}document.querySelector('#pilot-session-status')?.remove();ready=true;app.style.visibility='visible';}catch{participantNotice('Не удалось проверить вход или сохранить черновик. Данные временно скрыты, введённое осталось в открытом окне. Повторите после восстановления связи или памяти.');}

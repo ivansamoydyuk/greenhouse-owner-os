@@ -295,6 +295,10 @@ export class ConnectedAPI {
   }
   clearIdentity(){this.generation++;this.scope=null;this.participantId=null;this.secureParticipant=null;this.store=this.baseStore;this.inflight.clear();}
   async request(path, options = {}) {
+    // Captured only for the cold bootstrap; a late response cannot revive an
+    // expired document even after a later attempt has changed the live guard.
+    const bootstrapGuard = ['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase()) ? this.bootstrapGuard : null;
+    bootstrapGuard?.();
     const requestGeneration=this.generation,requestParticipant=this.participantId;
     const networkError=()=>new ApiError(
       ["GET", "HEAD"].includes((options.method || "GET").toUpperCase())
@@ -303,11 +307,15 @@ export class ConnectedAPI {
       0,
     );
     if(this.dailyPilot&&path.startsWith('/v1/')){
-      let session;
+      let session, sessionResponse;
       try{
-        const sessionResponse=await this.fetcher('/pilot/session',{credentials:'same-origin',cache:'no-store'});
+        sessionResponse=await this.fetcher('/pilot/session',{credentials:'same-origin',cache:'no-store'});
+      }catch{bootstrapGuard?.();throw networkError();}
+      bootstrapGuard?.();
+      try{
         session=sessionResponse.ok?await sessionResponse.json():null;
-      }catch{throw networkError();}
+      }catch{bootstrapGuard?.();throw networkError();}
+      bootstrapGuard?.();
       if(requestGeneration!==this.generation)throw new ApiError('Ответ прежней сессии отклонён.',409);
       if(!session||session.role!=='owner'||session.participant_id!==requestParticipant){this.generation++;await this.onAuth();throw new ApiError('Сессия изменилась. Войдите снова.',401);}
     }
@@ -320,9 +328,12 @@ export class ConnectedAPI {
         headers:{...options.headers,...(this.dailyPilot&&!['GET','HEAD'].includes((options.method||'GET').toUpperCase())?{'X-Pilot-Participant':requestParticipant}:{})},
       });
     } catch {
+      bootstrapGuard?.();
       throw networkError();
     }
+    bootstrapGuard?.();
     const data = await response.json().catch(() => ({}));
+    bootstrapGuard?.();
     if (!response.ok) {
       if (response.status === 401 && requestGeneration === this.generation) {
         this.generation++;

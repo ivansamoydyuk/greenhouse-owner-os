@@ -1,6 +1,6 @@
 // Deliberately metadata only: no headers, bodies, cookies, queries, fragments,
 // storage keys/values, error text, or authenticated key material are retained.
-const phases=new Set(['config-read','draft-key-read','configure','configured','refresh-data','harvest-navigation-read','finance-navigation-read','generation-mismatch','render','render-returned','error','payment-loss-handler','payment-post-ack','payment-post-aborted','payment-reload-start','payment-reload-return','payment-unroute-return']);
+const phases=new Set(['config-read','draft-key-read','configure','configured','refresh-data','harvest-navigation-read','finance-navigation-read','generation-mismatch','render','render-returned','error','recovery','payment-loss-handler','payment-post-ack','payment-post-aborted','payment-reload-start','payment-reload-return','payment-unroute-return']);
 export function safePath(value){try{const path=new URL(value).pathname;return /^\/(?:v1\/|pilot\/(?:session|draft-key|participants|receipts|login|logout)(?:\/|$)|preview\/config$|r3\/[a-z0-9.-]+$|assets\/[a-z0-9.-]+$)/i.test(path)?path.slice(0,240):'/other';}catch{return '/invalid';}}
 export function metadataRing(limit=400){
  if(!Number.isInteger(limit)||limit<1||limit>2000)throw Error('Invalid diagnostic capacity');
