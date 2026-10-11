@@ -9,6 +9,12 @@ export class WorkerDraftStore {
  flush(){for(const key of [...this.dirty])this.setItem(key,this.memory.get(key));if(this.readFailed){try{this.storage.getItem(this.key('__availability__'));this.readFailed=false;}catch{throw Error('Память устройства недоступна. Оставьте страницу открытой.');}}this.changed(this.failed?'error':'saved');}
  protectUnload(event){if(!this.failed)return;event.preventDefault();event.returnValue='';}
 }
-export function workerDraftScope(identity,participant){if(!identity?.id||!identity?.entity_id)throw Error('Не подтверждена принадлежность работника.');return JSON.stringify([identity.entity_id,identity.id,participant||identity.id]);}
+export function workerDraftIdentity(worker,session=null){
+ if(!worker?.id)throw Error('Не подтверждена личность работника.');
+ if(!session)return worker; // Legacy worker DTO intentionally omits entity_id.
+ if(session.role!=='worker'||session.worker_id!==worker.id||!session.entity_id||!session.participant_id)throw Error('Учётная запись не совпадает с работником.');
+ return {...worker,entity_id:session.entity_id};
+}
+export function workerDraftScope(identity,participant){if(!identity?.id||(participant&&!identity.entity_id))throw Error('Не подтверждена принадлежность работника.');return JSON.stringify([identity.entity_id||'legacy-worker',identity.id,participant||identity.id]);}
 export function r1DraftKey(task,assignment){return JSON.stringify(['worker-r1-form',task.entity_id,task.id,assignment.id,task.cycle]);}
 export function stableWorkerIntent(storage,key,body){const saved=storage.getItem(key);if(saved){storage.setItem(key,saved);return JSON.parse(saved);}storage.setItem(key,JSON.stringify(body));return body;}
