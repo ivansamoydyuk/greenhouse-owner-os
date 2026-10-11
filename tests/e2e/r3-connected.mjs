@@ -577,6 +577,32 @@ try {
       product_id: fixture.product.id,
       location_id: fixture.locations[1].id,
     });
+    if (pilotMode) {
+      // Private pilot intentionally cannot enter the legacy root application.
+      await page.goto(base + '/');
+      await page.waitForURL('**/pilot/');
+      await page.locator('#pilot-login').waitFor();
+      assert.equal(await page.locator('#app,#sheet,#sheet-title').count(), 0);
+      assert.equal(await page.getByRole('heading', {name:'Моя теплица',exact:true}).count(), 0);
+      const dialogs=[];
+      const onDialog=async dialog=>{dialogs.push(dialog.type());await dialog.dismiss();};
+      page.on('dialog',onDialog);
+      await route(page,'inventory');
+      const maliciousRow=page.locator('.list-row').filter({has:page.locator(`a[href="#quick/receipt/${product.id}"]`)});
+      assert.equal(await maliciousRow.locator('strong').first().textContent(),productName);
+      assert.equal(await maliciousRow.locator('img').count(),0);
+      const ordinaryRow=page.locator('.list-row').filter({has:page.locator(`a[href="#quick/receipt/${fixture.product.id}"]`)});
+      assert.equal(await ordinaryRow.locator('strong').first().textContent(),fixture.product.name);
+      assert.equal(await ordinaryRow.locator('img').count(),0);
+      const csp=(await context.request.get(base+'/r3/connected.html')).headers()['content-security-policy'];
+      assert.ok(csp.includes("script-src 'self'"));
+      const scriptPolicy=csp.split(';').find(part=>part.trim().startsWith('script-src '));
+      assert.ok(!scriptPolicy.includes("'unsafe-inline'")&&!scriptPolicy.includes("'unsafe-eval'"));
+      await snap(page,engine+'-390-private-literal-product');
+      assert.deepEqual(dialogs,[]);
+      page.off('dialog',onDialog);
+      result.journeys.push({engine,name:'AUD011 private legacy boundary and R3 literal product CSP',pass:true});
+    } else {
     // AUD011: malicious stored product also remains literal in the reachable old modal.
     await page.goto(base + "/");
     await page
@@ -613,6 +639,7 @@ try {
       name: "AUD011 stored adversarial and ordinary legacy modal title",
       pass: true,
     });
+    }
     // C: immutable field original, new depot document with actual binary and caption, explicit link.
     await route(page, "quick/harvest");
     await select(page, "greenhouse", fixture.areas[0].id);

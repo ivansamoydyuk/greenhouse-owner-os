@@ -412,6 +412,12 @@ def build_preview(database_url, secret, *, environment, public_origin=None):
         _mount_connected_ui(app, owner, cookie_value, pilot_auth)
     if pilot_auth:
         pilot_auth.mount(app)
+    else:
+        # Shared worker assets discover their adapter without a failed request.
+        # This public mode marker exposes no identity, fixture or business data.
+        @app.get('/pilot/public-config')
+        def legacy_pilot_mode():
+            return {'mode':'LEGACY_TEST_PREVIEW','daily_pilot':False}
     return app
 
 

@@ -38,3 +38,16 @@ def test_login_malformed_json_is_sanitized():
     auth=PilotAuth.__new__(PilotAuth);app=FastAPI();auth.mount(app)
     r=TestClient(app).post('/pilot/login',content='{"password":"private-fragment',headers={'Content-Type':'application/json'})
     assert r.status_code==422 and r.json()=={'detail':'Проверьте имя и пароль.'}
+
+
+def test_daily_public_mode_is_not_shadowed_by_legacy_marker():
+    auth=PilotAuth.__new__(PilotAuth)
+    auth.live=lambda:None
+    auth.build_sha='a'*40
+    auth.expires_at=datetime(2026,10,12,tzinfo=timezone.utc)
+    app=FastAPI();auth.mount(app)
+    c=TestClient(app);response=c.get('/pilot/public-config')
+    assert response.status_code==200
+    assert response.json()=={'mode':'PRIVATE_DAILY_TEST','build_sha':'a'*40,'expires_at':'2026-10-12T00:00:00+00:00','synthetic_only':True}
+    assert len([r for r in app.routes if getattr(r,'path',None)=='/pilot/public-config'])==1
+    assert c.get('/pilot/session').status_code==401
