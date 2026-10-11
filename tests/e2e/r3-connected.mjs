@@ -1124,7 +1124,7 @@ try {
   result.errors.push({ message: redactPilot(error.message), stack: redactPilot(error.stack) });
   if (activePage && !activePage.isClosed())
     await snap(activePage, "failure").catch(() => {});
-  throw error;
+  throw Error(redactPilot(error.stack || error));
 } finally {
   await fs.writeFile(
     path.join(out, "browser-results.json"),
