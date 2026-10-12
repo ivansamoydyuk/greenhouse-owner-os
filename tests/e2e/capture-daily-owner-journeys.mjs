@@ -20,7 +20,7 @@ const digest=value=>createHash('sha256').update(value).digest('hex'),rawCorpus=a
 const setup=JSON.parse(await fs.readFile(path.join(out,'capture-daily-owner-setup.json'),'utf8'));assert.equal(setup.sha,sha);
 const credentials=await pilotCredentials();await fs.mkdir(out,{recursive:true});
 const result={sha,mode,status:'RUNNING',scope:'short_text_and_supplier_invoice_plus_capture_recovery',benchmark_sha256:digest(rawCorpus),records:[],screenshots:[],layouts:[],errors:[],metric_definitions:{trusted_clicks:'Executed Playwright clicks with a trusted DOM event, excluding authentication/setup. Native selects, file selections and fills are separate; these are not physical-device tap counts.',repeated_known_facts:'Changed business controls that re-enter source facts, including correction of a wrong prefill.',new_required_facts:'Changed controls supplying new owner decisions absent from source, such as economic intent or explicit receipt linkage.',review_acknowledgements:'Authority and original-quality checks, not repeated numeric entry.',baseline_barrier:'A witnessed unsupported or manual path; never a positive preparation claim.'}};
-const bootstrapArms=mode==='candidate'?['BOOTSTRAP_NORMAL','BOOTSTRAP_ROUTED','BOOTSTRAP_503','BOOTSTRAP_TIMEOUT']:[];
+const bootstrapArms=mode==='candidate'?['BOOTSTRAP_NORMAL','BOOTSTRAP_ROUTED','BOOTSTRAP_503','BOOTSTRAP_503_PERSISTENT','BOOTSTRAP_TIMEOUT']:[];
 result.bootstrap_matrix={cases:bootstrapArms,transport_positions:['after_relogin','after_held_edit'],application_deadline_ms:15000,repeat_rationale:'Two fixed positions match the two observed failures. No retry-to-pass; the first failure stops its isolated arm.'};
 const write=()=>fs.writeFile(path.join(out,'capture-daily-owner-browser.json'),JSON.stringify(result,null,2)+'\n');
 const eqDecimal=(a,b)=>{const exact=v=>{assert.match(String(v),/^\d+(?:\.\d{1,6})?$/);const [i,f='']=String(v).split('.');return BigInt(i)*1000000n+BigInt((f+'000000').slice(0,6));};assert.equal(exact(a),exact(b));};
@@ -58,6 +58,30 @@ async function installCaptureDiagnostics(page){
   };
   window.__captureBootstrapHistory=()=>({dropped,entries:events.map(x=>({...x}))});
   record({event:'document'});
+  // Observe settlement without consuming bodies or replacing the returned
+  // native promises. The separate ring is document-local and captured at each
+  // matrix boundary/failure, before the next document can discard it.
+  const fetchEvents=[],responses=new WeakMap();let fetchId=0,bodyId=0,fetchDropped=0;
+  const safe=value=>{try{const p=new URL(value,location.href).pathname;return /^\/(?:v1\/|pilot\/(?:session|draft-key|participants|receipts|login|logout)(?:\/|$)|preview\/config$|r3\/[a-z0-9.-]+$|assets\/[a-z0-9.-]+$)/i.test(p)?p.slice(0,240):'/other';}catch{return '/invalid';}};
+  const fetchRecord=row=>{fetchEvents.push({...row,atMs:performance.now()});if(fetchEvents.length>200){fetchEvents.shift();fetchDropped++;}};
+  window.__captureFetchJsonDiagnostics=()=>({dropped:fetchDropped,entries:fetchEvents.map(row=>({...row}))});
+  if(typeof window.fetch==='function'&&typeof Response==='function'){
+   const nativeFetch=window.fetch,nativeJson=Response.prototype.json;
+   window.fetch=function(...args){
+    const input=args[0],method=String(args[1]?.method||input?.method||'GET').toUpperCase();
+    const meta={fetch_id:++fetchId,path:safe(typeof input==='string'||input instanceof URL?String(input):input?.url),method:['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'].includes(method)?method:'UNKNOWN'};
+    fetchRecord({event:'fetch-start',...meta});let pending;
+    try{pending=Reflect.apply(nativeFetch,this,args);}catch(error){fetchRecord({event:'fetch-rejected',...meta});throw error;}
+    void pending.then(response=>{responses.set(response,meta);fetchRecord({event:'fetch-resolved',...meta,status:response.status});},()=>fetchRecord({event:'fetch-rejected',...meta}));
+    return pending;
+   };
+   Response.prototype.json=function(...args){
+    const meta=responses.get(this),id=meta?++bodyId:null;if(meta)fetchRecord({event:'json-start',...meta,body_id:id});let pending;
+    try{pending=Reflect.apply(nativeJson,this,args);}catch(error){if(meta)fetchRecord({event:'json-rejected',...meta,body_id:id});throw error;}
+    if(meta)void pending.then(()=>fetchRecord({event:'json-settled',...meta,body_id:id}),()=>fetchRecord({event:'json-rejected',...meta,body_id:id}));
+    return pending;
+   };
+  }
   new MutationObserver(mutations=>{
    for(let i=0;i<mutations.length;i++){
     const mutation=mutations[i];if(mutation.type!=='attributes'||mutation.target.id!=='app'||mutation.attributeName!=='data-bootstrap-stage')continue;
@@ -74,7 +98,7 @@ async function installCaptureDiagnostics(page){
  },[...phases]);
  return {async capture(){
   const captured=await observer.capture();
-  const current=await page.evaluate(()=>window.__captureBootstrapHistory?.()).catch(()=>null);
+  const local=await page.evaluate(()=>({bootstrap:window.__captureBootstrapHistory?.(),fetchJson:window.__captureFetchJsonDiagnostics?.(),document_stamp:performance.timeOrigin})).catch(()=>null),current=local?.bootstrap;
   // The final document's bounded buffer covers a binding notification still in
   // flight. Sanitize it again; never serialize arbitrary page-supplied fields.
   const currentEntries=[];for(const value of current?.entries||[]){
@@ -84,7 +108,14 @@ async function installCaptureDiagnostics(page){
    if(Number.isSafeInteger(value.generation)&&value.generation>=0)row.generation=value.generation;
    currentEntries.push(row);
   }
-  return {version:1,...captured,network:{...captured.network,entries:captured.network.entries.map(row=>({...row,...(requestNavigations.get(row.id)||{})}))},navigation_and_bootstrap:{dropped,entries:history.map(x=>({...x}))},current_document_bootstrap:{dropped:Number.isSafeInteger(current?.dropped)?current.dropped:0,entries:currentEntries.slice(-100)}};
+  const nativeEntries=[];for(const value of local?.fetchJson?.entries||[]){
+   if(!['fetch-start','fetch-resolved','fetch-rejected','json-start','json-settled','json-rejected'].includes(value.event))continue;
+   const row={event:value.event,path:safePath('http://diagnostic.invalid'+String(value.path||''))};
+   for(const key of ['fetch_id','body_id','atMs','status'])if(Number.isFinite(value[key]))row[key]=value[key];
+   if(['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS','UNKNOWN'].includes(value.method))row.method=value.method;
+   nativeEntries.push(row);
+  }
+  return {version:2,current_document_fetch_json:{navigation_id:navigationId,document_id:documents.get(local?.document_stamp)||null,dropped:Number.isSafeInteger(local?.fetchJson?.dropped)?local.fetchJson.dropped:0,entries:nativeEntries.slice(-200)},...captured,network:{...captured.network,entries:captured.network.entries.map(row=>({...row,...(requestNavigations.get(row.id)||{})}))},navigation_and_bootstrap:{dropped,entries:history.map(x=>({...x}))},current_document_bootstrap:{dropped:Number.isSafeInteger(current?.dropped)?current.dropped:0,entries:currentEntries.slice(-100)}};
  }};
 }
 async function boundedDiagnosticCapture(observer){
@@ -107,6 +138,20 @@ for(const [engine,browserType] of engines){
   const visibleAction=async(locator,label)=>{await locator.evaluate(el=>el.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}));const handle=await locator.elementHandle();await page.waitForFunction(el=>{const r=el.getBoundingClientRect(),points=[[r.left+r.width/2,r.top+r.height/2],[r.left+5,r.top+5],[r.right-5,r.bottom-5]];return r.width>=44&&r.height>=44&&points.every(([x,y])=>x>=0&&x<innerWidth&&y>=0&&y<innerHeight&&el.contains(document.elementFromPoint(x,y)));},handle,{timeout:5000});const geometry=await locator.evaluate(el=>{const r=el.getBoundingClientRect();return {width:innerWidth,height:innerHeight,box:{x:r.x,y:r.y,width:r.width,height:r.height},center_hit:el.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)),dock_top:document.querySelector('.dock')?.getBoundingClientRect().top};});(c.action_visibility ||= []).push({label,...geometry});};
   const viewportProof=async(locator,label)=>{for(const view of [{width:320,height:568},{width:390,height:844},{width:390,height:430}]){await page.setViewportSize(view);await visibleAction(locator,label);const file=`${engine}-${id}-${label}-${view.width}x${view.height}-viewport.png`;await page.screenshot({path:path.join(out,file),fullPage:false,timeout:20000});result.screenshots.push(file);}c.viewport_limitations='Reduced viewport only; physical keyboard, native safe-area and physical iPhone are not verified.';await page.setViewportSize({width:390,height:844});};
   const click=async(locator,label,kind='click')=>{await locator.scrollIntoViewIfNeeded();if(page.viewportSize().width<=390&&await locator.evaluate(el=>el.matches('.primary,button[type=submit],[data-action=confirm-proposal]')))await visibleAction(locator,label);const start=await page.evaluate(()=>window.ownerFrictionClicks.length),n=++ordinal;await locator.click();const events=await page.evaluate(i=>window.ownerFrictionClicks.slice(i),start);assert.ok(events.some(x=>x.trusted),label+' must emit a trusted click');c.operations.push({ordinal:n,phase,kind,label,events});};
+  // A full reload destroys the document-local click array. Transfer only the
+  // actual trusted event through a binding before the application navigates.
+  const clickReload=async(locator,label)=>{
+   let resolve;const observed=new Promise(yes=>resolve=yes);
+   await page.exposeBinding('__captureTrustedReloadClick',(source,value)=>{
+    if(source.frame===page.mainFrame()&&value?.trusted===true&&value?.action==='bootstrap-retry'&&value?.tag==='BUTTON')resolve({trusted:true,tag:'BUTTON',action:'bootstrap-retry'});
+   });
+   await locator.evaluate(el=>el.addEventListener('click',event=>{
+    void window.__captureTrustedReloadClick({trusted:event.isTrusted,tag:el.tagName,action:el.getAttribute('data-action')}).catch(()=>{});
+   },{capture:true,once:true}));
+   await locator.scrollIntoViewIfNeeded();await visibleAction(locator,label);await locator.click();
+   let timer,event;try{event=await Promise.race([observed,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' must emit a trusted click before navigation')),15000);})]);}finally{clearTimeout(timer);}
+   c.operations.push({ordinal:++ordinal,phase,kind:'recovery_click',label,events:[event]});
+  };
   const reveal=async locator=>{const parents=locator.locator('xpath=ancestor::details');for(let i=0;i<await parents.count();i++){const parent=parents.nth(i);if(!await parent.evaluate(e=>e.open))await click(parent.locator(':scope > summary'),'Reveal related fields');}};
   const input=async(locator,value,{key,origin='source_fact',initial=false}={})=>{await reveal(locator);const previous=await locator.inputValue();if(previous===String(value))return;const tag=await locator.evaluate(e=>e.tagName);if(tag==='SELECT')await locator.selectOption(String(value));else{await click(locator,'Focus '+key);await locator.fill(String(value));}assert.equal(await locator.inputValue(),String(value));c.operations.push({ordinal:++ordinal,phase,kind:initial?'initial_capture_input':origin==='review'?'review_acknowledgement':'field_edit',key,origin,previous,value:String(value),operation:tag==='SELECT'?'selectOption':'fill'});};
   const field=(name,value,origin)=>input(page.locator(`[name="${name}"]`),value,{key:name,origin});
@@ -138,7 +183,7 @@ for(const [engine,browserType] of engines){
   let config,root;
   try{
    await ownerLogin(page,base);await ready('home');config=await read('/preview/config');root='/v1/entities/'+config.entity_id;assert.equal(config.feature_sha,sha);assert.equal(config.daily_pilot,true);assert.equal(config.entity_id,setup.entity_id);record.entity_id=config.entity_id;c.entity_id=config.entity_id;
-   await work({c,page,context,config,root,ready,read,stage,click,field,input,layouts,observe,prepare,openPrepared,edit,actualFile,original,lostConfirmation,viewportProof,checkpoint,setPhase:p=>phase=p});
+   await work({c,page,context,config,root,ready,read,stage,click,field,input,layouts,observe,prepare,openPrepared,edit,actualFile,original,lostConfirmation,viewportProof,checkpoint,clickReload,setPhase:p=>phase=p});
    if(c.status==='RUNNING')c.status=mode==='baseline'?'BASELINE_RECORDED':'PASS';c.stage='complete';
   }catch(error){c.status='FAIL';c.failure={stage:c.stage,message:redactPilot(error.message),stack:redactPilot(error.stack||'')};if(!page.isClosed()&&!page.url().includes('/pilot/'))await page.screenshot({path:path.join(out,`${engine}-${id}-failure.png`),fullPage:true,timeout:10000}).catch(()=>{});}
   finally{const ops=c.operations.filter(o=>o.phase!=='setup');c.metrics={trusted_clicks:ops.filter(o=>o.events).length,capture_clicks:ops.filter(o=>o.events&&o.phase==='capture').length,review_clicks:ops.filter(o=>o.events&&o.phase==='review').length,destination_clicks:ops.filter(o=>o.events&&o.phase==='destination').length,repeated_known_facts:ops.filter(o=>o.kind==='field_edit'&&o.origin==='source_fact').length,new_required_facts:ops.filter(o=>o.kind==='field_edit'&&o.origin==='new_required_fact').length,review_acknowledgements:ops.filter(o=>o.kind==='review_acknowledgement').length,native_selects:ops.filter(o=>o.operation==='selectOption').length,text_fills:ops.filter(o=>o.operation==='fill').length,initial_capture_entries:ops.filter(o=>o.kind==='initial_capture_input').length,file_selections:ops.filter(o=>o.kind==='file_selection').length};// Preserve the primary manifest and original failure before optional observations.
@@ -223,7 +268,7 @@ for(const [engine,browserType] of engines){
  for(const arm of bootstrapArms){
   await resetFixtureRateLimits(); // Existing offline disposable-TEST fixture only.
   await run(arm,async h=>{
-   const {c,page,context,config,root,ready,read,stage,click,observe,checkpoint}=h;
+   const {c,page,context,config,root,ready,read,stage,click,observe,checkpoint,clickReload}=h;
    assert.ok(c.diagnostics_available,'Matrix requires metadata diagnostics');
    const began=Date.now(),pattern='**/owner/home',text=fixture('T01').input;
    c.business_writes=[];c.route_events=[];c.trials=[];
@@ -250,11 +295,12 @@ for(const [engine,browserType] of engines){
     const trial={transport,position,status:'RUNNING',atMs:Date.now()-began};c.trials.push(trial);await stage(position+'_'+transport);
     let entered=0,fulfilled=0,handlerFailure=false;
     const handler=async route=>{entered++;note('handler_entered',{transport,position});try{
-     if(transport==='one_shot_503')await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST transport failure'})});
+     if(['one_shot_503','persistent_503'].includes(transport)&&entered===1)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST transport failure'})});
+     else if(transport==='persistent_503'){await route.continue();note('handler_continued',{transport,position});}
      else {const response=await route.fetch({timeout:25000});assert.equal(response.status(),200,'Pass-through must use the actual server 200');note('handler_fetched',{transport,position,status:response.status()});await route.fulfill({response});}
      fulfilled++;note('handler_fulfilled',{transport,position});
     }catch{handlerFailure=true;note('handler_failed',{transport,position});await route.abort('failed').catch(()=>{});}};
-    if(transport!=='unrouted_200')await page.route(pattern,handler,{times:1});
+    if(transport!=='unrouted_200')await page.route(pattern,handler,transport==='persistent_503'?{}:{times:1});
     try{
      await page.reload();await ready('home');
      assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'render-returned');
@@ -289,7 +335,7 @@ for(const [engine,browserType] of engines){
       try{release();c.late_read=await bounded(terminal.promise,'Released bootstrap read never reached terminal observation',25000);}finally{terminal.dispose();}
       assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');assert.equal(await page.locator('form,input,textarea,select,.dock').count(),0);
       await sameDraft('capture/expense',text,originalDraft);c.late_response_fenced=true;
-      await page.unroute(matcher,handler);await stage('visible_manual_reload');await click(retry,'Use visible cold-bootstrap recovery','recovery_click');await ready('capture/expense');
+      await page.unroute(matcher,handler);await stage('visible_manual_reload');await clickReload(retry,'Use visible cold-bootstrap recovery');await ready('capture/expense');
       assert.ok(await page.locator('[name=text]').inputValue()===text,'Manual recovery lost draft content');await sameDraft('capture/expense',text,originalDraft);
       const authenticated=await read('/pilot/session');assert.equal(authenticated.role,'owner');assert.equal(authenticated.participant_id,config.participant_id);
       const recoveredImage=`${engine}-${arm}-390-manual-recovery.png`;await page.screenshot({path:path.join(out,recoveredImage),fullPage:false});result.screenshots.push(recoveredImage);
@@ -303,11 +349,11 @@ for(const [engine,browserType] of engines){
      const denied=page.waitForResponse(r=>r.request().method()==='GET'&&r.url().endsWith('/pilot/session'));await click(page.locator('[data-form=capture] button[type=submit]'),'Attempt matrix save after actual expiry');assert.equal((await denied).status(),401);await page.waitForURL('**/pilot/**');
      await ownerLogin(page,base,{navigate:false});await page.goto(base+'/r3/connected.html#capture/expense');await ready('capture/expense');await sameDraft('capture/expense',text,originalDraft);c.same_draft_after_relogin=true;
      await page.goto(base+'/r3/connected.html#home');await ready('home');
-     const transport={BOOTSTRAP_NORMAL:'unrouted_200',BOOTSTRAP_ROUTED:'routed_real_200',BOOTSTRAP_503:'one_shot_503'}[arm];
+     const transport={BOOTSTRAP_NORMAL:'unrouted_200',BOOTSTRAP_ROUTED:'routed_real_200',BOOTSTRAP_503:'one_shot_503',BOOTSTRAP_503_PERSISTENT:'persistent_503'}[arm];
      await coldReload(transport,'after_relogin');
      // Controls need the same unavailable-section Retry predecessor. This one
      // extra 503 reload is explicitly recorded as setup, never as a clean200.
-     if(transport!=='one_shot_503')await coldReload('one_shot_503','held_edit_setup');
+     if(!['one_shot_503','persistent_503'].includes(transport))await coldReload('one_shot_503','held_edit_setup');
      await stage('held_read_new_edit_predecessor');
      let release,enter,handlerFailure=false;const gate=new Promise(resolve=>release=resolve),entered=new Promise(resolve=>enter=resolve);
      const handler=async route=>{note('edit_handler_entered');try{const response=await route.fetch({timeout:25000});assert.equal(response.status(),200);note('edit_handler_fetched',{status:200});enter();await gate;await route.fulfill({response});note('edit_handler_fulfilled');}catch{handlerFailure=true;note('edit_handler_failed');enter();await route.abort('failed').catch(()=>{});}};

@@ -38,7 +38,7 @@ UNCHANGED=('finance.advances','finance.owner_fundings','finance.advance_applicat
 # Exact opaque row digests add the intake/processing boundary without exposing
 # original bytes, OCR output, draft text or authentication/session material.
 BOUNDARY_TABLES=('core.inbox_items','core.processing_jobs','core.extraction_runs','core.proposed_actions','core.proposal_revisions','core.proposal_actions','core.owner_recovery_links','core.owner_tasks')
-BOOTSTRAP_ARMS={'BOOTSTRAP_NORMAL','BOOTSTRAP_ROUTED','BOOTSTRAP_503','BOOTSTRAP_TIMEOUT'}
+BOOTSTRAP_ARMS={'BOOTSTRAP_NORMAL','BOOTSTRAP_ROUTED','BOOTSTRAP_503','BOOTSTRAP_503_PERSISTENT','BOOTSTRAP_TIMEOUT'}
 def normalized(obj):return json.loads(json.dumps(obj,sort_keys=True,default=str))
 def write(filename,value):
  p=Path(filename);p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(normalized(value),ensure_ascii=False,indent=2)+'\n')
@@ -258,10 +258,10 @@ try:
      for flag in ('controlled_recovery_visible','late_response_fenced','same_draft_after_recovery','authenticated_recovery'):assert probe[flag] is True,flag
      assert probe['late_read']['status']==200 and probe['late_read']['terminal'] in ('requestfinished','requestfailed')
     else:
-     transport={'BOOTSTRAP_NORMAL':'unrouted_200','BOOTSTRAP_ROUTED':'routed_real_200','BOOTSTRAP_503':'one_shot_503'}[arm]
+     transport={'BOOTSTRAP_NORMAL':'unrouted_200','BOOTSTRAP_ROUTED':'routed_real_200','BOOTSTRAP_503':'one_shot_503','BOOTSTRAP_503_PERSISTENT':'persistent_503'}[arm]
      targets=[trial for trial in probe['trials'] if trial['position']!='held_edit_setup']
      assert [(trial['position'],trial['transport']) for trial in targets]==[('after_relogin',transport),('after_held_edit',transport)]
-     assert len(probe['trials'])==(2 if arm=='BOOTSTRAP_503' else 3)
+     assert len(probe['trials'])==(2 if arm in ('BOOTSTRAP_503','BOOTSTRAP_503_PERSISTENT') else 3)
      for trial in probe['trials']:
       assert trial['status']=='PASS' and trial['handler_entered']==trial['handler_fulfilled']==(0 if trial['transport']=='unrouted_200' else 1)
       if trial['position']=='held_edit_setup':assert trial['transport']=='one_shot_503'
