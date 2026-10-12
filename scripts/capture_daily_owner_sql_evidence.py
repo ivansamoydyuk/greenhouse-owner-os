@@ -244,6 +244,10 @@ try:
    security=c['SECURITY'];assert security['before']==security['after']
    assert security['expiry_preflight']==dict(method='GET',path='/pilot/session',status=401,capture_posts=0), 'Expired owner write was not blocked by the real session preflight'
    assert db.scalar(text('SELECT count(*) FROM core.inbox_items WHERE entity_id=:e AND locator=:l'),dict(e=e,l=security['client_capture_id']))==0, 'Expired authenticated save created a source'
+   assert not security.get('retained_route_cleanup_failed')
+   faults={v['label']:v for v in security['retained_routes']};assert set(faults)=={'before-held-edit','held-edit','before-held-logout','held-logout'}
+   assert all(v['first_calls']==1 and v['lifecycle']=='retained_until_explicit_cleanup' and v['cleaned_up'] for v in faults.values())
+   assert faults['before-held-edit']['observed_statuses']==faults['before-held-logout']['observed_statuses']==[503]
    for flag in ('storage_failure_visible','encrypted_draft','expired_session_retained_draft','late_response_did_not_restore_owner_ui','worker_cannot_read_owner_source','delayed_read_did_not_overwrite_edit'):assert security[flag] is True,flag
    proof['cases'].append(dict(engine=engine['engine'],id='SECURITY',effects=0,checks={flag:security[flag] for flag in ('storage_failure_visible','encrypted_draft','expired_session_retained_draft','late_response_did_not_restore_owner_ui','worker_cannot_read_owner_source','delayed_read_did_not_overwrite_edit')}))
    for arm in sorted(expected_matrix):
@@ -251,20 +255,25 @@ try:
     assert probe['boundary_before']==probe['boundary_after']==boundary_snapshot(db,e), 'Diagnostic SQL boundary changed or does not match the independent final read'
     assert set(probe['boundary_after']['capture_boundary'])==set(BOUNDARY_TABLES)
     assert all(len(h)==64 for hashes in probe['boundary_after']['capture_boundary'].values() for h in hashes)
-    assert probe['encrypted_draft'] and probe['diagnostic_checkpoints'] and not probe.get('first_failure')
+    assert probe['encrypted_draft'] and probe['diagnostic_checkpoints'] and not probe.get('first_failure') and not probe.get('retained_route_cleanup_failed')
+    assert all(v['first_calls']==1 and v['lifecycle']=='retained_until_explicit_cleanup' and v['cleaned_up'] for v in probe['retained_routes'])
     assert db.scalar(text('SELECT count(*) FROM core.inbox_items WHERE entity_id=:e AND locator=:l'),dict(e=e,l=probe['client_capture_id']))==0, 'Diagnostic draft created a source'
     if arm=='BOOTSTRAP_TIMEOUT':
      assert probe['trials']==[] and probe['controlled_timeout_elapsed_ms']>=14500
      for flag in ('controlled_recovery_visible','late_response_fenced','same_draft_after_recovery','authenticated_recovery'):assert probe[flag] is True,flag
      assert probe['late_read']['status']==200 and probe['late_read']['terminal'] in ('requestfinished','requestfailed')
     else:
-     transport={'BOOTSTRAP_NORMAL':'unrouted_200','BOOTSTRAP_ROUTED':'routed_real_200','BOOTSTRAP_503':'one_shot_503','BOOTSTRAP_503_PERSISTENT':'persistent_503'}[arm]
+     transport={'BOOTSTRAP_NORMAL':'normal_200','BOOTSTRAP_ROUTED':'routed_real_200','BOOTSTRAP_503':'single_503_retained','BOOTSTRAP_503_PERSISTENT':'persistent_503'}[arm]
      targets=[trial for trial in probe['trials'] if trial['position']!='held_edit_setup']
      assert [(trial['position'],trial['transport']) for trial in targets]==[('after_relogin',transport),('after_held_edit',transport)]
      assert len(probe['trials'])==(2 if arm in ('BOOTSTRAP_503','BOOTSTRAP_503_PERSISTENT') else 3)
      for trial in probe['trials']:
-      assert trial['status']=='PASS' and trial['handler_entered']==trial['handler_fulfilled']==(0 if trial['transport']=='unrouted_200' else 1)
-      if trial['position']=='held_edit_setup':assert trial['transport']=='one_shot_503'
+      assert trial['status']=='PASS' and trial['handler_entered']==trial['handler_fulfilled']==(0 if trial['transport']=='normal_200' else 1)
+      assert trial['injected_503_count']==(1 if trial['transport'] in ('single_503_retained','persistent_503') else 0)
+      if trial['transport']!='normal_200':
+       assert trial['route']['lifecycle']=='retained_until_explicit_cleanup' and trial['route']['first_calls']==1 and trial['route']['cleaned_up']
+       assert trial['route']['observed_statuses']==[503 if trial['injected_503_count'] else 200]
+      if trial['position']=='held_edit_setup':assert trial['transport']=='single_503_retained'
      for flag in ('same_draft_after_relogin','delayed_read_did_not_overwrite_edit','both_drafts_retained'):assert probe[flag] is True,flag
     proof['cases'].append(dict(engine=engine['engine'],id=arm,effects=0,business_writes=0,exact_source_proposal_job_boundary=True,controlled_timeout_recovery=arm=='BOOTSTRAP_TIMEOUT',trials=probe['trials']))
   after=snapshot(db,e)

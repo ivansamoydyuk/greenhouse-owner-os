@@ -21,7 +21,7 @@ const setup=JSON.parse(await fs.readFile(path.join(out,'capture-daily-owner-setu
 const credentials=await pilotCredentials();await fs.mkdir(out,{recursive:true});
 const result={sha,mode,status:'RUNNING',scope:'short_text_and_supplier_invoice_plus_capture_recovery',benchmark_sha256:digest(rawCorpus),records:[],screenshots:[],layouts:[],errors:[],metric_definitions:{trusted_clicks:'Executed Playwright clicks with a trusted DOM event, excluding authentication/setup. Native selects, file selections and fills are separate; these are not physical-device tap counts.',repeated_known_facts:'Changed business controls that re-enter source facts, including correction of a wrong prefill.',new_required_facts:'Changed controls supplying new owner decisions absent from source, such as economic intent or explicit receipt linkage.',review_acknowledgements:'Authority and original-quality checks, not repeated numeric entry.',baseline_barrier:'A witnessed unsupported or manual path; never a positive preparation claim.'}};
 const bootstrapArms=mode==='candidate'?['BOOTSTRAP_NORMAL','BOOTSTRAP_ROUTED','BOOTSTRAP_503','BOOTSTRAP_503_PERSISTENT','BOOTSTRAP_TIMEOUT']:[];
-result.bootstrap_matrix={cases:bootstrapArms,transport_positions:['after_relogin','after_held_edit'],application_deadline_ms:15000,repeat_rationale:'Two fixed positions match the two observed failures. No retry-to-pass; the first failure stops its isolated arm.'};
+result.bootstrap_matrix={cases:bootstrapArms,transport_positions:['after_relogin','after_held_edit'],application_deadline_ms:15000,route_lifecycle:'One failure response; forwarding handler retained through bootstrap readiness or the held-read case boundary. Historical times:1 failures remain archived at5a8a851.',repeat_rationale:'Two fixed positions match the two observed failures. No retry-to-pass; the first failure stops its isolated arm.'};
 const write=()=>fs.writeFile(path.join(out,'capture-daily-owner-browser.json'),JSON.stringify(result,null,2)+'\n');
 const eqDecimal=(a,b)=>{const exact=v=>{assert.match(String(v),/^\d+(?:\.\d{1,6})?$/);const [i,f='']=String(v).split('.');return BigInt(i)*1000000n+BigInt((f+'000000').slice(0,6));};assert.equal(exact(a),exact(b));};
 // Metadata-only observations: no headers, bodies, cookies, query/hash values,
@@ -118,6 +118,20 @@ async function installCaptureDiagnostics(page){
   return {version:2,current_document_fetch_json:{navigation_id:navigationId,document_id:documents.get(local?.document_stamp)||null,dropped:Number.isSafeInteger(local?.fetchJson?.dropped)?local.fetchJson.dropped:0,entries:nativeEntries.slice(-200)},...captured,network:{...captured.network,entries:captured.network.entries.map(row=>({...row,...(requestNavigations.get(row.id)||{})}))},navigation_and_bootstrap:{dropped,entries:history.map(x=>({...x}))},current_document_bootstrap:{dropped:Number.isSafeInteger(current?.dropped)?current.dropped:0,entries:currentEntries.slice(-100)}};
  }};
 }
+// One fault/held read, stable interception lifetime. Playwright times:1 can
+// disable Chromium Fetch while sibling requests are still being dispatched.
+// Keep a consumed handler forwarding real traffic until an explicit safe boundary.
+async function installRetainedReadRoute(page,matcher,first,evidence){
+ let consumed=false,firstRequest;
+ Object.assign(evidence,{lifecycle:'retained_until_explicit_cleanup',first_calls:0,passthrough_calls:0,observed_statuses:[]});
+ const response=reply=>{if(reply.request()===firstRequest)evidence.observed_statuses.push(reply.status());};
+ const handler=async route=>{
+  if(consumed){evidence.passthrough_calls++;return route.continue();}
+  consumed=true;firstRequest=route.request();evidence.first_calls++;return first(route);
+ };
+ page.on('response',response);await page.route(matcher,handler);
+ return async()=>{await page.unroute(matcher,handler);page.off('response',response);evidence.cleaned_up=true;};
+}
 async function boundedDiagnosticCapture(observer){
  let timer;try{return await Promise.race([observer.capture(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Optional diagnostic deadline')),2000);})]);}finally{clearTimeout(timer);}
 }
@@ -128,10 +142,14 @@ for(const [engine,browserType] of engines){
  const record={engine,cases:[],security:[],stage:'start'};result.records.push(record);
  const run=async(id,work)=>{
   const c={id,status:'RUNNING',stage:'owner_login',operations:[],barriers:[]};record.cases.push(c);await write();
-  const context=await browser.newContext({viewport:{width:390,height:844},acceptDownloads:true}),page=await context.newPage();let phase='capture',ordinal=0;
+  const context=await browser.newContext({viewport:{width:390,height:844},acceptDownloads:true}),page=await context.newPage();let phase='capture',ordinal=0;const retainedCleanups=[];
   page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(25000);await installClickAudit(page);
   const diagnostic=await installCaptureDiagnostics(page).catch(()=>null);c.diagnostics_available=Boolean(diagnostic);
   page.on('pageerror',error=>result.errors.push({engine,case_id:id,message:redactPilot(error.message)}));
+  const retainRoute=async(matcher,first,label)=>{
+   const evidence={label};(c.retained_routes ||= []).push(evidence);
+   retainedCleanups.push(await installRetainedReadRoute(page,matcher,first,evidence));return evidence;
+  };
   const stage=async value=>{c.stage=value;record.stage=id+':'+value;await write();};
   const ready=prefix=>page.waitForFunction(p=>{const r=location.hash.slice(1)||'home';return r.startsWith(p)&&document.querySelector('#main')?.dataset.renderedRoute===r;},prefix,{timeout:25000});
   const read=async suffix=>{const r=await context.request.get(base+suffix,{timeout:20000});assert.equal(r.status(),200,suffix+' returned '+r.status());return r.json();};
@@ -183,11 +201,12 @@ for(const [engine,browserType] of engines){
   let config,root;
   try{
    await ownerLogin(page,base);await ready('home');config=await read('/preview/config');root='/v1/entities/'+config.entity_id;assert.equal(config.feature_sha,sha);assert.equal(config.daily_pilot,true);assert.equal(config.entity_id,setup.entity_id);record.entity_id=config.entity_id;c.entity_id=config.entity_id;
-   await work({c,page,context,config,root,ready,read,stage,click,field,input,layouts,observe,prepare,openPrepared,edit,actualFile,original,lostConfirmation,viewportProof,checkpoint,clickReload,setPhase:p=>phase=p});
+   await work({c,page,context,config,root,ready,read,stage,click,field,input,layouts,observe,prepare,openPrepared,edit,actualFile,original,lostConfirmation,viewportProof,checkpoint,clickReload,retainRoute,setPhase:p=>phase=p});
    if(c.status==='RUNNING')c.status=mode==='baseline'?'BASELINE_RECORDED':'PASS';c.stage='complete';
   }catch(error){c.status='FAIL';c.failure={stage:c.stage,message:redactPilot(error.message),stack:redactPilot(error.stack||'')};if(!page.isClosed()&&!page.url().includes('/pilot/'))await page.screenshot({path:path.join(out,`${engine}-${id}-failure.png`),fullPage:true,timeout:10000}).catch(()=>{});}
   finally{const ops=c.operations.filter(o=>o.phase!=='setup');c.metrics={trusted_clicks:ops.filter(o=>o.events).length,capture_clicks:ops.filter(o=>o.events&&o.phase==='capture').length,review_clicks:ops.filter(o=>o.events&&o.phase==='review').length,destination_clicks:ops.filter(o=>o.events&&o.phase==='destination').length,repeated_known_facts:ops.filter(o=>o.kind==='field_edit'&&o.origin==='source_fact').length,new_required_facts:ops.filter(o=>o.kind==='field_edit'&&o.origin==='new_required_fact').length,review_acknowledgements:ops.filter(o=>o.kind==='review_acknowledgement').length,native_selects:ops.filter(o=>o.operation==='selectOption').length,text_fills:ops.filter(o=>o.operation==='fill').length,initial_capture_entries:ops.filter(o=>o.kind==='initial_capture_input').length,file_selections:ops.filter(o=>o.kind==='file_selection').length};// Preserve the primary manifest and original failure before optional observations.
    await write();if(diagnostic){try{const captured=await boundedDiagnosticCapture(diagnostic);const filename=`${engine}-${id}-diagnostics.json`;await fs.writeFile(path.join(out,filename),JSON.stringify({sha,mode,engine,case_id:id,status:c.status,stage:c.stage,...captured},null,2)+'\n');c.diagnostic_artifact=filename;}catch{c.diagnostic_capture_failed=true;}}
+   for(const cleanup of retainedCleanups.reverse())await cleanup().catch(()=>{c.retained_route_cleanup_failed=true;if(c.status!=='FAIL'){c.status='FAIL';c.failure={stage:'retained_route_cleanup',message:'Owned retained route cleanup failed'};}});
    await context.close().catch(()=>{});await write();}
   return c;
  };
@@ -252,14 +271,14 @@ for(const [engine,browserType] of engines){
   await click(page.getByRole('link',{name:'К истории поставки',exact:true}),'Inspect existing purchase');await ready('purchase/');const purchase=await read(root+'/purchases/'+c.receipt_id);assert.equal(purchase.movements.length,1);assert.equal(purchase.lines[0].unit_cost,null);assert.equal(purchase.invoice_links.length,1);assert.equal(purchase.linked_documents.length,1);eqDecimal(purchase.linked_documents[0].remaining_amount,'500');c.purchase= {physical_movements:1,invoice_links:1,cost:null,remaining_payable:'500.00'};await layouts('late-invoice-purchase-destination');
  });
  await run('SECURITY',async h=>{
-  const {c,page,context,config,root,ready,read,stage,click,input,observe}=h;const text=fixture('T01').input;c.before=await observe('before');await stage('actual_draft_storage_failure');await click(page.locator('[data-testid=home-expense]'),'Open private capture draft');await ready('capture/expense');
+  const {c,page,context,config,root,ready,read,stage,click,input,observe,retainRoute}=h;const text=fixture('T01').input;c.before=await observe('before');await stage('actual_draft_storage_failure');await click(page.locator('[data-testid=home-expense]'),'Open private capture draft');await ready('capture/expense');
   await page.evaluate(async()=>{const {BrowserStore}=await import('/r3/connected-adapter.js');const original=BrowserStore.prototype.put;window.__restoreCaptureStore=()=>{BrowserStore.prototype.put=original;delete window.__restoreCaptureStore;};BrowserStore.prototype.put=async function(){throw new DOMException('TEST injected local quota','QuotaExceededError');};});
   await input(page.locator('[name=text]'),text,{key:'security-draft',initial:true});await page.locator('[data-fertilizer-draft-status][data-state=error]').waitFor();assert.equal(await page.locator('[name=text]').inputValue(),text);assert.equal(await page.locator('[name=text]').isEditable(),true);c.storage_failure_visible=true;
   await page.evaluate(()=>window.__restoreCaptureStore());await page.locator('[name=text]').fill(text+' ');await page.locator('[name=text]').fill(text);await page.locator('[data-fertilizer-draft-status][data-state=saved]').waitFor();const draft=await readOwnerDrafts(page,base,config,'capture/expense',sha);assert.equal(draft.drafts.length,1);c.client_capture_id=draft.drafts[0].value.id;assert.equal(draft.drafts[0].value.text,text);assert.equal(draft.raw.includes(text),false);c.encrypted_draft=true;
   // The real adapter checks /pilot/session before a write; expiry must stop the capture POST entirely.
   await page.reload();await ready('capture/expense');assert.equal(await page.locator('[name=text]').inputValue(),text);await stage('server_expired_owner_session');const expired=await expiredCookie(config.participant_id);await context.addCookies([{...expired,url:base}]);assert.equal((await context.request.get(base+'/pilot/session')).status(),401);const expiredWrites=[];const observeExpiredWrite=r=>{if(r.method()==='POST'&&r.url().endsWith('/owner/captures'))expiredWrites.push(r.url());};page.on('request',observeExpiredWrite);const denied=page.waitForResponse(r=>r.request().method()==='GET'&&r.url().endsWith('/pilot/session'));await click(page.locator('[data-form=capture] button[type=submit]'),'Attempt save after real expiry');assert.equal((await denied).status(),401);await page.waitForURL('**/pilot/**');page.off('request',observeExpiredWrite);assert.deepEqual(expiredWrites,[],'Expired session must block capture POST before dispatch');c.expiry_preflight={method:'GET',path:'/pilot/session',status:401,capture_posts:expiredWrites.length};await ownerLogin(page,base,{navigate:false});await page.goto(base+'/r3/connected.html#capture/expense');await ready('capture/expense');assert.equal(await page.locator('[name=text]').inputValue(),text);c.expired_session_retained_draft=true;
-  await stage('late_real_read_preserves_new_edit');await page.goto(base+'/r3/connected.html#home');await ready('home');await page.route('**/owner/home',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST transport failure'})}),{times:1});await page.reload();await ready('home');let releaseEdit,enteredEdit;const editGate=new Promise(resolve=>releaseEdit=resolve),editStarted=new Promise(resolve=>enteredEdit=resolve);await page.route('**/owner/home',async route=>{const response=await route.fetch();enteredEdit();await editGate;await route.fulfill({response});},{times:1});await click(page.getByRole('button',{name:/^Повторить загрузку/}),'Retry held real read before editing');await Promise.race([editStarted,new Promise((_,reject)=>setTimeout(()=>reject(Error('Held edit read never started')),15000))]);await click(page.locator('[data-testid=radial-toggle]'),'Open a new capture while old read waits');await click(page.locator('[data-testid=capture-text]'),'Enter new text capture');await ready('capture/text');const newEdit=fixture('T04').input;await page.locator('[name=text]').fill(newEdit);await page.locator('[data-fertilizer-draft-status][data-state=saved]').waitFor();const lateEditReply=page.waitForResponse(r=>r.url().endsWith('/owner/home')&&r.status()===200);releaseEdit();await lateEditReply;await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));assert.ok(page.url().endsWith('#capture/text'));assert.equal(await page.locator('[name=text]').inputValue(),newEdit);c.delayed_read_did_not_overwrite_edit=true;
-  await stage('late_real_read_after_logout');await page.goto(base+'/r3/connected.html#home');await ready('home');await page.route('**/owner/home',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST transport failure'})}),{times:1});await page.reload();await ready('home');let release,entered;const gate=new Promise(resolve=>release=resolve),started=new Promise(resolve=>entered=resolve);await page.route('**/owner/home',async route=>{const response=await route.fetch();entered();await gate;try{await route.fulfill({response});}catch(e){if(!/closed|cancel|disposed|already handled/i.test(e.message))throw e;}},{times:1});await click(page.getByRole('button',{name:/^Повторить загрузку/}),'Retry actual held owner read');await Promise.race([started,new Promise((_,reject)=>setTimeout(()=>reject(Error('Held read never started')),15000))]);await click(page.locator('[data-testid=nav-more]'),'Keep logout reachable');await ready('more');const logout=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/pilot/logout'));await click(page.getByRole('button',{name:'Выйти',exact:true}),'Logout during held response');assert.equal((await logout).status(),200);release();await page.waitForURL('**/pilot/');assert.equal((await context.request.get(base+'/pilot/session')).status(),401);assert.equal(await page.locator('[data-testid=home-expense]').count(),0);c.late_response_did_not_restore_owner_ui=true;
+  await stage('late_real_read_preserves_new_edit');await page.goto(base+'/r3/connected.html#home');await ready('home');const editFault=await retainRoute('**/owner/home',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST transport failure'})}),'before-held-edit');await page.reload();await ready('home');assert.equal(editFault.first_calls,1);assert.deepEqual(editFault.observed_statuses,[503]);let releaseEdit,enteredEdit;const editGate=new Promise(resolve=>releaseEdit=resolve),editStarted=new Promise(resolve=>enteredEdit=resolve);await retainRoute('**/owner/home',async route=>{const response=await route.fetch();enteredEdit();await editGate;await route.fulfill({response});},'held-edit');await click(page.getByRole('button',{name:/^Повторить загрузку/}),'Retry held real read before editing');await Promise.race([editStarted,new Promise((_,reject)=>setTimeout(()=>reject(Error('Held edit read never started')),15000))]);await click(page.locator('[data-testid=radial-toggle]'),'Open a new capture while old read waits');await click(page.locator('[data-testid=capture-text]'),'Enter new text capture');await ready('capture/text');const newEdit=fixture('T04').input;await page.locator('[name=text]').fill(newEdit);await page.locator('[data-fertilizer-draft-status][data-state=saved]').waitFor();const lateEditReply=page.waitForResponse(r=>r.url().endsWith('/owner/home')&&r.status()===200);releaseEdit();await lateEditReply;await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));assert.ok(page.url().endsWith('#capture/text'));assert.equal(await page.locator('[name=text]').inputValue(),newEdit);c.delayed_read_did_not_overwrite_edit=true;
+  await stage('late_real_read_after_logout');await page.goto(base+'/r3/connected.html#home');await ready('home');const logoutFault=await retainRoute('**/owner/home',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST transport failure'})}),'before-held-logout');await page.reload();await ready('home');assert.equal(logoutFault.first_calls,1);assert.deepEqual(logoutFault.observed_statuses,[503]);let release,entered;const gate=new Promise(resolve=>release=resolve),started=new Promise(resolve=>entered=resolve);await retainRoute('**/owner/home',async route=>{const response=await route.fetch();entered();await gate;try{await route.fulfill({response});}catch(e){if(!/closed|cancel|disposed|already handled/i.test(e.message))throw e;}},'held-logout');await click(page.getByRole('button',{name:/^Повторить загрузку/}),'Retry actual held owner read');await Promise.race([started,new Promise((_,reject)=>setTimeout(()=>reject(Error('Held read never started')),15000))]);await click(page.locator('[data-testid=nav-more]'),'Keep logout reachable');await ready('more');const logout=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/pilot/logout'));await click(page.getByRole('button',{name:'Выйти',exact:true}),'Logout during held response');assert.equal((await logout).status(),200);release();await page.waitForURL('**/pilot/');assert.equal((await context.request.get(base+'/pilot/session')).status(),401);assert.equal(await page.locator('[data-testid=home-expense]').count(),0);c.late_response_did_not_restore_owner_ui=true;
   await workerLogin(page,base,credentials[engine].worker);assert.equal(await page.locator('[data-testid=home-expense]').count(),0);if(paid.source_id)assert.ok([403,404].includes((await context.request.get(base+root+'/owner/captures/'+paid.source_id)).status()));assert.equal((await page.locator('body').innerText()).includes(text),false);c.worker_cannot_read_owner_source=true;c.after=await observe('after');assert.deepEqual(c.after,c.before,'Capture security faults created business effects');
  });
  // Fixed diagnostic matrix. Fresh context per arm, two observed predecessor
@@ -268,14 +287,13 @@ for(const [engine,browserType] of engines){
  for(const arm of bootstrapArms){
   await resetFixtureRateLimits(); // Existing offline disposable-TEST fixture only.
   await run(arm,async h=>{
-   const {c,page,context,config,root,ready,read,stage,click,observe,checkpoint,clickReload}=h;
+   const {c,page,context,config,root,ready,read,stage,click,observe,checkpoint,clickReload,retainRoute}=h;
    assert.ok(c.diagnostics_available,'Matrix requires metadata diagnostics');
    const began=Date.now(),pattern='**/owner/home',text=fixture('T01').input;
    c.business_writes=[];c.route_events=[];c.trials=[];
    const note=(event,extra={})=>{assert.ok(c.route_events.length<100,'Bounded route evidence overflow');c.route_events.push({event,atMs:Date.now()-began,...extra});};
    const writes=request=>{const method=request.method(),pathname=new URL(request.url()).pathname;if(pathname.startsWith('/v1/')&&!['GET','HEAD','OPTIONS'].includes(method))c.business_writes.push({method,path:safePath(request.url())});};
    page.on('request',writes);
-   const removeRoute=async(matcher,handler)=>{try{await page.unroute(matcher,handler);}catch{c.route_cleanup_failed=true;}};
    const freezeFailure=async error=>{
     if(c.first_failure)return;c.first_failure={stage:c.stage,message:redactPilot(error.message)};await write();
     try{await checkpoint('first-failure');}catch{c.first_failure_diagnostic_failed=true;}
@@ -292,23 +310,23 @@ for(const [engine,browserType] of engines){
    const onFailed=request=>{const id=readEvents.get(request);if(id)note('requestfailed',{id});};
    page.on('request',onRequest);page.on('response',onResponse);page.on('requestfinished',onFinished);page.on('requestfailed',onFailed);
    const coldReload=async(transport,position)=>{
-    const trial={transport,position,status:'RUNNING',atMs:Date.now()-began};c.trials.push(trial);await stage(position+'_'+transport);
+    const trial={transport,position,status:'RUNNING',atMs:Date.now()-began,interception_at_start:c.retained_routes?.length?'retained_predecessor':'none'};c.trials.push(trial);await stage(position+'_'+transport);
     let entered=0,fulfilled=0,handlerFailure=false;
     const handler=async route=>{entered++;note('handler_entered',{transport,position});try{
-     if(['one_shot_503','persistent_503'].includes(transport)&&entered===1)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST transport failure'})});
-     else if(transport==='persistent_503'){await route.continue();note('handler_continued',{transport,position});}
+     if(['single_503_retained','persistent_503'].includes(transport)&&entered===1)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST transport failure'})});
      else {const response=await route.fetch({timeout:25000});assert.equal(response.status(),200,'Pass-through must use the actual server 200');note('handler_fetched',{transport,position,status:response.status()});await route.fulfill({response});}
      fulfilled++;note('handler_fulfilled',{transport,position});
     }catch{handlerFailure=true;note('handler_failed',{transport,position});await route.abort('failed').catch(()=>{});}};
-    if(transport!=='unrouted_200')await page.route(pattern,handler,transport==='persistent_503'?{}:{times:1});
+    let cleanup;trial.route={};if(transport!=='normal_200')cleanup=await installRetainedReadRoute(page,pattern,handler,trial.route);
     try{
      await page.reload();await ready('home');
      assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'render-returned');
-     assert.equal(handlerFailure,false,'Intercepted read failed');assert.equal(entered,transport==='unrouted_200'?0:1);assert.equal(fulfilled,entered);
-     trial.status='PASS';trial.elapsed_ms=Date.now()-began-trial.atMs;trial.handler_entered=entered;trial.handler_fulfilled=fulfilled;
+     assert.equal(handlerFailure,false,'Intercepted read failed');assert.equal(entered,transport==='normal_200'?0:1);assert.equal(fulfilled,entered);
+     trial.status='PASS';trial.elapsed_ms=Date.now()-began-trial.atMs;trial.handler_entered=entered;trial.handler_fulfilled=fulfilled;trial.injected_503_count=['single_503_retained','persistent_503'].includes(transport)?1:0;
+     if(cleanup){assert.equal(trial.route.first_calls,1);assert.deepEqual(trial.route.observed_statuses,[trial.injected_503_count?503:200]);}
      assert.ok(await checkpoint(position.replaceAll('_','-')+'-'+transport.replaceAll('_','-')),'Missing per-iteration diagnostics');
     }catch(error){trial.status='FAIL';trial.elapsed_ms=Date.now()-began-trial.atMs;await freezeFailure(error);throw error;}
-    finally{if(transport!=='unrouted_200')await removeRoute(pattern,handler);}
+    finally{if(cleanup)await cleanup().catch(()=>{c.route_cleanup_failed=true;});}
    };
    c.boundary_before=await observe('matrix-before',true);let primaryError;
    try{
@@ -320,7 +338,7 @@ for(const [engine,browserType] of engines){
      let release,enter,heldRequest;const gate=new Promise(resolve=>release=resolve),entered=new Promise(resolve=>enter=resolve);
      const matcher=url=>url.pathname===root+'/owner/captures';
      const handler=async route=>{heldRequest=route.request();note('timeout_handler_entered');enter();await gate;try{await route.continue();note('timeout_handler_released');}catch{note('timeout_handler_release_failed');}};
-     await page.route(matcher,handler,{times:1});
+     await retainRoute(matcher,handler,'held-bootstrap-deadline');
      try{
       const reloadStarted=Date.now();await page.reload();await bounded(entered,'Bootstrap read was not intercepted');
       // Existing application deadline remains 15 seconds. This observation has
@@ -335,12 +353,12 @@ for(const [engine,browserType] of engines){
       try{release();c.late_read=await bounded(terminal.promise,'Released bootstrap read never reached terminal observation',25000);}finally{terminal.dispose();}
       assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');assert.equal(await page.locator('form,input,textarea,select,.dock').count(),0);
       await sameDraft('capture/expense',text,originalDraft);c.late_response_fenced=true;
-      await page.unroute(matcher,handler);await stage('visible_manual_reload');await clickReload(retry,'Use visible cold-bootstrap recovery');await ready('capture/expense');
+      await stage('visible_manual_reload');await clickReload(retry,'Use visible cold-bootstrap recovery');await ready('capture/expense');
       assert.ok(await page.locator('[name=text]').inputValue()===text,'Manual recovery lost draft content');await sameDraft('capture/expense',text,originalDraft);
       const authenticated=await read('/pilot/session');assert.equal(authenticated.role,'owner');assert.equal(authenticated.participant_id,config.participant_id);
       const recoveredImage=`${engine}-${arm}-390-manual-recovery.png`;await page.screenshot({path:path.join(out,recoveredImage),fullPage:false});result.screenshots.push(recoveredImage);
       c.same_draft_after_recovery=true;c.authenticated_recovery=true;assert.ok(await checkpoint('manual-recovery-complete'),'Missing recovery diagnostics');
-     }catch(error){await freezeFailure(error);throw error;}finally{release();await removeRoute(matcher,handler);}
+     }catch(error){await freezeFailure(error);throw error;}finally{release();}
     }else{
      // Repeat the actual expiry/re-login predecessor without submitting a
      // business write: the real preflight 401 must stop that request entirely.
@@ -349,15 +367,15 @@ for(const [engine,browserType] of engines){
      const denied=page.waitForResponse(r=>r.request().method()==='GET'&&r.url().endsWith('/pilot/session'));await click(page.locator('[data-form=capture] button[type=submit]'),'Attempt matrix save after actual expiry');assert.equal((await denied).status(),401);await page.waitForURL('**/pilot/**');
      await ownerLogin(page,base,{navigate:false});await page.goto(base+'/r3/connected.html#capture/expense');await ready('capture/expense');await sameDraft('capture/expense',text,originalDraft);c.same_draft_after_relogin=true;
      await page.goto(base+'/r3/connected.html#home');await ready('home');
-     const transport={BOOTSTRAP_NORMAL:'unrouted_200',BOOTSTRAP_ROUTED:'routed_real_200',BOOTSTRAP_503:'one_shot_503',BOOTSTRAP_503_PERSISTENT:'persistent_503'}[arm];
+     const transport={BOOTSTRAP_NORMAL:'normal_200',BOOTSTRAP_ROUTED:'routed_real_200',BOOTSTRAP_503:'single_503_retained',BOOTSTRAP_503_PERSISTENT:'persistent_503'}[arm];
      await coldReload(transport,'after_relogin');
      // Controls need the same unavailable-section Retry predecessor. This one
      // extra 503 reload is explicitly recorded as setup, never as a clean200.
-     if(!['one_shot_503','persistent_503'].includes(transport))await coldReload('one_shot_503','held_edit_setup');
+     if(!['single_503_retained','persistent_503'].includes(transport))await coldReload('single_503_retained','held_edit_setup');
      await stage('held_read_new_edit_predecessor');
      let release,enter,handlerFailure=false;const gate=new Promise(resolve=>release=resolve),entered=new Promise(resolve=>enter=resolve);
      const handler=async route=>{note('edit_handler_entered');try{const response=await route.fetch({timeout:25000});assert.equal(response.status(),200);note('edit_handler_fetched',{status:200});enter();await gate;await route.fulfill({response});note('edit_handler_fulfilled');}catch{handlerFailure=true;note('edit_handler_failed');enter();await route.abort('failed').catch(()=>{});}};
-     await page.route(pattern,handler,{times:1});
+     await retainRoute(pattern,handler,'held-edit-predecessor');
      try{
       await click(page.getByRole('button',{name:/^Повторить загрузку/}),'Retry held real matrix read');await bounded(entered,'Held matrix edit read never started');assert.equal(handlerFailure,false);
       await click(page.locator('[data-testid=radial-toggle]'),'Open new draft while matrix read waits');await click(page.locator('[data-testid=capture-text]'),'Enter matrix text draft');await ready('capture/text');
@@ -370,7 +388,7 @@ for(const [engine,browserType] of engines){
       c.delayed_read_did_not_overwrite_edit=true;
       await page.goto(base+'/r3/connected.html#home');await ready('home');await coldReload(transport,'after_held_edit');
       await sameDraft('capture/text',newText,newDraft);await sameDraft('capture/expense',text,originalDraft);c.both_drafts_retained=true;
-     }catch(error){await freezeFailure(error);throw error;}finally{release();await removeRoute(pattern,handler);}
+     }catch(error){await freezeFailure(error);throw error;}finally{release();}
     }
    }catch(error){primaryError=error;}
    finally{
