@@ -237,6 +237,7 @@ try {
     active=wp; await wp.reload(); await wp.locator('#worker-app h1').waitFor();
     await click(wp,wp.locator('#worker-day-open'),'Worker reopens DayWorkers');
     await click(wp,wp.locator('[data-day-request="'+requestId+'"]'),'Worker opens approved request');
+    await wp.getByRole('heading',{level:1,name:request.current_plan.work,exact:true}).waitFor({state:'visible'});
     await click(wp,wp.locator('[data-day-action=actual]'),'Worker records actual dated work');
     const actualForm=wp.locator('#worker-day-form');
     await field(wp,'event_date',setup.dates[index],actualForm); await field(wp,'people',people,actualForm);
@@ -248,6 +249,7 @@ try {
       await wp.reload(); await wp.locator('#worker-day-open').waitFor();
       await click(wp,wp.locator('#worker-day-open'),'Reopen DayWorkers after lost actual response');
       await click(wp,wp.locator('[data-day-request="'+requestId+'"]'),'Reopen original request after lost actual response');
+      await wp.getByRole('heading',{level:1,name:request.current_plan.work,exact:true}).waitFor({state:'visible'});
       await click(wp,wp.locator('[data-day-action=actual]'),'Recover saved pending original actual');
       assert.equal(await wp.locator('#worker-day-form [name=people]').inputValue(),people);
     };
