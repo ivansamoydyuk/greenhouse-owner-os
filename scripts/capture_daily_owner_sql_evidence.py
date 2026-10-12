@@ -23,9 +23,9 @@ from greenhouse_owner_os.services.reconciliation import reconcile
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--prepare',action='store_true');parser.add_argument('--credentials')
-parser.add_argument('--before');parser.add_argument('--probe',action='store_true')
+parser.add_argument('--before');parser.add_argument('--probe',action='store_true');parser.add_argument('--probe-boundary',action='store_true')
 parser.add_argument('--verify');parser.add_argument('--baseline');parser.add_argument('--output')
-a=parser.parse_args();assert sum(bool(x) for x in (a.prepare,a.before,a.probe,a.verify))==1
+a=parser.parse_args();assert sum(bool(x) for x in (a.prepare,a.before,a.probe,a.probe_boundary,a.verify))==1
 url=os.environ['TEST_DATABASE_URL'];require_disposable_database(url,'test')
 assert os.environ.get('APP_ENV')=='test' and os.environ.get('R3_DAILY_PILOT')=='1' and os.environ.get('PILOT_LOCAL_TEST')=='1'
 sha=os.environ['OWNER_PREVIEW_FEATURE_SHA'];sf=make_session_factory(url)
@@ -35,6 +35,10 @@ TABLES=('finance.obligations','finance.payments','finance.direct_expenses','fina
 # Inventory movements are append-only rows keyed by seq, not a UUID id.
 ROW_KEYS={'core.confirmation_effects':'proposal_id','inventory.movements':'seq'}
 UNCHANGED=('finance.advances','finance.owner_fundings','finance.advance_applications','finance.direct_settlements','finance.own_account_transfers','inventory.products','harvest.worker_reports','harvest.depot_settlements')
+# Exact opaque row digests add the intake/processing boundary without exposing
+# original bytes, OCR output, draft text or authentication/session material.
+BOUNDARY_TABLES=('core.inbox_items','core.processing_jobs','core.extraction_runs','core.proposed_actions','core.proposal_revisions','core.proposal_actions','core.owner_recovery_links','core.owner_tasks')
+BOOTSTRAP_ARMS={'BOOTSTRAP_NORMAL','BOOTSTRAP_ROUTED','BOOTSTRAP_503','BOOTSTRAP_503_PERSISTENT','BOOTSTRAP_TIMEOUT'}
 def normalized(obj):return json.loads(json.dumps(obj,sort_keys=True,default=str))
 def write(filename,value):
  p=Path(filename);p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(normalized(value),ensure_ascii=False,indent=2)+'\n')
@@ -50,6 +54,11 @@ def snapshot(db,e):
  tables['finance.obligation_balances']=ordered(rows(db,'SELECT * FROM finance.obligation_balances WHERE entity_id=:e',e=e))
  tables['cash']=ordered(rows(db,'SELECT b.* FROM finance.money_account_balances b JOIN finance.money_accounts a ON a.id=b.money_account_id WHERE a.entity_id=:e',e=e))
  return dict(sha=sha,entity_id=str(e),tables=tables)
+
+def boundary_snapshot(db,e):
+ value=snapshot(db,e)
+ value['capture_boundary']={table:[r['row_sha256'] for r in rows(db,"SELECT encode(sha256(convert_to(to_jsonb(t)::text,'UTF8')),'hex') AS row_sha256 FROM "+table+" t WHERE entity_id=:e ORDER BY row_sha256",e=e)] for table in BOUNDARY_TABLES}
+ return value
 
 if a.prepare:
  from fastapi.testclient import TestClient
@@ -86,9 +95,9 @@ if a.prepare:
   assert len(sole)==1 and str(sole[0]['obligation_id'])==debt['id'] and sole[0]['remaining_amount']==Decimal('5000'), 'T03 must begin with one exact pre-existing repair payable'
 
  write(a.output,dict(sha=sha,entity_id=str(e),cash_id=cash['id'],product_id=fixture['product']['id'],location_id=fixture['location']['id'],synthetic_only=True,financial_fixture='One posted 5000 TRY T03 repair payable; captured before --before, no payment',engine=engine,**refs));print('CAPTURE_DAILY_OWNER_REFERENCES_READY');raise SystemExit
-if a.before or a.probe:
+if a.before or a.probe or a.probe_boundary:
  with sf() as db:
-  e=ro(db);value=snapshot(db,e)
+  e=ro(db);value=boundary_snapshot(db,e) if a.probe_boundary else snapshot(db,e)
   if a.before:value['source_ids']=[str(v['id']) for v in rows(db,"SELECT id FROM core.inbox_items WHERE entity_id=:e AND source='owner:r2'",e=e)]
  write(a.before or a.output,value);print('CAPTURE_DAILY_OWNER_READ_ONLY_SNAPSHOT_READY');raise SystemExit
 
@@ -138,7 +147,10 @@ try:
    return p,domain
   for engine in result['records']:
    assert engine['status']=='COMPLETE' and engine['entity_id']==str(e)
-   c={c['id']:c for c in engine['cases']};assert set(c)=={'T01','T03','T04','P01','P02','SECURITY'}
+   c={c['id']:c for c in engine['cases']};expected_matrix=BOOTSTRAP_ARMS if mode=='candidate' else set()
+   assert len(c)==len(engine['cases']) and set(c)=={'T01','T03','T04','P01','P02','SECURITY'}|expected_matrix
+   assert set(result['bootstrap_matrix']['cases'])==expected_matrix and result['bootstrap_matrix']['application_deadline_ms']==15000
+   assert result['bootstrap_matrix']['transport_positions']==['after_relogin','after_held_edit']
    assert all(v['status']==expected for v in c.values())
    paid=c['T01'];src=source(paid);p,expense=posted(paid,'DIRECT_EXPENSE','650')
    assert expense['money_account_id']==UUID(setup['cash_id']) and expense['counterparty_id'] is None
@@ -232,8 +244,38 @@ try:
    security=c['SECURITY'];assert security['before']==security['after']
    assert security['expiry_preflight']==dict(method='GET',path='/pilot/session',status=401,capture_posts=0), 'Expired owner write was not blocked by the real session preflight'
    assert db.scalar(text('SELECT count(*) FROM core.inbox_items WHERE entity_id=:e AND locator=:l'),dict(e=e,l=security['client_capture_id']))==0, 'Expired authenticated save created a source'
+   assert not security.get('retained_route_cleanup_failed')
+   faults={v['label']:v for v in security['retained_routes']};assert set(faults)=={'before-held-edit','held-edit','before-held-logout','held-logout'}
+   assert all(v['first_calls']==1 and v['lifecycle']=='retained_until_explicit_cleanup' and v['cleaned_up'] for v in faults.values())
+   assert faults['before-held-edit']['observed_statuses']==faults['before-held-logout']['observed_statuses']==[503]
    for flag in ('storage_failure_visible','encrypted_draft','expired_session_retained_draft','late_response_did_not_restore_owner_ui','worker_cannot_read_owner_source','delayed_read_did_not_overwrite_edit'):assert security[flag] is True,flag
    proof['cases'].append(dict(engine=engine['engine'],id='SECURITY',effects=0,checks={flag:security[flag] for flag in ('storage_failure_visible','encrypted_draft','expired_session_retained_draft','late_response_did_not_restore_owner_ui','worker_cannot_read_owner_source','delayed_read_did_not_overwrite_edit')}))
+   for arm in sorted(expected_matrix):
+    probe=c[arm];assert probe['status']=='PASS' and probe['exact_sql_no_write'] and probe['business_writes']==[]
+    assert probe['boundary_before']==probe['boundary_after']==boundary_snapshot(db,e), 'Diagnostic SQL boundary changed or does not match the independent final read'
+    assert set(probe['boundary_after']['capture_boundary'])==set(BOUNDARY_TABLES)
+    assert all(len(h)==64 for hashes in probe['boundary_after']['capture_boundary'].values() for h in hashes)
+    assert probe['encrypted_draft'] and probe['diagnostic_checkpoints'] and not probe.get('first_failure') and not probe.get('retained_route_cleanup_failed')
+    assert all(v['first_calls']==1 and v['lifecycle']=='retained_until_explicit_cleanup' and v['cleaned_up'] for v in probe['retained_routes'])
+    assert db.scalar(text('SELECT count(*) FROM core.inbox_items WHERE entity_id=:e AND locator=:l'),dict(e=e,l=probe['client_capture_id']))==0, 'Diagnostic draft created a source'
+    if arm=='BOOTSTRAP_TIMEOUT':
+     assert probe['trials']==[] and probe['controlled_timeout_elapsed_ms']>=14500
+     for flag in ('controlled_recovery_visible','late_response_fenced','same_draft_after_recovery','authenticated_recovery'):assert probe[flag] is True,flag
+     assert probe['late_read']['status']==200 and probe['late_read']['terminal'] in ('requestfinished','requestfailed')
+    else:
+     transport={'BOOTSTRAP_NORMAL':'normal_200','BOOTSTRAP_ROUTED':'routed_real_200','BOOTSTRAP_503':'single_503_retained','BOOTSTRAP_503_PERSISTENT':'persistent_503'}[arm]
+     targets=[trial for trial in probe['trials'] if trial['position']!='held_edit_setup']
+     assert [(trial['position'],trial['transport']) for trial in targets]==[('after_relogin',transport),('after_held_edit',transport)]
+     assert len(probe['trials'])==(2 if arm in ('BOOTSTRAP_503','BOOTSTRAP_503_PERSISTENT') else 3)
+     for trial in probe['trials']:
+      assert trial['status']=='PASS' and trial['handler_entered']==trial['handler_fulfilled']==(0 if trial['transport']=='normal_200' else 1)
+      assert trial['injected_503_count']==(1 if trial['transport'] in ('single_503_retained','persistent_503') else 0)
+      if trial['transport']!='normal_200':
+       assert trial['route']['lifecycle']=='retained_until_explicit_cleanup' and trial['route']['first_calls']==1 and trial['route']['cleaned_up']
+       assert trial['route']['observed_statuses']==[503 if trial['injected_503_count'] else 200]
+      if trial['position']=='held_edit_setup':assert trial['transport']=='single_503_retained'
+     for flag in ('same_draft_after_relogin','delayed_read_did_not_overwrite_edit','both_drafts_retained'):assert probe[flag] is True,flag
+    proof['cases'].append(dict(engine=engine['engine'],id=arm,effects=0,business_writes=0,exact_source_proposal_job_boundary=True,controlled_timeout_recovery=arm=='BOOTSTRAP_TIMEOUT',trials=probe['trials']))
   after=snapshot(db,e)
   current_sources={str(v['id']) for v in rows(db,"SELECT id FROM core.inbox_items WHERE entity_id=:e AND source='owner:r2'",e=e)}
   assert current_sources-set(before['source_ids'])==expected_sources, 'Unexpected source root or duplicate source from retry/security fault'
