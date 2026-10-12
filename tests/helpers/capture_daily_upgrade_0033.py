@@ -19,8 +19,19 @@ from tests.integration.test_postgres_owner_expense_recovery import recover, fill
 from tests.integration.test_postgres_capture_daily_money import party, handoff
 
 
+def validated_database_url():
+    # Alembic env.py honours DATABASE_URL over the configured test URL. Validate
+    # both routing inputs before opening any connection or dropping any schema.
+    url=os.environ['TEST_DATABASE_URL']
+    require_disposable_database(url,os.environ.get('APP_ENV'))
+    override=os.environ.get('DATABASE_URL')
+    if override and override != url:
+        raise ValueError('DATABASE_URL must exactly match TEST_DATABASE_URL for upgrade proof')
+    return url
+
+
 def main():
-    url=os.environ['TEST_DATABASE_URL'];require_disposable_database(url,os.environ.get('APP_ENV'))
+    url=validated_database_url()
     engine=create_engine(url)
     with engine.begin() as db:
         for schema in ('workers','inventory','harvest','audit','finance','core'):

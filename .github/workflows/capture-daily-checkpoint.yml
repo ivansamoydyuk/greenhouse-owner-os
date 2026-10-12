@@ -1,7 +1,7 @@
 name: Capture daily real OCR checkpoint
 on:
   push:
-    branches: [14-capture-daily-completion]
+    branches: [14-capture-daily-completion, 01-architecture-database]
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [baseline, candidate]
+        mode: [candidate]
         engine: [chromium, webkit]
     env:
       APP_ENV: test

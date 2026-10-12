@@ -182,6 +182,7 @@ try:
    balance=one('SELECT * FROM finance.obligation_balances WHERE entity_id=:e AND obligation_id=:id',id=payable['id']);assert balance['remaining_amount']==Decimal('500')
    proof['cases'].append(dict(engine=engine['engine'],id='P02',source_id=late['source_id'],original_sha256=late['source_sha256'],receipt_id=str(event['id']),physical_movements=1,physical_quantity='100.000',stock_cost='UNKNOWN_UNCHANGED',payable_id=str(payable['id']),payable='500.00',invoice_links=1,payments=0,metrics=late['metrics'],barriers=late['barriers']))
    security=c['SECURITY'];assert security['before']==security['after']
+   assert security['expiry_preflight']==dict(method='GET',path='/pilot/session',status=401,capture_posts=0), 'Expired owner write was not blocked by the real session preflight'
    assert db.scalar(text('SELECT count(*) FROM core.inbox_items WHERE entity_id=:e AND locator=:l'),dict(e=e,l=security['client_capture_id']))==0, 'Expired authenticated save created a source'
    for flag in ('storage_failure_visible','encrypted_draft','expired_session_retained_draft','late_response_did_not_restore_owner_ui','worker_cannot_read_owner_source','delayed_read_did_not_overwrite_edit'):assert security[flag] is True,flag
    proof['cases'].append(dict(engine=engine['engine'],id='SECURITY',effects=0,checks={flag:security[flag] for flag in ('storage_failure_visible','encrypted_draft','expired_session_retained_draft','late_response_did_not_restore_owner_ui','worker_cannot_read_owner_source','delayed_read_did_not_overwrite_edit')}))

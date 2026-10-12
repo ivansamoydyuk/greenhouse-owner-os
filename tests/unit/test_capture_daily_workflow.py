@@ -33,3 +33,27 @@ def test_baseline_only_copies_measurement_files():
     assert 'cp -R tests/fixtures/capture_daily_assets' in selection
     assert 'prototype/' not in selection
     assert 'cp src/' not in selection
+
+
+def test_capture_final_gates_cover_feature_and_merged_default():
+    for path in (WORKFLOW, Path('.github/workflows/postgresql-verification.yml'), Path('.github/workflows/r3-connected-pilot.yml')):
+        workflow = yaml.safe_load(path.read_text())
+        triggers = workflow.get('on', workflow.get(True))
+        assert '14-capture-daily-completion' in triggers['push']['branches']
+        assert '01-architecture-database' in triggers['push']['branches']
+        assert workflow['permissions'] == {'contents': 'read'}
+    connected = yaml.safe_load(Path('.github/workflows/r3-connected-pilot.yml').read_text())
+    for job in connected['jobs'].values():
+        if 'if' in job:
+            assert "github.ref_name == '14-capture-daily-completion'" in job['if']
+        for step in job['steps']:
+            condition = step.get('if', '')
+            if "github.ref_name == '01-architecture-database'" in condition:
+                assert "github.ref_name == '14-capture-daily-completion'" in condition
+    pg = Path('.github/workflows/postgresql-verification.yml').read_text()
+    assert 'python tests/helpers/capture_daily_upgrade_0033.py | tee artifacts/capture-populated-upgrade-0033.log' in pg
+    capture = yaml.safe_load(WORKFLOW.read_text())
+    assert capture['jobs']['corpus-browser-sql']['strategy']['matrix']['mode'] == ['candidate']
+    text = WORKFLOW.read_text()
+    assert 'node tests/e2e/capture-daily-owner-journeys.mjs' in text
+    assert 'capture_daily_owner_sql_evidence.py --verify' in text

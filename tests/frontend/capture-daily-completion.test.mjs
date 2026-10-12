@@ -185,3 +185,15 @@ test('manual exhausted-document recovery is offered only by server capability an
  const s={id:'original',state:'FAILED',job:{state:'FAILED',attempts:3},retryable:false,proposals:[]};
  assert.doesNotMatch(run(s),/Ввести вручную/);assert.match(run({...s,manual_document_recovery_available:true}),/<button data-action="prepare:original">Ввести вручную/);assert.doesNotMatch(run({...s,manual_document_recovery_available:true}),/Повторить подготовку/);
 });
+
+
+test('long invoice description is collapsed accessibly without truncating authoritative text or hiding ordinary purpose',()=>{
+ const code=extract('function invoiceDescriptionView(', 'function invoiceWorkflowView(');
+ const view=new Function('description','e',code+';return invoiceDescriptionView(description);');
+ const escape=s=>s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+ const short='Ремонт насоса';assert.deepEqual(view(short,escape),{facts:[['За что',short]],detail:''});
+ assert.deepEqual(view('',escape),{facts:[['За что','Нужно уточнить']],detail:''});
+ const long='FATURA KNO3 100 kg 5 TRY 500 TRY <source>\n'.repeat(10),rendered=view(long,escape);
+ assert.deepEqual(rendered.facts,[]);assert.match(rendered.detail,/<details class="source-provenance invoice-document-description">/);assert.match(rendered.detail,/<summary>Описание из документа<\/summary>/);assert.ok(rendered.detail.includes(escape(long)));assert.doesNotMatch(rendered.detail,/<details[^>]*\sopen(?:\s|>)/);
+ const workflow=extract('function invoiceWorkflowView(', 'function transferForm(');assert.match(workflow,/description=invoiceDescriptionView\(f.description\)/);assert.match(workflow,/\['Сумма',f.amount/);assert.match(workflow,/\['Дата',displayDate\(f.event_date/);assert.match(workflow,/\['Поставщик',f.counterparty_id/);assert.match(workflow,/\['amount','currency','event_date','counterparty_id','description','due_date'\]/);
+});
