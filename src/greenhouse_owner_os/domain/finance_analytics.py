@@ -28,6 +28,8 @@ class AnalyticsSource(StrictModel):
     harvest_settlement_id: UUID | None = None
     evidence_id: UUID | None = None
     replacement_of_id: UUID | None = None
+    day_actual_id: UUID | None = None
+    day_request_id: UUID | None = None
 
 
 class AnalyticsAllocation(StrictModel):

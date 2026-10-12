@@ -254,7 +254,15 @@ def receipt_status(auth,p,path,key):
         raise HTTPException(422,'Invalid command route')
     path=parsed.path
     operation=None
-    if p['role']=='worker':
+    if p['role']=='worker' and path.startswith('/v1/worker/day-workers/'):
+        root='/v1/worker/day-workers'
+        patterns=[(r'/requests','day_request'),(r'/actuals','day_actual'),(r'/requests/[0-9a-f-]{36}/clarifications','day_clarification')]
+        operation=next((op for pattern,op in patterns if re.fullmatch(pattern,path[len(root):])),None)
+        if not operation:raise HTTPException(403,'Worker receipt scope denied')
+        if operation=='day_clarification':
+            from greenhouse_owner_os.services.day_workers import DayWorkersService
+            DayWorkersService(auth.factory).get_request(p['entity_id'],p['actor_id'],UUID(path.split('/')[-2]),p['worker_id'])
+    elif p['role']=='worker':
         m=re.fullmatch(r'/v1/worker/(tasks|fertilizer)/([0-9a-f-]{36})/(actions|reports|responses)',path)
         if not m:raise HTTPException(403,'Worker receipt scope denied')
         kind,rid,action=m.groups()
@@ -275,6 +283,11 @@ def receipt_status(auth,p,path,key):
             if not path.startswith(root+'/'):raise HTTPException(403,'Entity receipt scope denied')
             relative=path[len(root):]
             patterns=[
+                (r'/day-workers/scopes','day_scope'),(r'/day-workers/requests','day_request'),
+                (r'/day-workers/requests/[0-9a-f-]{36}/decisions','day_decision'),
+                (r'/day-workers/actuals','day_actual'),
+                (r'/day-workers/actuals/[0-9a-f-]{36}/confirmations','day_confirmation'),
+                (r'/day-workers/actuals/[0-9a-f-]{36}/accruals','day_accrual'),
                 (r'/owner/captures','owner_capture'),
                 (r'/owner/confirmations/[0-9a-f-]{36}/confirm','owner_confirm'),
                 (r'/owner/confirmations/[0-9a-f-]{36}/revise','owner_edit'),
@@ -304,6 +317,9 @@ def receipt_status(auth,p,path,key):
     # One trusted actor can own more than one TEST entity. Prove the stored
     # command resource's entity, including collection/create routes with no ID.
     tables={
+        'day_scope':'workers.greenhouse_scope','day_request':'workers.day_requests',
+        'day_decision':'workers.day_decisions','day_clarification':'workers.day_clarifications',
+        'day_actual':'workers.day_actuals','day_confirmation':'workers.day_confirmations','day_accrual':'workers.day_accruals',
         'owner_capture':'core.inbox_items','owner_confirm':'core.proposed_actions',
         'owner_edit':'core.proposed_actions','owner_defer':'core.proposed_actions','owner_reject':'core.proposed_actions',
         'inventory_product':'inventory.products','inventory_location':'inventory.locations',
@@ -324,12 +340,17 @@ def receipt_status(auth,p,path,key):
         if not table:return {'state':'UNKNOWN','retry_same_identity':True}
         entity=u.session.scalar(text('SELECT entity_id FROM '+table+' WHERE id=:id'),dict(id=receipt[1]))
         if entity!=p['entity_id']:return {'state':'UNKNOWN','retry_same_identity':True}
+    if p['role']=='worker' and operation.startswith('day_'):
+        from greenhouse_owner_os.services.day_workers import DayWorkersService
+        svc=DayWorkersService(auth.factory)
+        if operation=='day_actual':svc.get_actual(p['entity_id'],p['actor_id'],receipt[1],p['worker_id'])
+        else:svc.get_request(p['entity_id'],p['actor_id'],UUID(receipt[0]['request_id']) if operation=='day_clarification' else receipt[1],p['worker_id'])
     # Status belongs to the exact target, not another command sharing an operation.
     targets=re.findall(r'/([0-9a-f-]{36})(?=/|$)',path)
     targets=[v for v in targets if v!=str(p['entity_id'])]
     if targets:
         response=receipt[0]
-        field='plan_id' if '/fertilizer/' in path else 'task_id' if '/tasks/' in path else 'id'
+        field=('request_id' if operation in ('day_decision','day_clarification') else 'actual_id') if '/day-workers/' in path else 'plan_id' if '/fertilizer/' in path else 'task_id' if '/tasks/' in path else 'id'
         target=response.get(field) if isinstance(response,dict) else None
         if operation in ('fertilizer_plan','task_action'):target=response.get('id')
         if str(target)!=targets[-1]:return {'state':'UNKNOWN','retry_same_identity':True}

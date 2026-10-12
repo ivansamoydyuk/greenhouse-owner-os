@@ -127,6 +127,10 @@ def create_app(*, finance_service: FinanceService, actor_provider, reference_ser
 
     from .finance_analytics import mount_finance_analytics
     mount_finance_analytics(app,finance_service,actor_provider)
+    from .day_workers import mount_day_workers
+    mount_day_workers(app,finance_service,actor_provider,worker_provider)
+    from .greenhouse_daily import mount_greenhouse_daily
+    mount_greenhouse_daily(app,finance_service,actor_provider)
     from .workers import mount_workers
     mount_workers(app,finance_service,actor_provider,worker_provider)
     from .fertilizer import mount_fertilizer

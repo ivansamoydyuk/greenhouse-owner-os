@@ -51,7 +51,8 @@ def main():
         starting_version=db.scalar(text('SELECT version_num FROM alembic_version'))
     assert starting_version=='20261011_0032'
     print('Verified starting Alembic revision: '+starting_version)
-    before=snapshot();command.upgrade(config,'head');after=snapshot();assert after==before
+    # This retained historical proof ends at 0033 even after later migrations.
+    before=snapshot();command.upgrade(config,'20261012_0033');after=snapshot();assert after==before
     digest=lambda data:hashlib.sha256(json.dumps(data,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
     print(json.dumps({'proof':'populated_0032_to_0033','before_sha256':digest(before),'after_sha256':digest(after),'table_rows':{table:len(items) for table,items in before.items()}},sort_keys=True))
     assert recover(i,s,origin,key='legacy-handoff')['id']==target['id']

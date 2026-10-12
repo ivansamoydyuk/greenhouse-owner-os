@@ -5363,6 +5363,550 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/day-workers:
+    get:
+      summary: Overview
+      operationId: overview_v1_entities__entity_id__day_workers_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/day-workers/scopes:
+    post:
+      summary: Scope
+      operationId: scope_v1_entities__entity_id__day_workers_scopes_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScopeInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/day-workers/requests:
+    post:
+      summary: Request
+      operationId: request_v1_entities__entity_id__day_workers_requests_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/day-workers/requests/{request_id}:
+    get:
+      summary: Get Request
+      operationId: get_request_v1_entities__entity_id__day_workers_requests__request_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/day-workers/requests/{request_id}/decisions:
+    post:
+      summary: Decision
+      operationId: decision_v1_entities__entity_id__day_workers_requests__request_id__decisions_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/day-workers/actuals:
+    post:
+      summary: Actual
+      operationId: actual_v1_entities__entity_id__day_workers_actuals_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DayWorkersActualInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/day-workers/actuals/{actual_id}:
+    get:
+      summary: Get Actual
+      operationId: get_actual_v1_entities__entity_id__day_workers_actuals__actual_id__get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: actual_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Actual Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/day-workers/actuals/{actual_id}/confirmations:
+    post:
+      summary: Confirmation
+      operationId: confirmation_v1_entities__entity_id__day_workers_actuals__actual_id__confirmations_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: actual_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Actual Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmationInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/day-workers/actuals/{actual_id}/accruals:
+    post:
+      summary: Accrual
+      operationId: accrual_v1_entities__entity_id__day_workers_actuals__actual_id__accruals_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: actual_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Actual Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccrualInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/day-workers:
+    get:
+      summary: Worker Overview
+      operationId: worker_overview_v1_worker_day_workers_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /worker/day-workers/requests:
+    post:
+      summary: Worker Request
+      operationId: worker_request_v1_worker_day_workers_requests_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/day-workers/requests/{request_id}:
+    get:
+      summary: Worker Get Request
+      operationId: worker_get_request_v1_worker_day_workers_requests__request_id__get
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/day-workers/requests/{request_id}/clarifications:
+    post:
+      summary: Worker Clarification
+      operationId: worker_clarification_v1_worker_day_workers_requests__request_id__clarifications_post
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClarificationInput'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/day-workers/actuals:
+    post:
+      summary: Worker Actual
+      operationId: worker_actual_v1_worker_day_workers_actuals_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DayWorkersActualInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /worker/day-workers/actuals/{actual_id}:
+    get:
+      summary: Worker Get Actual
+      operationId: worker_get_actual_v1_worker_day_workers_actuals__actual_id__get
+      parameters:
+      - name: actual_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Actual Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/greenhouse-daily:
+    get:
+      summary: Greenhouse Daily
+      operationId: greenhouse_daily_v1_entities__entity_id__greenhouse_daily_get
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: date_from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date From
+      - name: date_to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date To
+      - name: currency
+        in: query
+        required: false
+        schema:
+          type: string
+          default: TRY
+          title: Currency
+      - name: greenhouse_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+      - name: allocation
+        in: query
+        required: false
+        schema:
+          type: string
+          default: all
+          title: Allocation
+      - name: compare_previous
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+          title: Compare Previous
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GreenhouseDaily'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   parameters:
     IdempotencyKey:
@@ -8348,6 +8892,13 @@ components:
           - field_harvest
           - inventory_receipt
           - inventory_transfer
+          - day_request
+          - day_decision
+          - day_clarification
+          - day_actual
+          - day_confirmation
+          - day_accrual
+          - day_scope
           title: Form Kind
         form_id:
           type: string
@@ -9056,6 +9607,18 @@ components:
             format: uuid
           - type: 'null'
           title: Replacement Of Id
+        day_actual_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Day Actual Id
+        day_request_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Day Request Id
       additionalProperties: false
       type: object
       required:
@@ -12387,6 +12950,632 @@ components:
       - reason
       - confirmed
       title: ResolutionInput
+    DailyQuality:
+      properties:
+        quality:
+          type: string
+          enum:
+          - HIGHEST
+          - FIRST
+          - SECOND
+          - UNKNOWN
+          title: Quality
+        net_weight_kg:
+          type: string
+          title: Net Weight Kg
+        share_percent:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Share Percent
+        priced_kg:
+          type: string
+          title: Priced Kg
+        amount:
+          type: string
+          title: Amount
+        weighted_price_per_kg:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Weighted Price Per Kg
+        line_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Line Ids
+      additionalProperties: false
+      type: object
+      required:
+      - quality
+      - net_weight_kg
+      - share_percent
+      - priced_kg
+      - amount
+      - weighted_price_per_kg
+      - line_ids
+      title: DailyQuality
+    DailyGreenhouse:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        area:
+          $ref: '#/components/schemas/DailyArea'
+        finance:
+          $ref: '#/components/schemas/DailyFinance'
+        harvest:
+          $ref: '#/components/schemas/DailyHarvest'
+        work:
+          $ref: '#/components/schemas/DailyWork'
+        comparison:
+          $ref: '#/components/schemas/DailyComparison'
+        links:
+          additionalProperties:
+            type: string
+          type: object
+          title: Links
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      - area
+      - finance
+      - harvest
+      - work
+      - comparison
+      - links
+      title: DailyGreenhouse
+    DailyHarvest:
+      properties:
+        branches:
+          $ref: '#/components/schemas/DailyMetric'
+        depot_kg:
+          $ref: '#/components/schemas/DailyMetric'
+        denominator:
+          $ref: '#/components/schemas/HarvestDenominator'
+        weighted_price_per_kg:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Weighted Price Per Kg
+        priced_kg:
+          type: string
+          title: Priced Kg
+        priced_amount:
+          type: string
+          title: Priced Amount
+        quality_rows:
+          items:
+            $ref: '#/components/schemas/DailyQuality'
+          type: array
+          title: Quality Rows
+        events:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Events
+        field_events:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Field Events
+        months:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Months
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      additionalProperties: false
+      type: object
+      required:
+      - branches
+      - depot_kg
+      - denominator
+      - weighted_price_per_kg
+      - priced_kg
+      - priced_amount
+      - quality_rows
+      - events
+      - field_events
+      - months
+      - warnings
+      title: DailyHarvest
+    DailyComparison:
+      properties:
+        status:
+          type: string
+          enum:
+          - AVAILABLE
+          - NO_PRIOR_SOURCES
+          - UNAVAILABLE
+          title: Status
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        date_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date From
+        date_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Date To
+        current_date_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Current Date From
+        current_date_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Current Date To
+        previous:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Previous
+        current:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Current
+        basis:
+          type: string
+          const: SAME_ELAPSED_SEASON_DAYS_CURRENT_ACTIVE_SOURCES
+          title: Basis
+          default: SAME_ELAPSED_SEASON_DAYS_CURRENT_ACTIVE_SOURCES
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      title: DailyComparison
+    GreenhouseDaily:
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+          title: Schema Version
+          default: 1
+        entity_id:
+          type: string
+          format: uuid
+          title: Entity Id
+        snapshot_at:
+          type: string
+          format: date-time
+          title: Snapshot At
+        filters:
+          $ref: '#/components/schemas/DailyFilters'
+        greenhouses:
+          items:
+            $ref: '#/components/schemas/DailyGreenhouse'
+          type: array
+          title: Greenhouses
+        selected:
+          anyOf:
+          - $ref: '#/components/schemas/DailyGreenhouse'
+          - type: 'null'
+        coverage:
+          additionalProperties: true
+          type: object
+          title: Coverage
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+      additionalProperties: false
+      type: object
+      required:
+      - entity_id
+      - snapshot_at
+      - filters
+      - greenhouses
+      - coverage
+      - warnings
+      title: GreenhouseDaily
+    AccrualInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/OwnerFormSource'
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - confirmed
+      title: AccrualInput
+    DailyFinance:
+      properties:
+        revenue:
+          type: string
+          title: Revenue
+        operating_cost:
+          type: string
+          title: Operating Cost
+        operating_result:
+          type: string
+          title: Operating Result
+        exact_cost:
+          type: string
+          title: Exact Cost
+        virtual_general_cost:
+          type: string
+          title: Virtual General Cost
+        estimated_revenue:
+          type: string
+          title: Estimated Revenue
+        cost_per_kg:
+          $ref: '#/components/schemas/AnalyticsCostPerKg'
+        economic_events:
+          items:
+            $ref: '#/components/schemas/EconomicEvent'
+          type: array
+          title: Economic Events
+        source_count:
+          type: integer
+          title: Source Count
+        state:
+          type: string
+          enum:
+          - CONFIRMED_OPERATIONS
+          - NO_CONFIRMED_OPERATIONS
+          title: State
+        per_da:
+          additionalProperties:
+            anyOf:
+            - type: string
+            - type: 'null'
+          type: object
+          title: Per Da
+        basis:
+          type: string
+          const: CURRENT_ACTIVE_POSTED_ECONOMIC_LEDGER
+          title: Basis
+          default: CURRENT_ACTIVE_POSTED_ECONOMIC_LEDGER
+        complete_production_cost:
+          type: boolean
+          const: false
+          title: Complete Production Cost
+          default: false
+      additionalProperties: false
+      type: object
+      required:
+      - revenue
+      - operating_cost
+      - operating_result
+      - exact_cost
+      - virtual_general_cost
+      - estimated_revenue
+      - cost_per_kg
+      - economic_events
+      - source_count
+      - state
+      - per_da
+      title: DailyFinance
+    DailyWork:
+      properties:
+        tasks:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Tasks
+        attention:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Attention
+        applications:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Applications
+        upcoming_applications:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Upcoming Applications
+        day_workers:
+          additionalProperties: true
+          type: object
+          title: Day Workers
+        current_status_not_historical:
+          type: boolean
+          const: true
+          title: Current Status Not Historical
+          default: true
+      additionalProperties: false
+      type: object
+      required:
+      - tasks
+      - attention
+      - applications
+      - upcoming_applications
+      - day_workers
+      title: DailyWork
+    DailyFilters:
+      properties:
+        date_from:
+          type: string
+          format: date
+          title: Date From
+        date_to:
+          type: string
+          format: date
+          title: Date To
+        inclusive:
+          type: boolean
+          const: true
+          title: Inclusive
+          default: true
+        currency:
+          type: string
+          title: Currency
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        allocation:
+          type: string
+          enum:
+          - all
+          - exact
+          - estimated
+          title: Allocation
+          default: all
+        season_start_year:
+          type: integer
+          title: Season Start Year
+        season_start:
+          type: string
+          format: date
+          title: Season Start
+        season_end:
+          type: string
+          format: date
+          title: Season End
+        season_end_exclusive:
+          type: boolean
+          const: true
+          title: Season End Exclusive
+          default: true
+        basis:
+          type: string
+          const: CURRENT_ACTIVE_NOT_HISTORICAL_AS_OF
+          title: Basis
+          default: CURRENT_ACTIVE_NOT_HISTORICAL_AS_OF
+      additionalProperties: false
+      type: object
+      required:
+      - date_from
+      - date_to
+      - currency
+      - season_start_year
+      - season_start
+      - season_end
+      title: DailyFilters
+    RequestInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/OwnerFormSource'
+        greenhouse_id:
+          type: string
+          format: uuid
+          title: Greenhouse Id
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - greenhouse_id
+      title: RequestInput
+    DailyMetric:
+      properties:
+        value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Value
+        exact_value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Exact Value
+        estimated_value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Estimated Value
+        unallocated_value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Unallocated Value
+        source_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Source Ids
+        source_count:
+          type: integer
+          title: Source Count
+          default: 0
+        missing_count:
+          type: integer
+          title: Missing Count
+          default: 0
+        classification:
+          type: string
+          title: Classification
+      additionalProperties: false
+      type: object
+      required:
+      - value
+      - classification
+      title: DailyMetric
+    ScopeInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/OwnerFormSource'
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      title: ScopeInput
+    ClarificationInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/OwnerFormSource'
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - expected_version
+      title: ClarificationInput
+    DailyArea:
+      properties:
+        area_da:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Area Da
+        status:
+          type: string
+          enum:
+          - VERIFIED_FULL_PERIOD
+          - UNKNOWN
+          - CHANGED_IN_PERIOD
+          title: Status
+        reference_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Reference Ids
+        missing_work_area_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Missing Work Area Ids
+        validity_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Validity From
+        validity_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Validity To
+        basis:
+          type: string
+          const: OWNER_VERIFIED_REFERENCE_VERSIONS
+          title: Basis
+          default: OWNER_VERIFIED_REFERENCE_VERSIONS
+      additionalProperties: false
+      type: object
+      required:
+      - area_da
+      - status
+      - reference_ids
+      - missing_work_area_ids
+      title: DailyArea
+    DayWorkersActualInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/OwnerFormSource'
+        greenhouse_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Greenhouse Id
+        request_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Request Id
+        replaces_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replaces Id
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      title: DayWorkersActualInput
+    DecisionInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/OwnerFormSource'
+        expected_version:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Expected Version
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - expected_version
+      title: DecisionInput
+    ConfirmationInput:
+      properties:
+        source:
+          $ref: '#/components/schemas/OwnerFormSource'
+        confirmed:
+          type: boolean
+          const: true
+          title: Confirmed
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - confirmed
+      title: ConfirmationInput
   responses:
     Conflict:
       description: Version or idempotency conflict

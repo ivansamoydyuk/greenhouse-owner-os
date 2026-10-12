@@ -9,6 +9,13 @@ from .commands import StrictModel
 PREFIX = 'GREENHOUSE_OWNER_FORM_V1\n'
 SOURCE_PREFIX = 'owner_form:v1:'
 FIELDS = {
+    'day_request': {'people','days','work','start_date','note'},
+    'day_decision': {'decision','people','days','work','start_date','note','reason'},
+    'day_clarification': {'text'},
+    'day_actual': {'event_date','people','work','full_day','note','allocations'},
+    'day_confirmation': {'note'},
+    'day_accrual': {'counterparty_id','daily_rate','currency','expense_account_id','rate_basis','due_date'},
+    'day_scope': {'worker_id','greenhouse_id','action','reason'},
     'field_harvest': {'event_date','original_greenhouse','work_area_id','cut_count','field_weight_kg','reporter','notes'},
     'inventory_receipt': {'event_date','product_id','original_product_name','location_id','quantity','unit','notes'},
     'inventory_transfer': {'event_date','product_id','original_product_name','location_id','destination_id','quantity','unit','notes'},
@@ -16,7 +23,7 @@ FIELDS = {
 
 class OwnerFormSource(StrictModel):
     schema_version: Literal[1]
-    form_kind: Literal['field_harvest','inventory_receipt','inventory_transfer']
+    form_kind: Literal['field_harvest','inventory_receipt','inventory_transfer','day_request','day_decision','day_clarification','day_actual','day_confirmation','day_accrual','day_scope']
     form_id: UUID
     captured_at: str = Field(min_length=1,max_length=80)
     timezone: Literal['Europe/Istanbul']

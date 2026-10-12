@@ -1,3 +1,6 @@
+import {greenhouseSelection,greenhouseRoute,greenhouseQuery,greenhouseBackRoute,greenhouseDailyView} from './greenhouse-connected.js';
+import {daySource,dayStored,dayAllocations,dayWorkChoices} from '/assets/day-workers-core.js';
+import {dayWorkersView,dayRequestFormView,dayRequestView,dayDecisionView,dayActualFormView,dayActualView,dayConfirmationView,dayAccrualView,dayAccrualPreview,dayScopesView} from './day-workers-connected.js';
 import {PreparationRefreshWindow,preparationPending,mergeDepotEditor,preservesDepotQualityReview,depotReviewGates,approvedDepotDocumentCount} from './capture-daily.js';
 import {FertilizerDraftWrites} from './fertilizer-draft-writes.js';
 import {ColdBootstrapAttempt} from './cold-bootstrap.js';
@@ -57,6 +60,7 @@ let readRefreshSequence = 0, ownerEditSequence = 0;
 let estimateReview = null;
 let lastHarvestRoute = "harvest";
 let lastFinanceRoute = "money";
+let lastGreenhouseRoute = "greenhouses";
 const harvestScroll = new Map();
 let config = null,
   bootstrapAttempt = null,
@@ -315,7 +319,7 @@ function home() {
   if (!h) return unavailable("Главная");
   const f = h.finance,
     s = h.season || [];
-  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") + btn("Повторить загрузку разделов", "refresh", "secondary") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Деньги и результат</h2>${link("Открыть",lastFinanceRoute,"section-link")}</div><p class="note">Счета, движения, учтённые затраты и теплицы</p>`)}${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", lastHarvestRoute, "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес по ADET</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} ADET</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Поручения работникам · внешняя отправка недоступна.</p></div></div>`;
+  return `<header class="page-header home-header"><div><p class="greeting">Ваше TEST-хозяйство</p><h1>Добрый день</h1><div class="home-date">${icon("calendar")}${e(displayDate(localDay()))}</div></div><span class="brand-mark">${icon("leaf")}</span></header>${Object.keys(failures).length ? notice("Часть разделов не загрузилась: " + Object.keys(failures).join(", ") + ". Главная показывает полученный ответ сервера.", "amber") + btn("Повторить загрузку разделов", "refresh", "secondary") : ""}<div class="home-layout"><div><div class="daily-actions">${link(`${icon("wallet")} Расход`, "capture/expense", "daily-action", "home-expense")}${link(`${icon("harvest")} Сбор урожая`, "quick/harvest", "daily-action", "home-cut")}</div><div class="attention-area">${link(`<span class="attention-icon">${icon("review")}</span><div><strong>Нужно подтвердить</strong><p>Подготовленные источники</p></div><span class="count">${h.confirmations.n}</span>`, "review", "attention", "home-review")}${(h.worker_exceptions || []).map((t) => link(`${icon("warning")}<span>${e(t.title)}</span>${icon("arrow")}`, `worker-task/${t.id}`, "attention-worker")).join("")}</div><div class="financial-grid">${metric("Мне должны", totalByCurrency(f.obligations, "receivable"), "finance/receivable", true)}${metric("Я должен", totalByCurrency(f.obligations, "payable"), "finance/payable")}</div>${panel(`<div class="card-header"><h2>Деньги и результат</h2>${link("Открыть",lastFinanceRoute,"section-link")}</div><p class="note">Счета, движения, учтённые затраты и теплицы</p>`)}${panel(`<div class="card-header"><h2>Урожай сезона</h2>${link("Открыть", lastHarvestRoute, "section-link")}</div>${s.length ? s.map((x) => `<div class="harvest-head"><div><span class="eyebrow">Подтверждено в TEST · депо</span><strong class="harvest-kpi">${e(displayQuantity(x.kg))} <small>кг</small></strong></div></div><div class="harvest-stat-grid"><div><span class="label">Средний вес по ADET</span><strong>${e(displayMetric(x.average_bunch_weight))} кг</strong><small class="coverage">${e(displayQuantity(x.count_covered_kg))} кг / ${e(x.count ?? "UNKNOWN")} ADET</small></div><div><span class="label">Средняя цена</span><strong>${e(displayMetric(x.average_price))} ${e(x.currency)}/кг</strong><small class="coverage">Выручка / подтверждённый вес</small></div></div><p class="note">${x.count_coverage_complete ? "Покрытие количества полное." : "Покрытие количества частичное. Неизвестные ветки не считаются нулём."}</p>`).join("") : notice("Подтверждённых чеков депо в сезоне пока нет. Полевые срезы хранятся отдельно.")}<p class="note">${e(h.season_start)} — ${e(h.season_end)}</p>`)}</div><div><div class="section-heading"><h2>Мои задачи <span class="badge-number">${h.task_count}</span></h2>${link("Все", "tasks")}</div>${panel(taskRows(h.tasks) || EmptyState("Пока пусто", "Личные задачи появятся после подтверждения."))}<div class="section-heading"><h2>Теплицы</h2>${link("Открыть",lastGreenhouseRoute)}</div>${panel(link("Обзор теплиц · урожай, финансы и работы",lastGreenhouseRoute,"section-link"))}<div class="section-heading"><h2>Работники</h2>${link("Открыть", "workers")}</div>${panel(h.worker_exceptions.length ? taskRows(h.worker_exceptions, true) : "<p>Нет необработанных сообщений о проблеме.</p>")}<p class="note">Поручения работникам · внешняя отправка недоступна.</p></div></div>`;
 }
 function reviewList() {
   return (
@@ -1164,7 +1168,7 @@ function workers() {
     notice(
       "Назначение и внутренний жизненный цикл сохраняются в TEST. Внешняя отправка, Telegram и новое понимание Dari: NOT AVAILABLE.",
     ) +
-    `<div class="page-actions">${link("Новое поручение", "quick/worker", "btn primary")}${link("Мои личные задачи", "tasks", "btn secondary")}</div>` +
+    `<div class="page-actions">${link("Дневные рабочие", "day-workers", "btn primary")}${link("Новое поручение", "quick/worker", "btn secondary")}${link("Мои личные задачи", "tasks", "btn secondary")}</div>` +
     panel(
       `<h2>Поручения</h2>${taskRows(w.tasks, true) || "<p>Пока нет задач.</p>"}`,
     ) +
@@ -1273,6 +1277,8 @@ function more() {
         ["Финансы", "finance"],
         ["Урожай / Депо", "harvest"],
         ["Склад", "inventory"],
+        ["Теплицы", "greenhouses"],
+        ["Дневные рабочие", "day-workers"],
         ["Работники", "workers"],
         ["Внесения", "fertilizer"],
         ["Источники", "sources"],
@@ -1359,7 +1365,34 @@ async function render() {
   try {
     let body;
     if (page === "home") body = home();
-    else if (page === "review" && arg) {
+    else if(page==='greenhouses') {
+      const filters=greenhouseSelection(route,localDay()),result=await api.entityGet('/greenhouse-daily?'+greenhouseQuery(filters));
+      const dayData=filters.tab==='work'&&filters.greenhouse_id?await api.entityGet('/day-workers'):null;
+      if(token!==epoch)return;current={result,selection:filters};body=greenhouseDailyView(result,filters,dayData);lastGreenhouseRoute=greenhouseRoute(filters);await api.draft('greenhouse-navigation',{route:lastGreenhouseRoute});if(token!==epoch)return;
+    } else if(page==='day-workers') {
+      const result=await api.entityGet('/day-workers');if(token!==epoch)return;current=result;body=dayWorkersView(result);
+    } else if(page==='day-request') {
+      const result=await api.entityGet('/day-workers/requests/'+arg);if(token!==epoch)return;current=result;body=dayRequestView(result,arg2?decodeURIComponent(arg2):'day-workers');
+    } else if(page==='day-request-new'||page==='day-scopes') {
+      const result=await api.entityGet('/day-workers'),saved=await getDraft(route);if(token!==epoch)return;const stored=(result.requests||[]).find(r=>dayStored(r,saved.id));if(page==='day-request-new'&&stored){await clearDraft(route);if(token===epoch)go('day-request/'+stored.id);return;}current={refs:result};draft=saved;body=page==='day-scopes'?dayScopesView(result,saved):dayRequestFormView(saved,result,dayWorkChoices(result.requests,saved.greenhouse_id));
+    } else if(page==='day-decision') {
+      if(!['APPROVE','REVISE_APPROVE','REJECT','CLARIFY'].includes(arg2))throw Error('Неизвестное решение.');
+      const request=await api.entityGet('/day-workers/requests/'+arg),saved=await getDraft(route,{...request.current_plan,decision:arg2,expected_version:request.version});
+      if(token!==epoch)return;
+      if(dayStored(request,saved.id)){await clearDraft(route);if(token===epoch)go('day-request/'+arg);return;}
+      if(saved.expected_version!==request.version){saved.version_conflict=true;await api.draft(route,saved);}
+      if(token!==epoch)return;current={request};draft=saved;body=dayDecisionView(request,arg2,saved);
+    } else if(page==='day-actual') {
+      const refs=await api.entityGet('/day-workers'),request=arg==='new'&&arg2?await api.entityGet('/day-workers/requests/'+arg2):null,replaces=arg==='replace'&&arg2?await api.entityGet('/day-workers/actuals/'+arg2):null;
+      const saved=await getDraft(route,{greenhouse_id:request?.greenhouse_id||replaces?.greenhouse_id||'',work:request?.current_plan?.work||replaces?.work||'',event_date:replaces?.event_date||'',people:replaces?.people||'',full_day:replaces?String(replaces.full_day??'unknown'):''});
+      if(token!==epoch)return;
+      const stored=(refs.actuals||[]).find(a=>dayStored(a,saved.id));if(stored){await clearDraft(route);if(token===epoch)go('day-actual-detail/'+stored.id);return;}
+      current={refs,request,replaces};draft=saved;body=dayActualFormView(saved,refs,request,replaces);
+    } else if(page==='day-actual-detail'||page==='day-accrual'||page==='day-confirmation') {
+      const actual=await api.entityGet('/day-workers/actuals/'+arg);if(token!==epoch)return;
+      if(page==='day-accrual'||page==='day-confirmation') {const refs=await api.entityGet('/day-workers'),saved=await getDraft(route);if(token!==epoch)return;current={actual,refs};draft=saved;body=page==='day-confirmation'?dayConfirmationView(actual,saved):dayAccrualView(actual,refs,saved);}
+      else {current=actual;body=dayActualView(actual,arg2?decodeURIComponent(arg2):'day-workers');}
+    } else if (page === "review" && arg) {
       {
         const loaded = await api.entityGet(
           "/owner/confirmations/" + arg + "/preview",
@@ -1592,12 +1625,17 @@ async function render() {
         Header("Недоступно") +
         notice("NOT AVAILABLE · этот сценарий пока не подключён.") +
         link("На главную", "home", "btn primary");
+    const greenhouseBack=arg2?greenhouseBackRoute(arg2):null;
+    if(greenhouseBack&&page!=='greenhouses')body=link('Назад к теплице · фильтры сохранены',greenhouseBack,'btn secondary greenhouse-back')+body;
+    if(draft?.day_submission&&!draft?.version_conflict){
+      body=body.replace(/<(input|textarea|select)\b/g,'<$1 disabled').replace(/(<form data-form="day-[^"]*"[^>]*>)/,'$1<p class="notice">Исходная отправка ожидает проверки. Повтор использует те же сохранённые поля. Обновите запись, чтобы проверить результат.</p>').replace(/(<button type="submit" class="btn primary full">)[^<]*/, '$1Повторить исходную отправку');
+    }
     if (token !== epoch) return;
     shell(body);
     document.querySelector("#main").dataset.renderedRoute = route;
     schedulePreparationRefresh();
     document.querySelector("#main")?.focus({ preventScroll: true });
-    if(/^(harvest|report|depot|money|money-document|purchases|purchase|stock-history|stock-event)(\/|$)/.test(route) && harvestScroll.has(route))
+    if(/^(harvest|report|depot|money|money-document|purchases|purchase|stock-history|stock-event|greenhouses|day-request|day-actual-detail)(\/|$)/.test(route) && harvestScroll.has(route))
       window.scrollTo({top:harvestScroll.get(route),behavior:'instant'});
   } catch (error) {
     if (token === epoch) shell(errorBox(error));
@@ -1770,11 +1808,25 @@ async function submitForm(formEl, snapshot) {
   const submittedDraft = draft,
     submittedCurrent = current;
   const name = formEl.dataset.form,
-    v = snapshot.fields,
+    v = draft?.day_submission && !draft?.version_conflict ? {...snapshot.fields,...draft.day_submission.body.source.fields,...(draft.day_submission.body.confirmed?{confirmed:'on'}:{})} : snapshot.fields,
     savedRoute = route;
   if (draft) await saveDraft(snapshot);
   assertSubmissionScope(snapshot);
-  if(name === 'fertilizer-filters') {
+  if(name==='greenhouse-filters'){if(!v.date_from||!v.date_to||v.date_from>v.date_to)throw Error('Проверьте даты выбранного периода.');go(greenhouseRoute(current.selection,{...v,greenhouse_id:v.greenhouse_id||null,month:null}));
+  } else if(['day-request','day-decision','day-actual','day-confirmation','day-accrual','day-scope'].includes(name)) {
+    let path,body,to;
+    if(name==='day-request') {if(!v.greenhouse_id&&!draft.day_submission)throw Error('Выберите проверенную теплицу.');path='/day-workers/requests';body={greenhouse_id:v.greenhouse_id,source:daySource('day_request',draft,v)};to=result=>'day-request/'+result.id;}
+    if(name==='day-decision') {if(draft.version_conflict){if(v.reviewed_current!=='on')throw Error('Заново проверьте изменившуюся заявку.');draft.id=crypto.randomUUID();draft.captured_at=new Date().toISOString();draft.expected_version=current.request.version;delete draft.day_submission;delete draft.version_conflict;await api.draft(savedRoute,draft);}path='/day-workers/requests/'+current.request.id+'/decisions';body={expected_version:draft.expected_version,source:daySource('day_decision',draft,v.decision==='APPROVE'?{...(current.request.original_plan||current.request.current_plan),...v}:v)};to=()=>'day-request/'+current.request.id;}
+    if(name==='day-actual') {const greenhouse_id=current.request?.greenhouse_id||current.replaces?.greenhouse_id||v.greenhouse_id;if(!greenhouse_id&&!draft.day_submission)throw Error('Выберите проверенную теплицу.');path='/day-workers/actuals';body={greenhouse_id,request_id:current.request?.id||current.replaces?.request_id||null,replaces_id:current.replaces?.id||null,source:daySource('day_actual',draft,{...v,allocations:draft.day_submission?.body.source.fields.allocations||JSON.stringify(dayAllocations(v,greenhouse_id,current.refs.greenhouses||[],current.refs.references?.work_areas||[]))})};to=result=>'day-actual-detail/'+result.id;}
+    if(name==='day-confirmation'){if(v.confirmed!=='on')throw Error('Подтвердите проверку фактической работы.');path='/day-workers/actuals/'+current.actual.id+'/confirmations';body={confirmed:true,source:daySource('day_confirmation',draft,v)};to=()=>'day-actual-detail/'+current.actual.id;}
+    if(name==='day-accrual') {if(v.confirmed!=='on')throw Error('Подтвердите проверку факта и условий начисления.');path='/day-workers/actuals/'+current.actual.id+'/accruals';body={confirmed:true,source:daySource('day_accrual',draft,v)};to=()=>'day-actual-detail/'+current.actual.id;}
+    if(name==='day-scope') {path='/day-workers/scopes';body={source:daySource('day_scope',draft,v)};to=()=>'day-scopes';}
+    // A lost response is retried with the frozen original source, never edited facts.
+    if(draft.day_submission){path=draft.day_submission.path;body=draft.day_submission.body;}else{draft.day_submission={path,body};await api.draft(savedRoute,draft);}
+    let result;
+    try{result=await api.entityPost(path,body,draft.id);}catch(error){if([400,422].includes(error.status)){delete draft.day_submission;await api.draft(savedRoute,draft);}throw error;}
+    assertSubmissionScope(snapshot);await clearDraft(savedRoute);await finish(to(result),'Сохранено на сервере');
+  } else if(name === 'fertilizer-filters') {
     if(!v.date_from||!v.date_to||v.date_from>v.date_to)throw Error('Проверьте даты периода.');go('fertilizer/'+v.date_from+'/'+v.date_to+'/'+(v.greenhouse_id||''));
   } else if(name === 'fertilizer-plan') {
     const input=fertilizerPlanInput(draft,current.refs);await api.draft(savedRoute,draft);
@@ -2341,6 +2393,7 @@ document.addEventListener("input", (event) => {
   const fields = values(formEl);
   delete fields.file;
   Object.assign(draft, fields);
+  if(formEl.dataset.form==='day-accrual'){if(event.target.name!=='confirmed'){draft.confirmed='';const checkbox=formEl.querySelector('[name=confirmed]');if(checkbox)checkbox.checked=false;}const review=formEl.querySelector('[data-day-accrual-review]');if(review)review.innerHTML=dayAccrualPreview(current.actual,current.refs,draft);}
   if(formEl.dataset.form.startsWith('fertilizer-')){if(formEl.dataset.form==='fertilizer-plan'){invalidateFertilizerReview(draft,event.target.name);for(const box of formEl.querySelectorAll('[name^=reviewed_]'))box.checked=draft[box.name]==='on';}delete draft.actual_preview;delete draft.actual_input;delete draft.plan_preview;draft.review_mode=false;const confirm=document.querySelector('[data-action=fert-confirm-actual]');if(confirm)confirm.disabled=true;}
   if(formEl.dataset.form.startsWith('fertilizer-'))fertilizerWrites.enqueue(route,draft).catch(()=>{});
   else fertilizerWrites.enqueue(route, draft).catch((error) => showError(error, formEl));
@@ -2351,6 +2404,7 @@ document.addEventListener("input", (event) => {
 });
 document.addEventListener("change", (event) => {
   if(event.target.closest("form"))ownerEditSequence++;
+  if(event.target.closest('[data-form=day-request]')&&event.target.name==='greenhouse_id'){const choices=document.querySelector('#day-work-choices');if(choices)choices.innerHTML=dayWorkChoices(current?.refs?.requests||[],event.target.value).map(work=>`<option value="${e(work)}"></option>`).join('');}
   if (event.target.id === "duplicate-reviewed" && event.target.isConnected) {
     syncReceiptConfirmation();
     return;
@@ -2411,7 +2465,7 @@ document.addEventListener("change", (event) => {
   }
 });
 document.addEventListener('click',event=>{
-  if(event.target.closest('a[href^="#"], [data-action="back"]') && /^(harvest|report|depot|money|money-document|purchases|purchase|stock-history|stock-event)(\/|$)/.test(route)) harvestScroll.set(route,scrollY);
+  if(event.target.closest('a[href^="#"], [data-action="back"]') && /^(harvest|report|depot|money|money-document|purchases|purchase|stock-history|stock-event|greenhouses|day-request|day-actual-detail)(\/|$)/.test(route)) harvestScroll.set(route,scrollY);
 },true);
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
@@ -2725,6 +2779,7 @@ window.addEventListener("keydown", (event) => {
     attempt.check();
     lastHarvestRoute=navigation?.route || "harvest";
     lastFinanceRoute=financeNavigation?.route || "money";
+    const greenhouseNavigation=await api.readDraft("greenhouse-navigation");attempt.check();lastGreenhouseRoute=greenhouseNavigation?.route?greenhouseBackRoute(encodeURIComponent(greenhouseNavigation.route))||"greenhouses":"greenhouses";
     ready = true;
     app.dataset.bootstrapStage = 'render';
     await render();
@@ -2757,7 +2812,7 @@ updateVisibleViewport();
 function revealFocusedCaptureField() {
   const field = document.activeElement;
   if (!field?.matches("input:not([type=file]), textarea, select") ||
-      !field.closest('[data-form="report"], [data-form="receipt"], [data-form="depot"], [data-form^="journey-"], [data-form="edit-depot-line"]')) return;
+      !field.closest('[data-form="report"], [data-form="receipt"], [data-form="depot"], [data-form^="journey-"], [data-form="edit-depot-line"], [data-form^="day-"]')) return;
   const viewport = window.visualViewport;
   const top = (viewport?.offsetTop || 0) + 16;
   const dockTop = document.querySelector('.dock')?.getBoundingClientRect().top ?? Infinity;
