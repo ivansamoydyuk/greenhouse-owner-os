@@ -8,6 +8,7 @@ import {createHash} from 'node:crypto';
 import {chromium} from 'playwright';
 import {navigateOwner, waitOwnerRoute} from './navigation.mjs';
 import {chooseTaskAudience} from './task-review-fixture.mjs';
+import {prepareAmbiguousWorkerReferences} from './friction-worker-fixture.mjs';
 import {metricDefinitions, summarizeCase, summarizeFamilies, installClickAudit, createMeasuredActions} from './friction-metrics.mjs';
 
 const base = process.env.PREVIEW_URL || 'http://127.0.0.1:4173';
@@ -193,7 +194,9 @@ async function runCase(test) {
       assert.ok(proposal.revision.missing.length);
       if (test.expectedBlock) {
         assert.equal(proposal.revision.payload.worker_id, null, 'Unknown/ambiguous Asif must never become the unrelated TEST worker');
+        assert.equal(proposal.revision.payload.language, null, 'Ambiguous identity cannot borrow either candidate language');
         assert.equal(proposal.revision.payload.rendered_text, null, 'No invented translation');
+        assert.equal(proposal.confirmed_effect, null, 'Ambiguous worker proposal has no confirmed task effect');
         assert.ok(proposal.revision.missing.some(reason => reason.includes('Работник')));
       }
       record.status = test.expectedBlock ? 'blocked' : 'safely_unresolved'; record.blockers = proposal.revision.missing;
@@ -449,6 +452,9 @@ try {
   }
   assert.equal(refs.worker.display_name, 'TEST Muhammed'); assert.equal(refs.worker.language, 'fa');
   assert.equal(refs.worker.contact, null); assert.equal(refs.worker.telegram_ref, null);
+  // GOLD-0387's frozen reference context contains two distinct Asyfs. Restore
+  // that context before measurement, retaining its unresolved-executor checks.
+  await prepareAmbiguousWorkerReferences(api, config, workers, fixtureSetup);
   before = await snapshot();
   assert.equal(decimal(before.inventory.stock.find(row => row.product_id === refs.product.id && row.location_id === store.id)?.quantity ?? '0'), '0');
   await page.goto(base); await navigateOwner(page, 'home');
