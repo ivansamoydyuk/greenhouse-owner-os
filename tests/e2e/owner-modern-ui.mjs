@@ -283,6 +283,10 @@ try {
   await page.keyboard.press('Shift+Tab');
   assert.equal(await sheet().evaluate(dialog => dialog.contains(document.activeElement)), true, 'Reverse Tab remains inside the replacement editor');
   await page.keyboard.press('Escape'); await sheet().waitFor({state: 'hidden'});
+  // Native dialog visibility can change before its queued close handler restores
+  // focus. Wait for that exact existing outcome; never set focus from the test.
+  await page.waitForFunction(() => document.querySelector('#app').contains(document.activeElement)
+    || document.activeElement === document.querySelector('#nav [aria-current=page]'), undefined, {timeout: 5000});
   assert.equal(await page.evaluate(() => document.querySelector('#app').contains(document.activeElement)
     || document.activeElement === document.querySelector('#nav [aria-current=page]')), true, 'Dismissed editor restores focus to its Review surface');
   const untouchedProposal = await checkedApi(owner + `/confirmations/${fixtureProposal}/preview`);

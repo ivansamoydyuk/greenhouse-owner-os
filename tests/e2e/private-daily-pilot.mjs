@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {chromium,webkit} from 'playwright';
+import {observeOwnerLogout} from './helpers/logout-diagnostics.mjs';
 import {resetFixtureRateLimits,ownerLogin,workerLogin,pilotCredentials,redactPilot,expiredCookie} from './helpers/pilot-auth.mjs';
 const base=process.env.PREVIEW_URL||'http://127.0.0.1:4173',out=process.env.E2E_ARTIFACTS||'artifacts/private-daily-pilot';
 const credentials=await pilotCredentials(),privatePath=process.env.PILOT_E2E_CREDENTIALS;
@@ -26,7 +27,19 @@ try{
   await ownerLogin(page,base);await ready(page,'home');const config=await read(context,'/preview/config'),root='/v1/entities/'+config.entity_id;assert.equal(config.feature_sha,result.sha);assert.equal(config.daily_pilot,true);await pixels(page,engine,'owner-home');
   // Logout remains actionable during a held secondary refresh. It fences the
   // old response rather than making the owner wait for the network request.
-  await page.route('**/owner/home',interception=>interception.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST temporary read failure'})}),{times:1});await page.reload();await ready(page,'home');let releaseOwnerRead,ownerReadEntered;const heldOwnerRead=new Promise(resolve=>releaseOwnerRead=resolve),ownerReadStarted=new Promise(resolve=>ownerReadEntered=resolve);await page.route('**/owner/home',async interception=>{const response=await interception.fetch();ownerReadEntered();await heldOwnerRead;try{await interception.fulfill({response});}catch(error){if(!/closed|cancel|disposed|already handled/i.test(error.message))throw error;}},{times:1});await click(page,'Повторить загрузку');await ownerReadStarted;await page.locator('[data-testid=nav-more]').click();await ready(page,'more');assert.equal(await page.getByRole('button',{name:'Выйти',exact:true}).isDisabled(),false);const logoutReply=page.waitForResponse(response=>response.request().method()==='POST'&&response.url().endsWith('/pilot/logout'));await click(page,'Выйти');assert.equal((await logoutReply).status(),200);releaseOwnerRead();await page.waitForURL('**/pilot/');assert.equal((await context.request.get(base+'/pilot/session')).status(),401);await ownerLogin(page,base);await ready(page,'home');result.checks.push({engine,case:'owner logout during held read',pass:true});
+  await page.route('**/owner/home',interception=>interception.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST temporary read failure'})}),{times:1});await page.reload();await ready(page,'home');let releaseOwnerRead,ownerReadEntered;const heldOwnerRead=new Promise(resolve=>releaseOwnerRead=resolve),ownerReadStarted=new Promise(resolve=>ownerReadEntered=resolve);await page.route('**/owner/home',async interception=>{const response=await interception.fetch();ownerReadEntered();await heldOwnerRead;try{await interception.fulfill({response});}catch(error){if(!/closed|cancel|disposed|already handled/i.test(error.message))throw error;}},{times:1});await click(page,'Повторить загрузку');await ownerReadStarted;await page.locator('[data-testid=nav-more]').click();await ready(page,'more');assert.equal(await page.getByRole('button',{name:'Выйти',exact:true}).isDisabled(),false);const logoutReply=page.waitForResponse(response=>response.request().method()==='POST'&&response.url().endsWith('/pilot/logout'));
+  const logoutProbe=observeOwnerLogout(page,context,base);
+  const saveLogoutDiagnostic=async outcome=>{const diagnostic=await logoutProbe.capture(outcome);(result.logout_diagnostics||=[]).push({engine,...diagnostic});await fs.writeFile(path.join(out,'logout-diagnostics.json'),redactPilot(JSON.stringify(result.logout_diagnostics,null,2)));};
+  try{
+    await click(page,'Выйти');assert.equal((await logoutReply).status(),200);releaseOwnerRead();await page.waitForURL('**/pilot/');assert.equal((await context.request.get(base+'/pilot/session')).status(),401);
+    await saveLogoutDiagnostic('existing-logout-assertions-passed');
+  }catch(error){
+    try{await saveLogoutDiagnostic('existing-logout-assertion-failed');}
+    catch{(result.logout_diagnostics||=[]).push({engine,outcome:'existing-logout-assertion-failed',diagnostic_failed:true});}
+    throw error;
+  }
+  finally{logoutProbe.stop();}
+  await ownerLogin(page,base);await ready(page,'home');result.checks.push({engine,case:'owner logout during held read',pass:true});
   const sentinel='PRIVATE OWNER DRAFT '+engine+' 8500 насос ремонт';await page.locator('[data-testid=home-expense]').click();await page.locator('[name=text]').fill(sentinel);await page.locator('[data-fertilizer-draft-status][data-state=saved]').waitFor();await page.reload();await ready(page,'capture/expense');assert.equal(await page.locator('[name=text]').inputValue(),sentinel);assert.ok(!(await rawPersistence(page)).includes(sentinel));
   // Same browser changes participant, then browser Back must not expose owner DOM.
   await nav(page,'more');await click(page,'Выйти');await page.waitForURL('**/pilot/');await workerLogin(page,base,fixture.worker);assert.equal(await page.locator('[data-testid=home-expense]').count(),0);assert.ok(!(await rawPersistence(page)).includes(sentinel));await page.goBack();await page.waitForLoadState('domcontentloaded');assert.equal(await page.locator('[data-testid=home-expense]').count(),0);await page.goto(base+'/worker');await page.locator('#worker-app h1').waitFor();await page.locator('#worker-logout').click();await page.waitForURL('**/pilot/');await ownerLogin(page,base);await ready(page,'home');await nav(page,'capture/expense');assert.equal(await page.locator('[name=text]').inputValue(),sentinel);

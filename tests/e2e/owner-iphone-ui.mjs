@@ -417,10 +417,12 @@ try {
     await openReview();
     const primaryText = await sheet().locator('.owner-proposal').innerText();
     assert.equal(primaryText.split(duplicateMarker).length - 1, 1, 'Primary review states the long instruction only once');
-    assert.equal(await sheet().locator('.source-text').evaluate(node => window.isVisibleOwnerControl(node)), false, 'Full original remains under disclosure');
+    const fullOriginal = sheet().locator('#sheet-content > details').filter({has:page.getByText('Оригинальный источник',{exact:true})}).locator(':scope > .source-text');
+    assert.equal(await fullOriginal.count(),1,'Exactly one full-original paragraph belongs to the original-source disclosure');
+    assert.equal(await fullOriginal.evaluate(node => window.isVisibleOwnerControl(node)), false, 'Full original remains under disclosure');
     await modalLayout(`${width}/long-review`, sheet().locator('#r2-reject')); await shot('long-review');
     await sheet().getByText('Оригинальный источник', {exact: true}).click();
-    assert.equal(await sheet().locator('.source-text').innerText(), longText, 'Original remains complete and exact under disclosure');
+    assert.equal(await fullOriginal.innerText(), longText, 'Original remains complete and exact under disclosure');
     await modalLayout(`${width}/original-disclosed`, sheet().locator('#r2-reject'));
     await sheet().locator('#r2-edit').click();
     assert.equal(await sheet().locator('.task-extra').evaluate(node => node.open), false, 'R2 advanced task fields start collapsed');
