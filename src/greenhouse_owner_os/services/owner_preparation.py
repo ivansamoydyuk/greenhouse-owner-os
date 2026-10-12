@@ -88,7 +88,7 @@ def invoice_document_evidence(raw):
         # narrative actor, reminder, question, attribution or quoted preamble.
         if any(not re.fullmatch(r'[A-Z0-9İŞĞÜÖÇ&.,\x27 -]{1,80}',p) or re.search(blocked,p) for p in lines[:index]):continue
         body='\n'.join(lines[index+1:])
-        dated=re.search(r'(?m)^\s*\d{1,2}[./-]\d{1,2}[./-]20\d{2}\s*$',body)
+        dated=re.search(r'(?im)^\s*(?:tarih\s*:\s*)?\d{1,2}[./-]\d{1,2}[./-]20\d{2}(?:\s+(?:fatura|invoice)\s*(?:no|number)\s*:\s*[A-Z0-9./_-]+)?\s*$',body)
         total=re.search(r'(?im)^\s*(?:tutar|toplam|total|amount)\s*[:=]?\s*'+NUMBER+r'\s*'+CURRENCY+r'\s*$',body)
         if dated and total:return True
     return False
@@ -146,10 +146,17 @@ def depot_text(raw,parties):
     if len(set(dates))==1:
         try:d,m,y=dates[0];event=date(int(y),int(m),int(d)).isoformat()
         except ValueError:pass
-    totals=re.findall(r'(?im)\b(?:alacak|toplam)\s*(?:[:=]|равен)?\s*'+scalar,raw)
+    # Printed totals may place a total KG column before the monetary column.
+    # Never mistake that physical quantity for the invoice/settlement amount.
+    total_pattern=r'(?im)\b(?:alacak|toplam)\s*(?:[:=]|равен)?\s*(?:\d+(?:[.,]\d+)*\s*KG\s+)?'+scalar
+    totals=re.findall(total_pattern,raw)
     alacak=re.findall(r'(?im)\balacak\s*(?:[:=]|равен)?\s*'+scalar,raw)
     if len(deps)!=1 or 'gorgun' not in fold(value(deps[0],'name')):qualities=[None for _ in lines]
-    return dict(depot_id=str(value(deps[0],'id')) if len(deps)==1 else None,event_date=event,lines=lines,qualities=qualities,currency=source_currency(raw),stated_total=num(totals[0]) if len(set(totals))==1 else None,alacak_value=num(alacak[0]) if len(alacak)==1 else None,unreadable_lines=unreadable)
+    counts=re.findall(r'(?im)\bADET\s*:\s*(\d+)(?![\d.,])',raw)
+    documents=re.findall(r'(?im)\b(?:fi[şs]\s*no|belge\s*no)\s*:\s*([A-Z0-9][A-Z0-9./_-]{0,249})',raw)
+    return dict(depot_id=str(value(deps[0],'id')) if len(deps)==1 else None,event_date=event,lines=lines,qualities=qualities,currency=source_currency(raw),stated_total=num(totals[0]) if len(set(totals))==1 else None,alacak_value=num(alacak[0]) if len(alacak)==1 else None,unreadable_lines=unreadable,
+                **({'document_count':int(counts[0])} if len(set(counts))==1 and 0<int(counts[0])<=2147483647 else {}),
+                **({'document_number':documents[0]} if len(set(documents))==1 else {}))
 
 def _parts(raw,*,binary=False,refs=None,today=None):
     # An explicit standalone payment assertion next to receipt rows is its own
@@ -426,3 +433,80 @@ def prepare_quick_expense(raw,*,today):
         basis='visible_context_default' if key in ('currency','event_date') else 'normalized_purpose' if key=='description' else 'owner_payment_confirmation_required' if key=='payment_purpose' else 'source_numeric_amount',
         interpretation_version=INTERPRETATION_VERSION) for key,value in payload.items()}
     return [('DIRECT_EXPENSE',payload,prov)]
+
+
+def prepare_context_document(raw, *, today, refs, context, invoice_intent=None,
+                             receipt_id=None, binary=False, pages=(),
+                             recognition_state=None, warnings=(), caption=None,
+                             engine_version=None):
+    """Enrich existing document slots; context is not evidence of new effects.
+
+    The raw argument is a recognition derivative for binaries. Caption is never
+    concatenated into it or used to override document facts. A failed recognizer
+    leaves typed, source-linked manual review while its job remains retryable.
+    """
+    from greenhouse_owner_os.domain.owner_capture import DepotProposal, MoneyProposal, InvoiceMatchProposal
+    recognized=binary and recognition_state=='SUCCEEDED'
+    candidates=prepare_owner_source(raw,today=today,refs=refs,binary=binary,pages=pages) if raw else []
+    kinds=[kind for kind,_,_ in candidates]
+
+    def evidence(payload,prov,*,matched):
+        prov=dict(prov)
+        for key,item in payload.items():
+            old=prov.get(key,{})
+            category=old.get('category','UNKNOWN' if item is None or item==[] else 'INFERENCE')
+            # Deterministic depot fields are OCR candidates, distinct from
+            # inferred quality mappings and editable daily currency defaults.
+            if recognized and matched and key in ('depot_id','event_date','lines','stated_total','alacak_value','document_count','document_number') and item is not None:
+                category='INFERENCE' if key=='depot_id' else 'SOURCE FACT'
+            prov[key]=dict(old,category=category,source_layer='OCR' if recognized else 'MANUAL_REQUIRED' if binary else 'OWNER_TEXT',
+                           source_text=raw,engine_version=engine_version)
+        if recognized:
+            review_warnings=list(warnings)
+            if (caption or '').strip():review_warnings.append('Отдельный комментарий владельца: сверьте его с оригиналом. Комментарий не заменяет распознанные факты.')
+            if not matched:review_warnings.append('Структура документа неоднозначна: внесите факты по оригиналу вручную.')
+            if review_warnings:
+                payload['document_reviewed']=False
+                prov['document_reviewed']=dict(category='UNKNOWN',basis='document_review_required',
+                    source_layer='REVIEW',warnings=review_warnings,owner_caption=caption or None)
+        return payload,prov
+
+    if context=='depot_receipt':
+        matched=recognized and kinds==['DEPOT_RECEIPT']
+        if matched:
+            _,facts,prov=candidates[0]
+            payload=DepotProposal.model_validate(facts).model_dump(mode='json')
+            # Recognition never grants review authority, even with a learned label.
+            payload.update(quality_reviewed=False,arithmetic_reviewed=False)
+        else:
+            payload=DepotProposal().model_dump(mode='json')
+            prov={'currency':{'category':'CONTEXT DEFAULT','basis':'editable_daily_context'},
+                  'lines':{'category':'UNKNOWN','basis':'manual_document_review_required'}}
+        payload,prov=evidence(payload,prov,matched=matched)
+        return [('DEPOT_RECEIPT',payload,prov)]
+
+    if context!='supplier_invoice' or invoice_intent not in ('operating_expense','existing_payable') or not receipt_id:
+        raise ValueError('Explicit invoice purpose and physical receipt context are required')
+    matched=kinds==['PAYABLE','INVOICE_MATCH']
+    match_payload=InvoiceMatchProposal(receipt_id=receipt_id,note=raw[:2000] if recognized and raw else None).model_dump(mode='json')
+    match_prov={'receipt_id':{'category':'OWNER CONTEXT','basis':'explicit_physical_receipt_selection'}}
+    if matched:
+        match_prov.update(candidates[1][2])
+    if recognized:
+        match_prov.setdefault('note',{}).update(source_layer='OCR',source_text=raw,engine_version=engine_version)
+    match=('INVOICE_MATCH',match_payload,match_prov)
+    if invoice_intent=='existing_payable':return [match]
+    payload=MoneyProposal(currency=None).model_dump(mode='json')
+    prov={'amount':{'category':'UNKNOWN','basis':'manual_invoice_review_required'},
+          'counterparty_id':{'category':'UNKNOWN','basis':'manual_invoice_review_required'}}
+    if matched:
+        _,facts,prov=candidates[0]
+        facts=dict(facts)
+        facts['currency']=source_currency(raw,default=None)
+        _,date_mentioned=date_value(raw,today)
+        if not date_mentioned:facts['event_date']=None
+        for field in ('currency','event_date'):
+            if facts.get(field) is None:prov[field]={'category':'UNKNOWN','basis':'manual_invoice_review_required','source_text':raw}
+        payload=MoneyProposal.model_validate(facts).model_dump(mode='json')
+    payload,prov=evidence(payload,prov,matched=matched)
+    return [('PAYABLE',payload,prov),match]

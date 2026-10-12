@@ -72,10 +72,13 @@ def checkpoint_line(checkpoint):
                             and isinstance(n.value.func, ast.Attribute) and n.value.func.attr == 'commit')
         node = transaction.body[commit_index + 1]
     elif checkpoint == 'before_preparation_commit':
-        node = next(n for n in transaction.body if isinstance(n, ast.Expr)
-                    and isinstance(n.value, ast.Call) and n.value.args
-                    and any(isinstance(a, ast.Constant) and isinstance(a.value, str)
-                            and "SET state='SUCCEEDED'" in a.value for a in n.value.args))
+        # The real finalization now branches between successful recognition and
+        # retryable failed recognition with a retained manual document slot.
+        # Stop before either branch publishes its transaction, never substitute
+        # a mocked handler or a hard-coded source line.
+        node = next(n for n in transaction.body
+                    if any(isinstance(a, ast.Constant) and isinstance(a.value, str)
+                           and "SET state='SUCCEEDED'" in a.value for a in ast.walk(n)))
     else:
         raise ValueError(checkpoint)
     return str(source_file), node.lineno

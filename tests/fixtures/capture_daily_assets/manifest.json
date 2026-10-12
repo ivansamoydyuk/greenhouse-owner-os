@@ -1,0 +1,238 @@
+{
+  "format_version": 1,
+  "recipe_version": "cdc-delta-v1-render-v1",
+  "benchmark_sha256": "303f586317144febb6be01fad9c51e0a32fdc1114836dddfbdccde0a3e8edcd2",
+  "generator_sha256": "3f2508ad1993ed1eb154c2204ee669a4abd78ef6edfd006420b806b3c0852bad",
+  "pillow_version": "12.3.0",
+  "font_filename": "DejaVuSans.ttf",
+  "font_sha256": "57f73e11f51999432bf7ab22ce55b6f945d5eca1bf824404cfa9ec2e3718c84e",
+  "canvas": [
+    1600,
+    1000
+  ],
+  "font_size_px": 34,
+  "pdf_dpi": 144,
+  "pdf_has_text_layer": false,
+  "source_fact_policy": "Frozen input fields only; caption and field count never burned into depot document.",
+  "recognition_run": false,
+  "entries": [
+    {
+      "case_id": "H01",
+      "filename": "H01.png",
+      "mime_type": "image/png",
+      "size_bytes": 60545,
+      "sha256": "2e41868dadb510be2d968c5a1b12ea45088c7295bf3f01ed6ba1f048b88e1411",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": []
+    },
+    {
+      "case_id": "H02",
+      "filename": "H02.pdf",
+      "mime_type": "application/pdf",
+      "size_bytes": 382568,
+      "sha256": "01408820064a85ca2346eb2e57a49209dafb3b9373180788a05cb1c29ef15ddb",
+      "page_count": 2,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ],
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": [
+        {
+          "filename": "H02.source-page-1.png",
+          "sha256": "c9029d9ef95201bcfeef9d2f328274989908b510612676b28def62b5757c2da7"
+        },
+        {
+          "filename": "H02.source-page-2.png",
+          "sha256": "2733048461c273f9e2c02307185339b9a7154c8c836c6f6904392448d1da0597"
+        }
+      ]
+    },
+    {
+      "case_id": "H03",
+      "filename": "H03.png",
+      "mime_type": "image/png",
+      "size_bytes": 96194,
+      "sha256": "cddda8686d53cc3ce8a39ee599a0fef860833adeaaf199db5c01691198a84819",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1000,
+          1600
+        ]
+      ],
+      "source_page_previews": []
+    },
+    {
+      "case_id": "H04",
+      "filename": "H04.png",
+      "mime_type": "image/png",
+      "size_bytes": 127902,
+      "sha256": "1c909f25e52e5694ca78d0750f2f8e6cc648301ae27a7e5d72ac87454411bccc",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": []
+    },
+    {
+      "case_id": "H05",
+      "filename": "H05.png",
+      "mime_type": "image/png",
+      "size_bytes": 29942,
+      "sha256": "6ede6f6a46f15a0da95de84d4433c75a07514424f3ebf0bbb74eaab12f725b0d",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": []
+    },
+    {
+      "case_id": "H06",
+      "filename": "H06.png",
+      "mime_type": "image/png",
+      "size_bytes": 60827,
+      "sha256": "23749ae6ba8c9d68f5e68227d7a57be013e81c6d969155e5efc241eed3b414b1",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": []
+    },
+    {
+      "case_id": "H07",
+      "filename": "H07.png",
+      "mime_type": "image/png",
+      "size_bytes": 60545,
+      "sha256": "2e41868dadb510be2d968c5a1b12ea45088c7295bf3f01ed6ba1f048b88e1411",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": []
+    },
+    {
+      "case_id": "H08",
+      "filename": "H08.png",
+      "mime_type": "image/png",
+      "size_bytes": 50213,
+      "sha256": "85eb675d34513a76f143f3bb20150b01f0f3c60ee67db2d98c5cfa628e19ab20",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": []
+    },
+    {
+      "case_id": "P01",
+      "filename": "P01.png",
+      "mime_type": "image/png",
+      "size_bytes": 47476,
+      "sha256": "0f1ac2c401558f167fa6fab844055b18d22b027a188c5bbe6d03740e13077e8c",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": []
+    },
+    {
+      "case_id": "P02",
+      "filename": "P02.pdf",
+      "mime_type": "application/pdf",
+      "size_bytes": 170160,
+      "sha256": "fd33a8f7e4d2840bc87dd03877c3e783a38512042786a5f2c7855d5765988307",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": [
+        {
+          "filename": "P02.source-page-1.png",
+          "sha256": "0f1ac2c401558f167fa6fab844055b18d22b027a188c5bbe6d03740e13077e8c"
+        }
+      ]
+    },
+    {
+      "case_id": "P03",
+      "filename": "P03.png",
+      "mime_type": "image/png",
+      "size_bytes": 51311,
+      "sha256": "ea3679c695bfd0b6fce8276625e912a6133237be81ff885eb0aab48475c9588e",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": []
+    },
+    {
+      "case_id": "P04",
+      "filename": "P04.png",
+      "mime_type": "image/png",
+      "size_bytes": 48663,
+      "sha256": "382126af8d16254f1162e61d43477b48e5fbf5eaa1d5da9d8040e55e46bb855f",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": []
+    },
+    {
+      "case_id": "P05",
+      "filename": "P05.pdf",
+      "mime_type": "application/pdf",
+      "size_bytes": 171568,
+      "sha256": "a9d119e7288fb18b0bb30f467f2747a21652fe7ac9207d2259f93d44abfb8bb9",
+      "page_count": 1,
+      "pixel_sizes": [
+        [
+          1600,
+          1000
+        ]
+      ],
+      "source_page_previews": [
+        {
+          "filename": "P05.source-page-1.png",
+          "sha256": "1b9db6e95c26bc0803d5e77f4cf13ec25923ce9f8298d58cd1b1cc17a527ff8b"
+        }
+      ]
+    }
+  ]
+}

@@ -45,6 +45,7 @@ class ProposalAttribution(StrictModel):
         return v
 
 class MoneyProposal(StrictModel):
+    document_reviewed: bool | None = Field(default=None,strict=True,exclude_if=lambda v:v is None)
     amount: str | None = None
     currency: Literal['TRY','USD','EUR','UAH'] | None = 'TRY'
     event_date: date | None = None
@@ -85,6 +86,9 @@ class TaskProposal(StrictModel):
     relative_time_context: str | None = Field(default=None, min_length=1, max_length=250, exclude_if=lambda v:v is None)
 
 class DepotProposal(StrictModel):
+    document_reviewed: bool | None = Field(default=None,strict=True,exclude_if=lambda v:v is None)
+    # A document total is not a count allocation across quality lines.
+    document_count: int | None = Field(default=None,gt=0,le=2147483647,strict=True,exclude_if=lambda v:v is None)
     due_date: date | None = Field(default=None,exclude_if=lambda v:v is None)
     document_number: str | None = Field(default=None,max_length=250,exclude_if=lambda v:v is None)
     depot_id: UUID | None = None

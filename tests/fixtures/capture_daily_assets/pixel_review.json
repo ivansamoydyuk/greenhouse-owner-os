@@ -1,0 +1,70 @@
+{
+  "reviewed_at": "2026-10-12T06:11:31Z",
+  "method": "Actual view_image inspection of full raster originals and Poppler-rendered PDF pages before application OCR/parser execution.",
+  "reviewed": [
+    {
+      "file": "H01.png",
+      "result": "PASS",
+      "observation": "All three distinct quality rows readable; exact weights/prices/amounts, total350.000kg/14000TRY, ADET93 and Alacak14000. No field report131 or owner caption burned into document.",
+      "sha256": "2e41868dadb510be2d968c5a1b12ea45088c7295bf3f01ed6ba1f048b88e1411"
+    },
+    {
+      "file": "H03.png",
+      "result": "PASS",
+      "observation": "Exact 90-degree clockwise rotation; unchanged readable source facts.",
+      "sha256": "cddda8686d53cc3ce8a39ee599a0fef860833adeaaf199db5c01691198a84819"
+    },
+    {
+      "file": "H04.png",
+      "result": "PASS as independently readable degraded source",
+      "observation": "Gaussian blur2.0 is visible; all critical numeric values remain readable. Safe unresolved alone is not a recognition-usefulness pass.",
+      "sha256": "1c909f25e52e5694ca78d0750f2f8e6cc648301ae27a7e5d72ac87454411bccc"
+    },
+    {
+      "file": "H05.png",
+      "result": "PASS as unreadable negative control",
+      "observation": "All numeric document fields including date/number, line values, totals and ADET/Alacak are fully masked. No positive recognition credit; numeric facts must stay unknown.",
+      "sha256": "6ede6f6a46f15a0da95de84d4433c75a07514424f3ebf0bbb74eaab12f725b0d"
+    },
+    {
+      "file": "P01.png",
+      "result": "PASS",
+      "observation": "Readable supplier, date, document number, KNO3 100.000kg ×5.00, total500TRY. No arrival/payment/expense classification text introduced.",
+      "sha256": "0f1ac2c401558f167fa6fab844055b18d22b027a188c5bbe6d03740e13077e8c"
+    },
+    {
+      "file": "P02.pdf-render-1.png",
+      "result": "PASS",
+      "observation": "Actual raster PDF rendering retains P01 source facts without clipping or text layer. Existing receipt/context is external fixture state.",
+      "sha256": "d7d18fcf973cafac8877e9531181602745713744c655a65809847c6cbba1df8a"
+    },
+    {
+      "file": "H02.pdf-render-1.png",
+      "result": "PASS",
+      "observation": "Actual first PDF page shows only Grand row; same document identity; no total on first page.",
+      "sha256": "8794293232f20b5b3c83d4861bc1b483affa5ef826965bb050bdbcb3dbdedf6e"
+    },
+    {
+      "file": "H02.pdf-render-2.png",
+      "result": "PASS",
+      "observation": "Actual second PDF page shows Birinci/İkinci and single final total/ADET/Alacak. Together one document with three lines.",
+      "sha256": "8b75a34c7a5d3bb647821fc9790b922532777a9692a1d369c0317bd54dcc6e94"
+    }
+  ],
+  "verification": {
+    "original_documents": 13,
+    "deterministic_regeneration_byte_hash_mime_checks": "13 PASS",
+    "frozen_benchmark_copy": "byte-identical to context/BENCHMARK_MATRIX.json",
+    "H01_H07_original_bytes": "identical; caption is separate input metadata",
+    "python_compile": "PASS",
+    "PDF_H02_pages": 2,
+    "PDF_H02_extractable_text": "empty except two page separators; no hidden text shortcut",
+    "application_OCR_or_parser_calls": 0,
+    "application_or_CI_runs": 0
+  },
+  "limits": [
+    "Synthetic printed fixtures, not real camera accuracy.",
+    "Only listed pixels were manually inspected. Other variants derive unchanged labelled fields through the same bounded renderer.",
+    "Baseline and after recognition/UI/SQL metrics remain unexecuted by this asset worker."
+  ]
+}

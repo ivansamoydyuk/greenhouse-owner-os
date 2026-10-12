@@ -1,0 +1,95 @@
+name: Capture daily real OCR checkpoint
+on:
+  push:
+    branches: [14-capture-daily-completion]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: capture-daily-checkpoint-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  corpus-browser-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [baseline, candidate]
+        engine: [chromium, webkit]
+    env:
+      APP_ENV: test
+      R3_CONNECTED_PILOT: '1'
+      R3_DAILY_PILOT: '1'
+      PILOT_LOCAL_TEST: '1'
+      PREVIEW_BIND: 127.0.0.1
+      PREVIEW_PORT: '4173'
+      PREVIEW_URL: http://127.0.0.1:4173
+      CAPTURE_DAILY_MODE: ${{ matrix.mode }}
+      CAPTURE_DAILY_ENGINE: ${{ matrix.engine }}
+      E2E_ARTIFACTS: artifacts/capture-daily
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Select immutable application and new measurement harness
+        run: |
+          set -euo pipefail
+          if [ "$CAPTURE_DAILY_MODE" = baseline ]; then
+            mkdir -p "$RUNNER_TEMP/capture-harness"
+            cp --parents tests/e2e/capture-daily-checkpoint.mjs scripts/capture_daily_sql_evidence.py tests/capture_daily_corpus.py tests/fixtures/capture_daily_benchmark.json "$RUNNER_TEMP/capture-harness"
+            cp -R tests/fixtures/capture_daily_assets "$RUNNER_TEMP/capture-harness/tests/fixtures/"
+            git checkout --detach 9a981766f217fe33364f32b601bfc2a4468b4f59
+            cp -R "$RUNNER_TEMP/capture-harness/." .
+          fi
+          echo "OWNER_PREVIEW_FEATURE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "PYTHONPATH=$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          mkdir -p artifacts/r3-connected artifacts/capture-daily
+          git rev-parse HEAD > artifacts/capture-daily/application-sha.txt
+          printf '%s\n' '${{ github.sha }}' > artifacts/capture-daily/harness-sha.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install existing TEST dependencies and real OCR
+        run: |
+          pip install -e '.[dev]'
+          npm ci
+          sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
+          npx playwright install --with-deps "$CAPTURE_DAILY_ENGINE"
+      - name: Fixed expiry and credentials outside evidence
+        run: |
+          echo "PILOT_EXPIRES_AT=$(python -c 'from datetime import datetime,timedelta,timezone;print((datetime.now(timezone.utc)+timedelta(hours=4)).isoformat())')" >> "$GITHUB_ENV"
+          echo "PILOT_E2E_CREDENTIALS=$RUNNER_TEMP/pilot-private-credentials.json" >> "$GITHUB_ENV"
+          echo "PILOT_PROVISION_SCRIPT=$GITHUB_WORKSPACE/scripts/private_daily_pilot_provision.py" >> "$GITHUB_ENV"
+      - name: Start isolated loopback TEST and synthetic authenticated participants
+        run: |
+          bash scripts/start_r3_connected_ci.sh
+          export TEST_DATABASE_URL='postgresql+psycopg://postgres@127.0.0.1:5432/greenhouse_owner_os_test'
+          python scripts/private_daily_pilot_sql_evidence.py --prepare artifacts/capture-daily --credentials "$PILOT_E2E_CREDENTIALS"
+          python scripts/capture_daily_sql_evidence.py --prepare --credentials "$PILOT_E2E_CREDENTIALS" --output "$E2E_ARTIFACTS/capture-daily-setup.json"
+      - name: Real browser source OCR review confirmation and retry
+        run: |
+          python scripts/capture_daily_sql_evidence.py --before "$E2E_ARTIFACTS/capture-daily-before.json"
+          node tests/e2e/capture-daily-checkpoint.mjs
+          python scripts/capture_daily_sql_evidence.py --verify "$E2E_ARTIFACTS/capture-daily-browser.json" --baseline "$E2E_ARTIFACTS/capture-daily-before.json" --output "$E2E_ARTIFACTS/capture-daily-sql.json"
+      - name: Guard private evidence
+        id: guard
+        if: always()
+        run: python scripts/private_daily_pilot_artifact_guard.py artifacts
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.guard.outcome == 'success'
+        with:
+          name: capture-daily-${{ matrix.mode }}-${{ matrix.engine }}-${{ github.sha }}
+          path: artifacts/capture-daily/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Stop only owned TEST runtime
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/r3-connected-server.pid" ]; then kill "$(cat "$RUNNER_TEMP/r3-connected-server.pid")" || true; fi
+          if [ -n "${R3_PILOT_CONTAINER:-}" ]; then docker stop "$R3_PILOT_CONTAINER" || true; docker rm -v "$R3_PILOT_CONTAINER" || true; fi

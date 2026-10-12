@@ -27,6 +27,16 @@ def js(v):return json.dumps(v,ensure_ascii=False,default=str)
 def now():return datetime.now(timezone.utc)
 def reminder_eligible(first_unresolved,current,state):return state not in TERMINAL and current-first_unresolved>timedelta(hours=36)
 
+def same_review_fact(old,new,key=''):
+    """Compare normalized facts, without normalizing lexical original labels."""
+    if isinstance(old,dict) and isinstance(new,dict):
+        return old.keys()==new.keys() and all(same_review_fact(old[k],new[k],k) for k in old)
+    if isinstance(old,list) and isinstance(new,list):
+        return len(old)==len(new) and all(same_review_fact(a,b,key) for a,b in zip(old,new))
+    if key in ('amount','net_weight_kg','unit_price','stated_amount','confirmed_amount','stated_total','alacak_value') and old is not None and new is not None:
+        return Decimal(str(old))==Decimal(str(new))
+    return old==new
+
 from .preparation_language import source_currency
 
 # Both personal-task reads use the exact approved immutable revision. A later
@@ -114,7 +124,24 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
         elif recovery_links:state='NEEDS_REVIEW'
         return dict(id=str(s.id),client_capture_id=s.locator,state=state,server_saved=True,job=job,proposals=actions,recovery_links=recovery_links,retryable=job['attempts']<3 and not recovery_links,
                     captured_at=s.received_at.isoformat(),original_name=s.filename,text=s.raw_text,duplicate_of_id=str(s.duplicate_of_id) if s.duplicate_of_id else None,
-                    **({k:s.metadata_json[k] for k in ('capture_context','invoice_intent','invoice_receipt_id') if k in s.metadata_json}))
+                    **({k:s.metadata_json[k] for k in ('capture_context','invoice_intent','invoice_receipt_id') if k in s.metadata_json}),
+                    **({'recognition':self._recognition_view(u,s)} if s.file_bytes is not None else {}))
+
+    def _recognition_view(self,u,s,proposal_id=None,version=None):
+        """A derivative, never the owner caption or the retained original bytes."""
+        if proposal_id is None:
+            runs=rows(u,'SELECT id,raw_output FROM core.extraction_runs WHERE inbox_id=:s ORDER BY created_at DESC,attempt DESC LIMIT 1',s=s.id)
+        else:
+            # Later OCR may not have been accepted into an owner-edited card.
+            # Show the derivative actually bound to that revision's history.
+            runs=rows(u,'SELECT x.id,x.raw_output FROM core.extraction_runs x JOIN core.proposal_revisions r ON r.extraction_run_id=x.id WHERE r.proposal_id=:p AND r.version<=:v AND x.inbox_id=:s ORDER BY r.version DESC LIMIT 1',p=proposal_id,v=version,s=s.id)
+        if not runs:return dict(state='PENDING',text=None,pages=[],warnings=[])
+        out=runs[0]['raw_output']
+        state=out.get('recognition_state') or ('SUCCEEDED' if out.get('provider')=='local' and str(out.get('engine','')).startswith('tesseract') else 'NOT_RECOGNIZED')
+        return dict(extraction_run_id=runs[0]['id'],state=state,provider=out.get('provider'),
+                    engine=out.get('engine'),engine_version=out.get('version'),text=out.get('text') if state=='SUCCEEDED' else None,
+                    pages=[{k:p[k] for k in ('page','rotation','lines') if k in p} for p in out.get('pages',[])] if state=='SUCCEEDED' else [],
+                    warnings=out.get('warnings',[]))
 
     def source(self,e,a,i):
         with self.factory() as u:
@@ -156,12 +183,17 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             j=job[0];rows(u,"UPDATE core.processing_jobs SET state='RUNNING',attempts=attempts+1,lease_token=:t,lease_until=clock_timestamp()+interval '15 minutes',error_code=NULL WHERE id=:id RETURNING id",t=token,id=j['id'])
             source=dict(id=s.id,e=s.entity_id,a=s.created_by,raw=s.raw_text,binary=s.file_bytes,mime=s.mime_type,fp=s.fingerprint,saved_at=s.created_at,day=s.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(),duplicate=bool(s.duplicate_of_id),capture_context=s.metadata_json.get('capture_context'),invoice_intent=s.metadata_json.get('invoice_intent'),invoice_receipt_id=s.metadata_json.get('invoice_receipt_id'))
             u.commit()
+        document_context=source['capture_context'] in ('depot_receipt','supplier_invoice')
         try:
-            if source['capture_context'] in ('depot_receipt','supplier_invoice'):
-                # Explicit manual document workflow never depends on OCR availability.
-                output=dict(provider='owner',engine='manual-depot-source' if source['capture_context']=='depot_receipt' else 'manual-supplier-invoice-source',version=ENGINE,text=source['raw'] or '',pages=[],warnings=[])
-            elif source['binary']:
-                output=self.recognizer.recognize(source['binary'],source['mime'])
+            if source['binary']:
+                try:
+                    output=dict(self.recognizer.recognize(source['binary'],source['mime']),recognition_state='SUCCEEDED')
+                except Exception:
+                    if not document_context:raise
+                    # Manual recovery keeps the existing slot, while a FAILED
+                    # job retains the bounded, fenced recognition retry lifecycle.
+                    output=dict(provider='local',engine='recognition-failed',version='manual-document-fallback-v1',
+                                recognition_state='FAILED',text='',pages=[],warnings=['Распознавание не выполнено. Оригинал сохранён: повторите подготовку или введите проверенные данные вручную.'])
             else:output=dict(provider='local',engine='source-text',version=ENGINE,text=source['raw'],pages=[],warnings=[])
             with self.factory() as u:
                 if self._process_source(u,i) is None:return
@@ -177,14 +209,27 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
                 specs=self.prepare(u,source,output)
                 for idx,(kind,payload,provenance) in enumerate(specs):
                     slot=f'{kind}:{idx}'
-                    if rows(u,'SELECT id FROM core.proposed_actions WHERE inbox_id=:s AND slot=:slot',s=i,slot=slot):continue
+                    existing=rows(u,'SELECT * FROM core.proposed_actions WHERE inbox_id=:s AND slot=:slot FOR UPDATE',s=i,slot=slot)
+                    if existing:
+                        p=existing[0]
+                        # Every owner action, even defer/reopen, permanently
+                        # fences this slot against automatic retry enrichment.
+                        reviewed=rows(u,"SELECT 1 FROM core.proposal_actions WHERE proposal_id=:p AND action<>'PREPARE' LIMIT 1",p=p['id'])
+                        if (not document_context or output.get('recognition_state')!='SUCCEEDED' or reviewed
+                                or p['state'] not in ('NEEDS_INPUT','READY')):continue
+                        self._revision(u,p,payload,provenance,source['a'],'PREPARE',run_id,output['warnings'],preparation_retry=True)
+                        continue
                     pid=uuid4();priority=0 if kind in ('PAYABLE','PAYMENT','DIRECT_EXPENSE','STOCK_RECEIPT','STOCK_APPLICATION','INVOICE_MATCH') else 1 if kind=='DEPOT_RECEIPT' else 2
                     rows(u,"INSERT INTO core.proposed_actions(id,entity_id,inbox_id,slot,action_type,state,version,priority,created_by,first_unresolved_at) VALUES(:id,:e,:s,:slot,:k,'PREPARING',1,:p,:a,:saved) RETURNING id",id=pid,e=source['e'],s=i,slot=slot,k=kind,p=priority,a=source['a'],saved=source['saved_at'])
                     p=self._proposal(u,source['e'],pid)
                     warnings=list(output['warnings'])
                     if source['duplicate']:warnings.append('Возможный повтор источника: проверьте оригинал')
                     self._revision(u,p,payload,provenance,source['a'],'PREPARE',run_id,warnings)
-                rows(u,"UPDATE core.processing_jobs SET state='SUCCEEDED',lease_token=NULL,lease_until=NULL WHERE id=:id RETURNING id",id=j['id']);u.commit()
+                if output.get('recognition_state')=='FAILED':
+                    rows(u,"UPDATE core.processing_jobs SET state='FAILED',error_code='RECOGNITION_FAILED',retry_at=clock_timestamp()+interval '1 minute',lease_token=NULL,lease_until=NULL WHERE id=:id RETURNING id",id=j['id'])
+                else:
+                    rows(u,"UPDATE core.processing_jobs SET state='SUCCEEDED',error_code=NULL,lease_token=NULL,lease_until=NULL WHERE id=:id RETURNING id",id=j['id'])
+                u.commit()
         except Exception:
             with self.factory() as u:
                 if self._process_source(u,i) is None:return
@@ -198,34 +243,18 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
                         locations=rows(u,'SELECT * FROM inventory.locations WHERE entity_id=:e',e=s['e']),
                         workers=rows(u,'SELECT * FROM workers.people WHERE entity_id=:e',e=s['e']))
         raw=out.get('preparation_text',out['text']) or ''
-        if s.get('capture_context')=='depot_receipt':
-            from greenhouse_owner_os.domain.owner_capture import DepotProposal
-            return [('DEPOT_RECEIPT',DepotProposal().model_dump(mode='json'),{'currency':{'category':'CONTEXT DEFAULT','basis':'editable_daily_context'},'lines':{'category':'UNKNOWN','basis':'manual_document_review_required'}})]
-        if s.get('capture_context')=='supplier_invoice':
-            from greenhouse_owner_os.domain.owner_capture import MoneyProposal,InvoiceMatchProposal
-            if s.get('invoice_intent') not in ('operating_expense','existing_payable') or not s.get('invoice_receipt_id'):
-                raise ValidationError('Неизвестное назначение или контекст счёта')
-            match=('INVOICE_MATCH',InvoiceMatchProposal(receipt_id=s['invoice_receipt_id']).model_dump(mode='json'),
-                   {'receipt_id':{'category':'OWNER CONTEXT','basis':'explicit_physical_receipt_selection'}})
-            if s['invoice_intent']=='existing_payable':return [match]
-            payable=('PAYABLE',MoneyProposal(currency=None).model_dump(mode='json'),
-                     {'amount':{'category':'UNKNOWN','basis':'manual_invoice_review_required'},'counterparty_id':{'category':'UNKNOWN','basis':'manual_invoice_review_required'}})
-            # Reuse accepted deterministic facts from owner-supplied text; the
-            # receipt context is never evidence of invoice amount/date/supplier.
-            candidates=prepare_owner_source(raw,today=s['day'],refs=references,binary=bool(s['binary']),pages=out.get('pages',[])) if raw else []
-            if [kind for kind,_,_ in candidates]==['PAYABLE','INVOICE_MATCH']:
-                from .preparation_language import date_value
-                _,facts,provenance=candidates[0]
-                facts=dict(facts)
-                facts['currency']=source_currency(raw,default=None)
-                _,date_mentioned=date_value(raw,s['day'])
-                if not date_mentioned:facts['event_date']=None
-                for field in ('currency','event_date'):
-                    if facts.get(field) is None:provenance[field]={'category':'UNKNOWN','basis':'manual_invoice_review_required','source_text':raw}
-                payable=('PAYABLE',MoneyProposal.model_validate(facts).model_dump(mode='json'),provenance)
-            return [payable,match]
+        if s.get('capture_context') in ('depot_receipt','supplier_invoice'):
+            from .owner_preparation import prepare_context_document
+            result=prepare_context_document(raw,today=s['day'],refs=references,
+                context=s['capture_context'],invoice_intent=s.get('invoice_intent'),receipt_id=s.get('invoice_receipt_id'),
+                binary=bool(s['binary']),pages=out.get('pages',[]),recognition_state=out.get('recognition_state'),
+                warnings=out.get('warnings',[]),caption=s['raw'],engine_version=out.get('version'))
+            return self._prepared_quality_mappings(u,result,INTERPRETATION_VERSION)
         result=prepare_quick_expense(raw,today=s['day']) if s.get('capture_context')=='quick_expense' and not s['binary'] else None
         if result is None:result=prepare_owner_source(raw,today=s['day'],refs=references,binary=bool(s['binary']),pages=out.get('pages',[]))
+        return self._prepared_quality_mappings(u,result,INTERPRETATION_VERSION)
+
+    def _prepared_quality_mappings(self,u,result,interpretation_version):
         for kind,payload,provenance in result:
             if kind=='WORKER_TASK':
                 payload['execution_contract']='R2_RECEIVED_REPORT'
@@ -235,7 +264,7 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             for idx,line in enumerate(payload['lines']):
                 mapping=rows(u,'SELECT * FROM harvest.depot_quality_mappings WHERE depot_id=:d AND original_label=:l ORDER BY version DESC LIMIT 1',d=payload['depot_id'],l=line['original_quality_name'].casefold())
                 if mapping:payload['qualities'][idx]=mapping[0]['quality'];learned.append(mapping[0])
-            if learned:provenance['qualities']={'category':'LEARNED DEFAULT','accepted_mapping_versions':learned,'interpretation_version':INTERPRETATION_VERSION}
+            if learned:provenance['qualities']={'category':'LEARNED DEFAULT','accepted_mapping_versions':learned,'interpretation_version':interpretation_version}
         return result
 
     def _depot_text(self,raw,parties):
@@ -256,6 +285,7 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
         try:fields=DTO[p['action_type']].model_validate(payload).model_dump(mode='json')
         except InputError as ex:raise ValidationError('Проверьте значения карточки') from ex
         kind=p['action_type'];missing=[];basis={};e=p['entity_id']
+        if fields.get('document_reviewed') is False:missing.append('Проверьте оригинал, распознанные строки и отдельный комментарий владельца')
         def required(key,label):
             if fields.get(key) is None or fields.get(key)=='':missing.append(label)
         def scoped(table,id):
@@ -363,7 +393,8 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             depot_count=sum(x['count'] for x in fields['lines']) if fields['lines'] and all(x.get('count') is not None for x in fields['lines']) else None
             basis['arithmetic']=dict(lines=arithmetic,total_amount=str(total),stated_total_discrepancy=fields.get('stated_total') is not None and Decimal(fields['stated_total'])!=total,
                 field_count=field_count,depot_count=depot_count,count_discrepancy=field_count is not None and depot_count is not None and field_count!=depot_count,
-                field_count_unit='веток',depot_count_unit='ADET',cash_effect='0',currency=fields.get('currency'))
+                field_count_unit='веток',depot_count_unit='ADET',cash_effect='0',currency=fields.get('currency'),
+                **({'document_count':fields['document_count'],'document_count_unit':'ADET'} if fields.get('document_count') is not None else {}))
             basis['existing_receipts']=rows(u,'SELECT id,version,status FROM harvest.depot_settlements WHERE entity_id=:e AND evidence_id IN (SELECT id FROM harvest.evidence WHERE fingerprint=(SELECT fingerprint FROM core.inbox_items WHERE id=:s))',e=e,s=p['inbox_id'])
             basis['confirmed_source_receipts']=rows(u,"SELECT p.id,p.version FROM core.proposed_actions p JOIN core.inbox_items i ON i.id=p.inbox_id WHERE p.entity_id=:e AND p.action_type='DEPOT_RECEIPT' AND p.state='POSTED' AND i.fingerprint=(SELECT fingerprint FROM core.inbox_items WHERE id=:s)",e=e,s=p['inbox_id'])
             original=u.session.get(InboxRow,UUID(p['inbox_id']))
@@ -382,13 +413,13 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
         else:missing.append('Выберите точный ручной режим по сохранённому оригиналу')
         return fields,list(dict.fromkeys(missing)),basis
 
-    def _revision(self,u,p,payload,provenance,a,action,run_id=None,warnings=(),review_reason=''):
+    def _revision(self,u,p,payload,provenance,a,action,run_id=None,warnings=(),review_reason='',preparation_retry=False):
         fields,missing,basis=self._validate(u,p,payload)
         # Every displayed field has an honest category, including nullable facts
         # and typed defaults such as TRY; missing metadata is not source truth.
         provenance={k:provenance.get(k,{'category':'UNKNOWN' if v is None else 'INFERENCE','basis':'typed_default_or_preparation'}) for k,v in fields.items()}
         missing=list(dict.fromkeys([*missing,*warnings]))
-        v=p['version'] if action=='PREPARE' else p['version']+1
+        v=p['version'] if action=='PREPARE' and not preparation_retry else p['version']+1
         digest=_hash_request(dict(id=p['id'],version=v,type=p['action_type'],payload=fields,basis=basis,missing=missing))
         rows(u,'INSERT INTO core.proposal_revisions(proposal_id,entity_id,version,schema_version,extraction_run_id,payload,provenance,missing,basis,preview_digest,actor_id,reason) VALUES(:i,:e,:v,1,:run,CAST(:f AS jsonb),CAST(:p AS jsonb),CAST(:m AS jsonb),CAST(:b AS jsonb),:d,:a,:reason) RETURNING version',i=p['id'],e=p['entity_id'],v=v,run=run_id,f=js(fields),p=js(provenance),m=js(missing),b=js(basis),d=digest,a=a,reason=action)
         rows(u,"UPDATE core.proposed_actions SET version=:v,state=:s,updated_at=clock_timestamp() WHERE id=:i RETURNING id",v=v,s='NEEDS_INPUT' if missing else 'READY',i=p['id'])
@@ -403,7 +434,7 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
         src=u.session.get(InboxRow,UUID(p['inbox_id']))
         overdue=reminder_eligible(datetime.fromisoformat(p['first_unresolved_at']),now(),p['state'])
         confirmed=rows(u,'SELECT response FROM core.confirmation_effects WHERE proposal_id=:p AND entity_id=:e',p=p['id'],e=p['entity_id'])
-        return dict(p,revision=rev,confirmed_effect=confirmed[0]['response'] if confirmed else None,source=dict(id=str(src.id),text=src.raw_text,filename=src.filename,has_file=src.file_bytes is not None,**{k:src.metadata_json[k] for k in ('capture_context','invoice_intent','invoice_receipt_id') if k in src.metadata_json}),reminder_eligible=overdue and not rows(u,'SELECT recovery_proposal_id FROM core.owner_recovery_links WHERE origin_proposal_id=:p',p=p['id']),**self._recovery_view(u,p,rev))
+        return dict(p,revision=rev,confirmed_effect=confirmed[0]['response'] if confirmed else None,source=dict(id=str(src.id),text=src.raw_text,filename=src.filename,has_file=src.file_bytes is not None,**({'recognition':self._recognition_view(u,src,p['id'],p['version'])} if src.file_bytes is not None else {}),**{k:src.metadata_json[k] for k in ('capture_context','invoice_intent','invoice_receipt_id') if k in src.metadata_json}),reminder_eligible=overdue and not rows(u,'SELECT recovery_proposal_id FROM core.owner_recovery_links WHERE origin_proposal_id=:p',p=p['id']),**self._recovery_view(u,p,rev))
 
     def queue(self,e,a,offset=0,limit=50):
         with self.factory() as u:
@@ -424,7 +455,21 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
             if p['state']=='REJECTED' and action!='REOPEN':raise ConflictError('Предложение отклонено; восстановите новой ревизией')
             if action=='EDIT' or action=='REOPEN':
                 payload=b.payload if action=='EDIT' else self._view(u,p)['revision']['payload']
+                previous=self._view(u,p)['revision']
+                if previous['payload'].get('document_reviewed') is not None:
+                    supplied=payload.get('document_reviewed')
+                    payload=dict(payload,document_reviewed=previous['payload']['document_reviewed'] if supplied is None else supplied)
+                if p['action_type']=='DEPOT_RECEIPT' and previous['payload'].get('unreadable_lines') and payload.get('unreadable_lines',[])!=previous['payload']['unreadable_lines']:
+                    if payload.get('document_reviewed') is not True or not b.reason.strip():
+                        raise ValidationError('Подтвердите сверку нечитаемых строк с оригиналом и укажите основание исправления')
                 provenance={k:{'category':'OWNER INPUT'} for k in payload}
+                if p['action_type'] in ('DEPOT_RECEIPT','PAYABLE','PAYMENT','INVOICE_MATCH'):
+                    from pydantic import ValidationError as InputError
+                    try:payload=DTO[p['action_type']].model_validate(payload).model_dump(mode='json')
+                    except InputError as ex:raise ValidationError('Проверьте значения карточки') from ex
+                    provenance={k:previous['provenance'].get(k,{'category':'UNKNOWN' if value is None else 'INFERENCE'})
+                                if same_review_fact(previous['payload'].get(k),value,k) else {'category':'OWNER INPUT'}
+                                for k,value in payload.items()}
                 if p['action_type']=='DIRECT_EXPENSE':
                     previous=self._view(u,p)['revision']
                     original=u.session.get(InboxRow,UUID(str(p['inbox_id'])))
@@ -433,9 +478,9 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
                         if prepare_quick_expense(original.raw_text or '',today=original.received_at.date()) is not None and previous['payload'].get('payment_purpose')=='expense' and any(previous['payload'].get(k)!=payload.get(k) for k in ('amount','currency','event_date','money_account_id','description','counterparty_id','obligation_id','due_date','attributions')):
                             payload=dict(payload,payment_purpose=None)
                     payload,provenance=expense_revision(previous,payload)
-                return self._revision(u,p,payload,provenance,a,action,review_reason=b.reason)
+                return self._revision(u,p,payload,provenance,a,action,run_id=previous.get('extraction_run_id'),review_reason=b.reason)
             previous=self._view(u,p)['revision']
-            revised=self._revision(u,p,previous['payload'],previous['provenance'],a,action,warnings=previous['missing'],review_reason=b.reason)
+            revised=self._revision(u,p,previous['payload'],previous['provenance'],a,action,run_id=previous.get('extraction_run_id'),warnings=previous['missing'],review_reason=b.reason)
             state='DEFERRED' if action=='DEFER' else 'REJECTED'
             rows(u,'UPDATE core.proposed_actions SET state=:s,deferred_at=CASE WHEN :s=\'DEFERRED\' THEN clock_timestamp() ELSE deferred_at END,updated_at=clock_timestamp() WHERE id=:i RETURNING id',s=state,i=i)
             return self._view(u,self._proposal(u,e,i))
