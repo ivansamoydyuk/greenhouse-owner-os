@@ -278,6 +278,10 @@ try {
     const rejected=staleOwnerPage.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname===dayRoot+'/requests/'+requestId+'/decisions');
     await click(staleOwnerPage,staleOwnerPage.locator('[data-form=day-decision] button[type=submit]'),'Stale owner submits the preserved edited instruction');
     assert.equal((await rejected).status(),409);
+    assert.equal(await staleOwnerPage.locator('[name=work]').inputValue(),staleEditedWork,'Rejected intent must remain visible before recovery');
+    const refreshedRequest=staleOwnerPage.waitForResponse(r=>r.request().method()==='GET'&&new URL(r.url()).pathname===dayRoot+'/requests/'+requestId);
+    await click(staleOwnerPage,staleOwnerPage.locator('[data-action=refresh]'),'Owner loads current request through the displayed conflict recovery action');
+    assert.equal((await refreshedRequest).status(),200);
     await staleOwnerPage.locator('[name=reviewed_current]').waitFor();
     assert.equal(await staleOwnerPage.locator('[name=work]').inputValue(),staleEditedWork,'Known conflict must retain edited visible intent');
     await layout(staleOwnerPage,'owner-stale-decision-review');
