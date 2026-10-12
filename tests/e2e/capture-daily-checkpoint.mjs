@@ -183,7 +183,13 @@ for(const [engine,type,caseId,extension] of engines){
   await stage('explicit_arithmetic_review');
   await click(page.locator('[data-action=review-depot-arithmetic]'),'Review arithmetic and independent field/document counts','review_acknowledgement');
   await page.getByText('Арифметика проверена владельцем',{exact:true}).waitFor();
-  if(await page.locator('[data-action=review-document]').count())await click(page.locator('[data-action=review-document]'),'Review recognition warnings and original','review_acknowledgement');
+  if(await page.locator('[data-action=review-document]').count()){
+   const revised=page.waitForResponse(r=>r.request().method()==='POST'&&r.url()===base+root+'/owner/confirmations/'+rec.proposal_id+'/revise');
+   await click(page.locator('[data-action=review-document]'),'Review recognition warnings and original','review_acknowledgement');
+   const response=await revised;assert.equal(response.status(),200,'Original review revision did not commit');
+   const committed=await response.json();assert.equal(committed.revision.payload.document_reviewed,true,'Original review response lacks authority');
+   await page.locator('[data-action=review-document]').waitFor({state:'hidden'});
+  }
   proposal=await read(root+'/owner/confirmations/'+rec.proposal_id+'/preview');rec.ready_proposal={payload:proposal.revision.payload,basis:proposal.revision.basis,missing:proposal.revision.missing};
   assert.deepEqual(proposal.revision.missing,[],'Critical facts must be reviewed before confirmation');assert.equal(await page.locator('[data-action=confirm-proposal]').isDisabled(),false);
   await layouts('ready-explicit-review');

@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import secrets
+import traceback
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
@@ -176,8 +177,16 @@ try:
         assert settlement['payment_id'] is None and settlement['application_ids']==[]
         assert settlement['obligation_id']==record['obligation_id']
         evidence=rows(db,'SELECT * FROM harvest.evidence WHERE id=:id',id=UUID(settlement['evidence_id']))[0]
-        assert evidence['fingerprint']==source['fingerprint'] and evidence['file_bytes']==file_bytes
-        assert evidence['source_reference']==str(pid) and evidence['raw_text'] is None
+        # Harvest retains a source-linked evidence record, not another copy of
+        # the potentially large Inbox binary (HarvestService._evidence).
+        assert evidence['fingerprint']==source['fingerprint'], 'Harvest/Inbox content identity differs'
+        assert evidence['file_bytes'] is None, 'Linked Harvest evidence unexpectedly duplicates original bytes'
+        assert evidence['entity_id']==entity and evidence['source']=='owner:r2-action', 'Harvest evidence source scope differs'
+        assert evidence['source_reference']==str(pid), 'Harvest evidence does not identify the confirmed proposal'
+        assert proposal['inbox_id']==source['id'] and source['source']=='owner:r2', 'Proposal does not identify original owner Inbox'
+        assert source['file_bytes']==file_bytes, 'Immutable Inbox bytes differ from frozen uploaded original'
+        assert hashlib.sha256(source['file_bytes']).hexdigest()==record['clicked_original_sha256'], 'Downloaded original differs from immutable Inbox bytes'
+        assert evidence['raw_text'] is None, 'Linked Harvest evidence unexpectedly substitutes original text'
         lines=rows(db,'SELECT * FROM harvest.settlement_lines WHERE settlement_id=:s',s=settlement_id)
         assert len(lines)==3
         by_label={x['original_quality_name']:x for x in lines}
@@ -221,6 +230,6 @@ try:
     assert proof['reconciliation']['ok'] and not proof['reconciliation']['findings']
  proof['status']='BASELINE_RECORDED' if mode=='baseline' else 'PASS'
 except Exception as error:
- proof['status']='FAIL';proof['failure']=str(error);write(ARGS.output,proof);raise
+ proof['status']='FAIL';proof['failure']={'type':type(error).__name__,'message':str(error),'traceback':traceback.format_exc()};write(ARGS.output,proof);raise
 write(ARGS.output,proof)
 print('CAPTURE_DAILY_SQL_'+proof['status'])
