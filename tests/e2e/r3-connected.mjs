@@ -1114,14 +1114,28 @@ try {
       .waitFor();
     await snap(page, engine + "-390-worker-original");
     if (engine === "chromium") {
+      const taskPath=root+"/tasks/"+fixture.worker_assignment_fixture.task_id;
+      const beforeAssignment=await read(context,taskPath);
+      const expectedAssignment={worker_id:await page.locator('[name=worker]').inputValue(),language:await page.locator('[name=language]').inputValue(),rendered_text:await page.locator('[name=rendered_text]').inputValue()};
+      const previousMain=await page.locator('#main').elementHandle();
       await page.locator("[name=reviewed]").check();
-      await click(page, "Сохранить назначение");
-      await page
-        .getByText(
-          "Внутреннее назначение TEST сохранено. Внешней отправки нет.",
-          { exact: true },
-        )
-        .waitFor();
+      // Arm the original visible acknowledgement before the trusted click.
+      const [,assignmentResponse]=await Promise.all([
+        page.getByText("Внутреннее назначение TEST сохранено. Внешней отправки нет.",{exact:true}).waitFor(),
+        page.waitForResponse(response=>response.request().method()==='POST'&&new URL(response.url()).pathname===taskPath+'/assignments'),
+        click(page,"Сохранить назначение"),
+      ]);
+      assert.equal(assignmentResponse.status(),201);
+      const assignment=await assignmentResponse.json();
+      assert.equal(assignment.task_id,beforeAssignment.id);assert.equal(assignment.rendering_reviewed,true);
+      for(const [key,value] of Object.entries(expectedAssignment))assert.equal(assignment[key],value);
+      await page.waitForFunction(main=>!main.isConnected,previousMain);
+      await waitRenderedRoute(page,'worker-task/'+beforeAssignment.id);await previousMain.dispose();
+      const assigned=await read(context,taskPath),stored=assigned.assignments.find(item=>item.id===assignment.id);
+      assert.ok(stored);for(const key of ['task_id','worker_id','language','rendered_text','rendering_reviewed','cycle'])assert.equal(stored[key],assignment[key]);
+      assert.equal(assigned.status,'assigned');
+      assert.equal(assigned.version,beforeAssignment.version+(beforeAssignment.assignments.some(item=>item.id===assignment.id)?0:1));
+      await page.getByText('not_sent',{exact:true}).waitFor();
     }
     result.records.workerTasks.push(fixture.worker_assignment_fixture.task_id);
     // F: a real cold read and explicit warm refresh see the injected secondary outage.

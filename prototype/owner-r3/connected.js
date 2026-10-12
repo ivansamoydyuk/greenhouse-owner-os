@@ -174,11 +174,13 @@ const errorBox = (error) =>
   panel(
     `<h2>Не удалось загрузить</h2><p class="form-error" role="alert">${e(error.message)}</p>${btn("Повторить", "refresh", "primary")}`,
   );
+let toastTimer = null;
 function toast(message) {
+  clearTimeout(toastTimer);
   const el = document.querySelector("#toast");
   el.textContent = message;
   el.classList.add("show");
-  setTimeout(() => el.classList.remove("show"), 3500);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 3500);
 }
 function shell(body, focused = false) {
   const section = route.split("/")[0];
