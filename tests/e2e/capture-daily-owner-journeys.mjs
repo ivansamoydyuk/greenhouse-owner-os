@@ -12,6 +12,7 @@ import {ownerLogin,workerLogin,pilotCredentials,pilotMode,expiredCookie,redactPi
 import {readOwnerDrafts} from './helpers/owner-draft-observer.mjs';
 import {installClickAudit} from './friction-metrics.mjs';
 import {observeBrowserDiagnostics,safePath} from './helpers/browser-diagnostics.mjs';
+import {observeDiscardedReadTerminal} from './helpers/discarded-read-terminal.mjs';
 const mode=process.env.CAPTURE_DAILY_MODE||'candidate',base=process.env.PREVIEW_URL||'http://127.0.0.1:4173',out=process.env.E2E_ARTIFACTS||'artifacts/capture-daily-owner';
 assert.ok(['baseline','candidate'].includes(mode));assert.equal(pilotMode,true);assert.ok(['localhost','127.0.0.1'].includes(new URL(base).hostname));
 const sha=process.env.OWNER_PREVIEW_FEATURE_SHA;assert.match(sha||'',/^[0-9a-f]{40}$/);
@@ -19,6 +20,8 @@ const digest=value=>createHash('sha256').update(value).digest('hex'),rawCorpus=a
 const setup=JSON.parse(await fs.readFile(path.join(out,'capture-daily-owner-setup.json'),'utf8'));assert.equal(setup.sha,sha);
 const credentials=await pilotCredentials();await fs.mkdir(out,{recursive:true});
 const result={sha,mode,status:'RUNNING',scope:'short_text_and_supplier_invoice_plus_capture_recovery',benchmark_sha256:digest(rawCorpus),records:[],screenshots:[],layouts:[],errors:[],metric_definitions:{trusted_clicks:'Executed Playwright clicks with a trusted DOM event, excluding authentication/setup. Native selects, file selections and fills are separate; these are not physical-device tap counts.',repeated_known_facts:'Changed business controls that re-enter source facts, including correction of a wrong prefill.',new_required_facts:'Changed controls supplying new owner decisions absent from source, such as economic intent or explicit receipt linkage.',review_acknowledgements:'Authority and original-quality checks, not repeated numeric entry.',baseline_barrier:'A witnessed unsupported or manual path; never a positive preparation claim.'}};
+const bootstrapArms=mode==='candidate'?['BOOTSTRAP_NORMAL','BOOTSTRAP_ROUTED','BOOTSTRAP_503','BOOTSTRAP_TIMEOUT']:[];
+result.bootstrap_matrix={cases:bootstrapArms,transport_positions:['after_relogin','after_held_edit'],application_deadline_ms:15000,repeat_rationale:'Two fixed positions match the two observed failures. No retry-to-pass; the first failure stops its isolated arm.'};
 const write=()=>fs.writeFile(path.join(out,'capture-daily-owner-browser.json'),JSON.stringify(result,null,2)+'\n');
 const eqDecimal=(a,b)=>{const exact=v=>{assert.match(String(v),/^\d+(?:\.\d{1,6})?$/);const [i,f='']=String(v).split('.');return BigInt(i)*1000000n+BigInt((f+'000000').slice(0,6));};assert.equal(exact(a),exact(b));};
 // Metadata-only observations: no headers, bodies, cookies, query/hash values,
@@ -108,7 +111,7 @@ for(const [engine,browserType] of engines){
   const input=async(locator,value,{key,origin='source_fact',initial=false}={})=>{await reveal(locator);const previous=await locator.inputValue();if(previous===String(value))return;const tag=await locator.evaluate(e=>e.tagName);if(tag==='SELECT')await locator.selectOption(String(value));else{await click(locator,'Focus '+key);await locator.fill(String(value));}assert.equal(await locator.inputValue(),String(value));c.operations.push({ordinal:++ordinal,phase,kind:initial?'initial_capture_input':origin==='review'?'review_acknowledgement':'field_edit',key,origin,previous,value:String(value),operation:tag==='SELECT'?'selectOption':'fill'});};
   const field=(name,value,origin)=>input(page.locator(`[name="${name}"]`),value,{key:name,origin});
   const layouts=async name=>{assert.ok(!page.url().includes('/pilot/'));for(const width of [390,320,768,1280]){await page.setViewportSize({width,height:width===320?568:844});const b=await page.evaluate(()=>({viewport:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(b.scroll<=b.viewport+2,JSON.stringify(b));result.layouts.push({engine,case_id:id,name,...b});await page.locator('#toast.show').waitFor({state:'hidden',timeout:10000});const filename=`${engine}-${id}-${width}-${name}.png`;await page.screenshot({path:path.join(out,filename),fullPage:true,timeout:20000});result.screenshots.push(filename);}await page.setViewportSize({width:390,height:844});};
-  const observe=async label=>{const filename=path.join(out,`${engine}-${id}-${label}-state.json`);execFileSync(process.env.PYTHON||'python',['scripts/capture_daily_owner_sql_evidence.py','--probe','--output',filename],{env:process.env,timeout:25000,stdio:['ignore','pipe','pipe']});return JSON.parse(await fs.readFile(filename,'utf8'));};
+  const observe=async(label,boundary=false)=>{const filename=path.join(out,`${engine}-${id}-${label}-state.json`);execFileSync(process.env.PYTHON||'python',['scripts/capture_daily_owner_sql_evidence.py',boundary?'--probe-boundary':'--probe','--output',filename],{env:process.env,timeout:25000,stdio:['ignore','pipe','pipe']});return JSON.parse(await fs.readFile(filename,'utf8'));};
   const prepare=async sourceId=>{const end=Date.now()+150000;let source;while(Date.now()<end){source=await read(root+'/owner/captures/'+sourceId);if(source.job?.state==='FAILED')throw Error('Real preparation failed: '+source.job.error_code);if(source.job?.state==='SUCCEEDED')return source;await new Promise(r=>setTimeout(r,600));}throw Error('Real source preparation exceeded 150 seconds');};
   const openPrepared=async source=>{const link=page.locator(`a[href="#review/${source.proposals[0].id}"]`).first();if(!await link.count()){await click(page.locator('[data-action=refresh]'),'Refresh actual prepared source');}await link.waitFor({timeout:20000});await click(link,'Open prepared action');await ready('review/');};
   const edit=async(key,value,origin='source_fact',invoice=false)=>{
@@ -125,10 +128,17 @@ for(const [engine,browserType] of engines){
   const actualFile=async caseId=>{const extension=caseId==='P02'?'pdf':'png',asset=`tests/fixtures/capture_daily_assets/${caseId}.${extension}`,bytes=await fs.readFile(asset);const picker=page.waitForEvent('filechooser');await click(page.locator('[name=file]'),'Choose fixed '+caseId+' original');await (await picker).setFiles(asset);await page.waitForFunction(()=>{const e=document.querySelector('[name=file]');return e?.dataset.attachmentState==='ready';});c.asset_path=asset;c.source_sha256=digest(bytes);c.operations.push({ordinal:++ordinal,phase,kind:'file_selection',case_id:caseId,sha256:c.source_sha256});return bytes;};
   const original=async(sourceId,expected)=>{const response=await context.request.get(base+root+'/owner/captures/'+sourceId+'/original');assert.equal(response.status(),200);assert.deepEqual(await response.body(),Buffer.from(expected));c.original_readback_sha256=digest(await response.body());};
   const lostConfirmation=async(proposalId,button,after)=>{await viewportProof(button,'confirm-ready');const routePattern=`**/owner/confirmations/${proposalId}/confirm`;let lost=false;const attempts=[];await page.route(routePattern,async route=>{attempts.push({key:route.request().headers()['idempotency-key'],body:route.request().postDataJSON()});if(!lost){const response=await route.fetch({timeout:25000});assert.equal(response.status(),200);lost=true;await route.abort('failed');}else await route.continue();});await click(button,'Confirm intended effect','effect_confirmation');await page.locator('#action-error').filter({hasText:'Ответ сервера не получен'}).waitFor();for(const width of [390,320]){await page.setViewportSize({width,height:width===320?568:844});await page.locator('#action-error').evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));const file=`${engine}-${id}-${width}-lost-response-viewport.png`;await page.screenshot({path:path.join(out,file),fullPage:false});result.screenshots.push(file);}await page.setViewportSize({width:390,height:844});c.after_lost_response=await observe('lost-response');await click(button,'Retry same confirmation','recovery_click');await after();await page.unroute(routePattern);c.after_retry=await observe('retried');assert.deepEqual(c.after_retry,c.after_lost_response,'Confirmation retry changed business state');assert.ok(lost);assert.equal(new Set(attempts.map(a=>a.key)).size,1);if(attempts.length>1)assert.deepEqual(attempts[0].body,attempts[1].body);c.confirm_attempts=attempts;c.lost_confirm_response=true;};
+  const checkpoint=async label=>{
+   assert.match(label,/^[a-z0-9-]+$/);await write();
+   if(!diagnostic)return null;
+   const captured=await boundedDiagnosticCapture(diagnostic),filename=`${engine}-${id}-${label}-diagnostics.json`;
+   await fs.writeFile(path.join(out,filename),JSON.stringify({sha,mode,engine,case_id:id,status:c.status,stage:c.stage,...captured},null,2)+'\n');
+   (c.diagnostic_checkpoints ||= []).push(filename);await write();return filename;
+  };
   let config,root;
   try{
    await ownerLogin(page,base);await ready('home');config=await read('/preview/config');root='/v1/entities/'+config.entity_id;assert.equal(config.feature_sha,sha);assert.equal(config.daily_pilot,true);assert.equal(config.entity_id,setup.entity_id);record.entity_id=config.entity_id;c.entity_id=config.entity_id;
-   await work({c,page,context,config,root,ready,read,stage,click,field,input,layouts,observe,prepare,openPrepared,edit,actualFile,original,lostConfirmation,viewportProof,setPhase:p=>phase=p});
+   await work({c,page,context,config,root,ready,read,stage,click,field,input,layouts,observe,prepare,openPrepared,edit,actualFile,original,lostConfirmation,viewportProof,checkpoint,setPhase:p=>phase=p});
    if(c.status==='RUNNING')c.status=mode==='baseline'?'BASELINE_RECORDED':'PASS';c.stage='complete';
   }catch(error){c.status='FAIL';c.failure={stage:c.stage,message:redactPilot(error.message),stack:redactPilot(error.stack||'')};if(!page.isClosed()&&!page.url().includes('/pilot/'))await page.screenshot({path:path.join(out,`${engine}-${id}-failure.png`),fullPage:true,timeout:10000}).catch(()=>{});}
   finally{const ops=c.operations.filter(o=>o.phase!=='setup');c.metrics={trusted_clicks:ops.filter(o=>o.events).length,capture_clicks:ops.filter(o=>o.events&&o.phase==='capture').length,review_clicks:ops.filter(o=>o.events&&o.phase==='review').length,destination_clicks:ops.filter(o=>o.events&&o.phase==='destination').length,repeated_known_facts:ops.filter(o=>o.kind==='field_edit'&&o.origin==='source_fact').length,new_required_facts:ops.filter(o=>o.kind==='field_edit'&&o.origin==='new_required_fact').length,review_acknowledgements:ops.filter(o=>o.kind==='review_acknowledgement').length,native_selects:ops.filter(o=>o.operation==='selectOption').length,text_fills:ops.filter(o=>o.operation==='fill').length,initial_capture_entries:ops.filter(o=>o.kind==='initial_capture_input').length,file_selections:ops.filter(o=>o.kind==='file_selection').length};// Preserve the primary manifest and original failure before optional observations.
@@ -207,6 +217,127 @@ for(const [engine,browserType] of engines){
   await stage('late_real_read_after_logout');await page.goto(base+'/r3/connected.html#home');await ready('home');await page.route('**/owner/home',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST transport failure'})}),{times:1});await page.reload();await ready('home');let release,entered;const gate=new Promise(resolve=>release=resolve),started=new Promise(resolve=>entered=resolve);await page.route('**/owner/home',async route=>{const response=await route.fetch();entered();await gate;try{await route.fulfill({response});}catch(e){if(!/closed|cancel|disposed|already handled/i.test(e.message))throw e;}},{times:1});await click(page.getByRole('button',{name:/^Повторить загрузку/}),'Retry actual held owner read');await Promise.race([started,new Promise((_,reject)=>setTimeout(()=>reject(Error('Held read never started')),15000))]);await click(page.locator('[data-testid=nav-more]'),'Keep logout reachable');await ready('more');const logout=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/pilot/logout'));await click(page.getByRole('button',{name:'Выйти',exact:true}),'Logout during held response');assert.equal((await logout).status(),200);release();await page.waitForURL('**/pilot/');assert.equal((await context.request.get(base+'/pilot/session')).status(),401);assert.equal(await page.locator('[data-testid=home-expense]').count(),0);c.late_response_did_not_restore_owner_ui=true;
   await workerLogin(page,base,credentials[engine].worker);assert.equal(await page.locator('[data-testid=home-expense]').count(),0);if(paid.source_id)assert.ok([403,404].includes((await context.request.get(base+root+'/owner/captures/'+paid.source_id)).status()));assert.equal((await page.locator('body').innerText()).includes(text),false);c.worker_cannot_read_owner_source=true;c.after=await observe('after');assert.deepEqual(c.after,c.before,'Capture security faults created business effects');
  });
+ // Fixed diagnostic matrix. Fresh context per arm, two observed predecessor
+ // positions per transport; an unexpected recovery/failure stops that arm.
+ // Original SECURITY actions, waits and assertions above remain unchanged.
+ for(const arm of bootstrapArms){
+  await resetFixtureRateLimits(); // Existing offline disposable-TEST fixture only.
+  await run(arm,async h=>{
+   const {c,page,context,config,root,ready,read,stage,click,observe,checkpoint}=h;
+   assert.ok(c.diagnostics_available,'Matrix requires metadata diagnostics');
+   const began=Date.now(),pattern='**/owner/home',text=fixture('T01').input;
+   c.business_writes=[];c.route_events=[];c.trials=[];
+   const note=(event,extra={})=>{assert.ok(c.route_events.length<100,'Bounded route evidence overflow');c.route_events.push({event,atMs:Date.now()-began,...extra});};
+   const writes=request=>{const method=request.method(),pathname=new URL(request.url()).pathname;if(pathname.startsWith('/v1/')&&!['GET','HEAD','OPTIONS'].includes(method))c.business_writes.push({method,path:safePath(request.url())});};
+   page.on('request',writes);
+   const removeRoute=async(matcher,handler)=>{try{await page.unroute(matcher,handler);}catch{c.route_cleanup_failed=true;}};
+   const freezeFailure=async error=>{
+    if(c.first_failure)return;c.first_failure={stage:c.stage,message:redactPilot(error.message)};await write();
+    try{await checkpoint('first-failure');}catch{c.first_failure_diagnostic_failed=true;}
+    if(!page.isClosed()&&!page.url().includes('/pilot/'))await page.screenshot({path:path.join(out,`${engine}-${arm}-first-failure.png`),fullPage:false,timeout:10000}).catch(()=>{});
+   };
+   const bounded=async(promise,label,ms=15000)=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label)),ms);})]);}finally{clearTimeout(timer);}};
+   const draftAt=async(route,expected)=>{const saved=await readOwnerDrafts(page,base,config,route,sha);assert.equal(saved.drafts.length,1,'One owner-scoped encrypted draft required');assert.ok(saved.drafts[0].value.text===expected,'Owner draft content changed');assert.ok(!saved.raw.includes(expected),'Draft plaintext persisted');return saved.drafts[0];};
+   const sameDraft=async(route,expected,prior)=>{const current=await draftAt(route,expected);assert.ok(JSON.stringify(current)===JSON.stringify(prior),'Encrypted draft UUID, content or authenticated owner scope changed');return current;};
+   // Capture response and body-terminal timing without adding readiness waits.
+   const readEvents=new WeakMap();let readOrdinal=0;
+   const onRequest=request=>{if(new URL(request.url()).pathname===root+'/owner/home'){const id=++readOrdinal;readEvents.set(request,id);note('request',{id});}};
+   const onResponse=response=>{const id=readEvents.get(response.request());if(id)note('response',{id,status:response.status()});};
+   const onFinished=request=>{const id=readEvents.get(request);if(id)note('requestfinished',{id});};
+   const onFailed=request=>{const id=readEvents.get(request);if(id)note('requestfailed',{id});};
+   page.on('request',onRequest);page.on('response',onResponse);page.on('requestfinished',onFinished);page.on('requestfailed',onFailed);
+   const coldReload=async(transport,position)=>{
+    const trial={transport,position,status:'RUNNING',atMs:Date.now()-began};c.trials.push(trial);await stage(position+'_'+transport);
+    let entered=0,fulfilled=0,handlerFailure=false;
+    const handler=async route=>{entered++;note('handler_entered',{transport,position});try{
+     if(transport==='one_shot_503')await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'TEST transport failure'})});
+     else {const response=await route.fetch({timeout:25000});assert.equal(response.status(),200,'Pass-through must use the actual server 200');note('handler_fetched',{transport,position,status:response.status()});await route.fulfill({response});}
+     fulfilled++;note('handler_fulfilled',{transport,position});
+    }catch{handlerFailure=true;note('handler_failed',{transport,position});await route.abort('failed').catch(()=>{});}};
+    if(transport!=='unrouted_200')await page.route(pattern,handler,{times:1});
+    try{
+     await page.reload();await ready('home');
+     assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'render-returned');
+     assert.equal(handlerFailure,false,'Intercepted read failed');assert.equal(entered,transport==='unrouted_200'?0:1);assert.equal(fulfilled,entered);
+     trial.status='PASS';trial.elapsed_ms=Date.now()-began-trial.atMs;trial.handler_entered=entered;trial.handler_fulfilled=fulfilled;
+     assert.ok(await checkpoint(position.replaceAll('_','-')+'-'+transport.replaceAll('_','-')),'Missing per-iteration diagnostics');
+    }catch(error){trial.status='FAIL';trial.elapsed_ms=Date.now()-began-trial.atMs;await freezeFailure(error);throw error;}
+    finally{if(transport!=='unrouted_200')await removeRoute(pattern,handler);}
+   };
+   c.boundary_before=await observe('matrix-before',true);let primaryError;
+   try{
+    await stage('save_encrypted_draft');await click(page.locator('[data-testid=home-expense]'),'Open matrix draft');await ready('capture/expense');
+    await page.locator('[name=text]').fill(text);await page.locator('[data-fertilizer-draft-status][data-state=saved]').waitFor();
+    const originalDraft=await draftAt('capture/expense',text);c.client_capture_id=originalDraft.value.id;c.encrypted_draft=true;
+    if(arm==='BOOTSTRAP_TIMEOUT'){
+     await stage('deliberate_bootstrap_timeout');
+     let release,enter,heldRequest;const gate=new Promise(resolve=>release=resolve),entered=new Promise(resolve=>enter=resolve);
+     const matcher=url=>url.pathname===root+'/owner/captures';
+     const handler=async route=>{heldRequest=route.request();note('timeout_handler_entered');enter();await gate;try{await route.continue();note('timeout_handler_released');}catch{note('timeout_handler_release_failed');}};
+     await page.route(matcher,handler,{times:1});
+     try{
+      const reloadStarted=Date.now();await page.reload();await bounded(entered,'Bootstrap read was not intercepted');
+      // Existing application deadline remains 15 seconds. This observation has
+      // the original 25-second readiness budget; it does not change that clock.
+      const retry=page.getByRole('button',{name:'Повторить загрузку страницы',exact:true});await retry.waitFor({timeout:25000});
+      assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');assert.equal(await page.locator('form,input,textarea,select,.dock').count(),0);assert.ok(page.url().endsWith('#capture/expense'));
+      await page.getByText('Загрузка заняла слишком много времени. Повторите загрузку страницы.',{exact:true}).waitFor();
+      c.controlled_timeout_elapsed_ms=Date.now()-reloadStarted;assert.ok(c.controlled_timeout_elapsed_ms>=14500,'Expected the existing 15-second deadline, not an earlier initialization failure');c.controlled_recovery_visible=true;
+      const image=`${engine}-${arm}-390-timeout-recovery.png`;await page.screenshot({path:path.join(out,image),fullPage:false});result.screenshots.push(image);
+      assert.ok(await checkpoint('timeout-visible'),'Missing timeout diagnostics');
+      const terminal=observeDiscardedReadTerminal(page,heldRequest);
+      try{release();c.late_read=await bounded(terminal.promise,'Released bootstrap read never reached terminal observation',25000);}finally{terminal.dispose();}
+      assert.equal(await page.locator('#app').getAttribute('data-bootstrap-stage'),'recovery');assert.equal(await page.locator('form,input,textarea,select,.dock').count(),0);
+      await sameDraft('capture/expense',text,originalDraft);c.late_response_fenced=true;
+      await page.unroute(matcher,handler);await stage('visible_manual_reload');await click(retry,'Use visible cold-bootstrap recovery','recovery_click');await ready('capture/expense');
+      assert.ok(await page.locator('[name=text]').inputValue()===text,'Manual recovery lost draft content');await sameDraft('capture/expense',text,originalDraft);
+      const authenticated=await read('/pilot/session');assert.equal(authenticated.role,'owner');assert.equal(authenticated.participant_id,config.participant_id);
+      const recoveredImage=`${engine}-${arm}-390-manual-recovery.png`;await page.screenshot({path:path.join(out,recoveredImage),fullPage:false});result.screenshots.push(recoveredImage);
+      c.same_draft_after_recovery=true;c.authenticated_recovery=true;assert.ok(await checkpoint('manual-recovery-complete'),'Missing recovery diagnostics');
+     }catch(error){await freezeFailure(error);throw error;}finally{release();await removeRoute(matcher,handler);}
+    }else{
+     // Repeat the actual expiry/re-login predecessor without submitting a
+     // business write: the real preflight 401 must stop that request entirely.
+     await page.reload();await ready('capture/expense');await stage('matrix_expired_session');
+     const expired=await expiredCookie(config.participant_id);await context.addCookies([{...expired,url:base}]);assert.equal((await context.request.get(base+'/pilot/session')).status(),401);
+     const denied=page.waitForResponse(r=>r.request().method()==='GET'&&r.url().endsWith('/pilot/session'));await click(page.locator('[data-form=capture] button[type=submit]'),'Attempt matrix save after actual expiry');assert.equal((await denied).status(),401);await page.waitForURL('**/pilot/**');
+     await ownerLogin(page,base,{navigate:false});await page.goto(base+'/r3/connected.html#capture/expense');await ready('capture/expense');await sameDraft('capture/expense',text,originalDraft);c.same_draft_after_relogin=true;
+     await page.goto(base+'/r3/connected.html#home');await ready('home');
+     const transport={BOOTSTRAP_NORMAL:'unrouted_200',BOOTSTRAP_ROUTED:'routed_real_200',BOOTSTRAP_503:'one_shot_503'}[arm];
+     await coldReload(transport,'after_relogin');
+     // Controls need the same unavailable-section Retry predecessor. This one
+     // extra 503 reload is explicitly recorded as setup, never as a clean200.
+     if(transport!=='one_shot_503')await coldReload('one_shot_503','held_edit_setup');
+     await stage('held_read_new_edit_predecessor');
+     let release,enter,handlerFailure=false;const gate=new Promise(resolve=>release=resolve),entered=new Promise(resolve=>enter=resolve);
+     const handler=async route=>{note('edit_handler_entered');try{const response=await route.fetch({timeout:25000});assert.equal(response.status(),200);note('edit_handler_fetched',{status:200});enter();await gate;await route.fulfill({response});note('edit_handler_fulfilled');}catch{handlerFailure=true;note('edit_handler_failed');enter();await route.abort('failed').catch(()=>{});}};
+     await page.route(pattern,handler,{times:1});
+     try{
+      await click(page.getByRole('button',{name:/^Повторить загрузку/}),'Retry held real matrix read');await bounded(entered,'Held matrix edit read never started');assert.equal(handlerFailure,false);
+      await click(page.locator('[data-testid=radial-toggle]'),'Open new draft while matrix read waits');await click(page.locator('[data-testid=capture-text]'),'Enter matrix text draft');await ready('capture/text');
+      const newText=fixture('T04').input;await page.locator('[name=text]').fill(newText);await page.locator('[data-fertilizer-draft-status][data-state=saved]').waitFor();
+      const newDraft=await draftAt('capture/text',newText);
+      const response=page.waitForResponse(r=>r.url().endsWith('/owner/home')&&r.status()===200);release();await response;
+      // Match the original sequence; observe requestfinished but do not wait for
+      // it or add a delay before navigation, which could hide the suspected race.
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));assert.ok(page.url().endsWith('#capture/text'));assert.ok(await page.locator('[name=text]').inputValue()===newText,'Late read overwrote newer edit');
+      c.delayed_read_did_not_overwrite_edit=true;
+      await page.goto(base+'/r3/connected.html#home');await ready('home');await coldReload(transport,'after_held_edit');
+      await sameDraft('capture/text',newText,newDraft);await sameDraft('capture/expense',text,originalDraft);c.both_drafts_retained=true;
+     }catch(error){await freezeFailure(error);throw error;}finally{release();await removeRoute(pattern,handler);}
+    }
+   }catch(error){primaryError=error;}
+   finally{
+    // Keep first error/stage before optional evidence or SQL observation. Every
+    // arm terminates here; no recovery/retry is applied to an unexpected stall.
+    if(primaryError)await freezeFailure(primaryError);
+    try{assert.ok(await checkpoint('arm-terminal'),'Missing terminal diagnostics');}catch(error){c.terminal_diagnostic_failed=true;if(!primaryError)primaryError=error;}
+    try{c.boundary_after=await observe('matrix-after',true);assert.deepEqual(c.boundary_after,c.boundary_before,'Cold-bootstrap diagnostic changed SQL business/source/proposal/job rows');assert.deepEqual(c.business_writes,[],'Diagnostic dispatched a business write');assert.ok(!c.route_cleanup_failed,'Owned diagnostic route cleanup failed');c.exact_sql_no_write=true;}catch(error){c.boundary_verification_failed=true;if(!primaryError)primaryError=error;}
+    page.off('request',writes);page.off('request',onRequest);page.off('response',onResponse);page.off('requestfinished',onFinished);page.off('requestfailed',onFailed);await write();
+   }
+   if(primaryError)throw primaryError;
+  });
+ }
  record.status=record.cases.every(c=>c.status===(mode==='baseline'?'BASELINE_RECORDED':'PASS'))?'COMPLETE':'FAIL';await browser.close();await write();
 }
 result.status=result.records.every(r=>r.status==='COMPLETE')&&!result.errors.length?(mode==='baseline'?'BASELINE_RECORDED':'PASS'):'FAIL';await write();console.log(JSON.stringify({status:result.status,mode,records:result.records.map(r=>({engine:r.engine,cases:r.cases.map(c=>({id:c.id,status:c.status,stage:c.stage,metrics:c.metrics,failure:c.failure?.message}))}))}));if(result.status==='FAIL')process.exitCode=1;
