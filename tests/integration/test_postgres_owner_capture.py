@@ -11,7 +11,7 @@ from greenhouse_owner_os.services.owner_capture import OwnerCaptureService
 from greenhouse_owner_os.repositories.sqlalchemy import SqlAlchemyUnitOfWork
 from greenhouse_owner_os.domain.owner_capture import CaptureSource,ConfirmAction,ReviseAction
 
-def source(i,phrase='Сегодня полить İmamlı.',**kw):
+def source(i,phrase='Для меня сегодня полить İmamlı.',**kw):
     return send(i['c'],f"/entities/{i['e']}/owner/captures",dict(client_capture_id=str(uuid4()),captured_at='2026-10-08T12:00:00+03:00',text=phrase,**kw))
 def queue(i):return i['c'].get(f"/v1/entities/{i['e']}/owner/confirmations").json()['items']
 def revise(i,p,payload):return send(i['c'],f"/entities/{i['e']}/owner/confirmations/{p['id']}/revise",dict(expected_version=p['version'],payload=payload),expected=200)

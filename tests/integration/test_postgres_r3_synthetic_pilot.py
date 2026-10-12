@@ -1,5 +1,6 @@
 """Synthetic pilot fixture keeps real owner opening data out of connected TEST."""
 from uuid import UUID
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
@@ -11,12 +12,25 @@ from greenhouse_owner_os.services.references import ReferenceService, provision_
 from greenhouse_owner_os.synthetic_pilot import OWNER_NAME, OWNER_REF, setup_synthetic_profile
 
 
-def test_synthetic_seed_replays_normal_services_without_real_owner_opening(migrated_database):
+def test_synthetic_seed_replays_normal_services_without_real_owner_opening(migrated_database, monkeypatch):
     sf = make_session_factory(migrated_database)
     actor = provision_authenticated_owner(sf, external_ref=OWNER_REF, display_name=OWNER_NAME, environment='TEST_PREVIEW')
     factory = lambda:SqlAlchemyUnitOfWork(sf)
     app = create_app(finance_service=FinanceService(factory), reference_service=ReferenceService(factory,environment='TEST_PREVIEW'), actor_provider=lambda:actor)
     with TestClient(app) as client:
+        # Simulate interrupted startup after each newly relevant server commit.
+        # Restart follows saved source lineage/review instead of duplicating it.
+        for suffix in ('/task-recovery', '/revise'):
+            original_post = client.post
+            def lost_response(path, *args, **kwargs):
+                response = original_post(path, *args, **kwargs)
+                if path.endswith(suffix) and response.status_code == 200:
+                    raise RuntimeError('TEST lost synthetic setup response')
+                return response
+            with monkeypatch.context() as patch:
+                patch.setattr(client, 'post', lost_response)
+                with pytest.raises(RuntimeError, match='TEST lost synthetic setup response'):
+                    setup_synthetic_profile(client, factory, actor)
         profile = setup_synthetic_profile(client, factory, actor)
         assert setup_synthetic_profile(client, factory, actor) == profile
         eid = profile['entity']['id']; root = '/v1/entities/' + eid
@@ -37,6 +51,14 @@ def test_synthetic_seed_replays_normal_services_without_real_owner_opening(migra
         assert inventory['invariants']['ok']
         personal = client.get(root+'/owner/tasks').json()
         assert personal['total'] == 5 and {t['id'] for t in personal['items']} == {t['task_id'] for t in profile['personal_tasks']}
+        for n, fixture in enumerate(profile['personal_tasks'], 1):
+            saved = client.get(root+'/owner/captures/'+fixture['source_id']).json()
+            assert saved['text'] == f'Сегодня проверить давление в TEST Теплица А, TEST задача {n}.'
+            assert len(saved['recovery_links']) == 1 and len(saved['proposals']) == 2
+            origin = next(p for p in saved['proposals'] if p['recovery_proposal_id'])
+            assert origin['action_type'] == 'UNRESOLVED' and origin['state'] == 'REJECTED'
+            assert origin['recovery_proposal_id'] == fixture['proposal_id']
+            assert saved['recovery_links'][0]['recovery_proposal_id'] == fixture['proposal_id']
         worker = profile['worker_assignment_fixture']
         task = client.get(root+'/tasks/'+worker['task_id']).json()
         assert task['status'] == 'draft' and task['assignments'] == []

@@ -127,6 +127,7 @@ class InvoiceMatchProposal(StrictModel):
 class UnknownProposal(StrictModel):
     note: str | None = Field(default=None,max_length=2000)
     money_candidates: MoneyProposal | None = Field(default=None,exclude_if=lambda v:v is None)
+    task_candidates: TaskProposal | None = Field(default=None,exclude_if=lambda v:v is None)
 
 DTO = {'PAYABLE':MoneyProposal,'PAYMENT':MoneyProposal,'DIRECT_EXPENSE':MoneyProposal,
        'STOCK_RECEIPT':StockProposal,'STOCK_APPLICATION':StockProposal,'PERSONAL_TASK':TaskProposal,
@@ -156,6 +157,10 @@ class ExpenseRecoveryAction(StrictModel):
 class MoneyRecoveryAction(ReviewAction):
     origin_proposal_id: UUID
     intent: Literal['operating_payable','paid_expense','debt_payment']
+
+class TaskRecoveryAction(ReviewAction):
+    origin_proposal_id: UUID
+    audience: Literal['personal','worker']
 
 class TaskStateAction(StrictModel):
     expected_version: int = Field(gt=0)

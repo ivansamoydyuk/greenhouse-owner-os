@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import {chromium} from 'playwright';
 import {navigateOwner, waitOwnerRoute, revealOwnerControl} from './navigation.mjs';
 import {isVisibleOwnerControl} from './visibility.mjs';
-import {intendedTask, sourceTasks, taskSnapshots} from './task-review-fixture.mjs';
+import {intendedTask, intendedTaskCandidate, taskFacts, sourceTasks, taskSnapshots, chooseTaskAudience, readSourceProposals} from './task-review-fixture.mjs';
 
 const base = process.env.PREVIEW_URL || 'http://127.0.0.1:4173';
 assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(new URL(base).hostname), 'Disposable local preview only');
@@ -269,6 +269,10 @@ try {
     const saved = await (await savedResponse).json();
     await sheet().waitFor({state: 'hidden'});
     let proposal = await poll(async () => (await api(owner + '/confirmations')).items.find(item => item.inbox_id === saved.id), 'Relative irrigation proposal missing');
+    const audienceOrigin=proposal;assert.equal(audienceOrigin.action_type,'UNRESOLVED');
+    await navigateOwner(page,'review');
+    await sheet().locator(`[data-proposal="${audienceOrigin.id}"] [data-r2-open]`).click();
+    proposal=await chooseTaskAudience(page,api,owner,audienceOrigin,'personal');
     assert.equal(proposal.action_type, 'PERSONAL_TASK');
     const facts = proposal.revision.payload;
     assert.equal(facts.category, 'irrigation');
@@ -281,7 +285,8 @@ try {
     const hash = await originalHash(originalPath);
     assert.equal(hash, createHash('sha256').update(physicalOwnerPhrase, 'utf8').digest('hex'));
     sourceHashes.set(originalPath, hash);
-    preparedRelativeTasks.push({mode, sourceId: saved.id, proposalId: proposal.id, payload: facts});
+    preparedRelativeTasks.push({mode, sourceId: saved.id, audienceOriginId: audienceOrigin.id, proposalId: proposal.id, payload: facts});
+    await close();
     await navigateOwner(page, 'review');
     await sheet().locator(`[data-proposal="${proposal.id}"] [data-r2-open]`).click();
     await sheet().locator('#r2-confirm').waitFor();
@@ -335,14 +340,23 @@ try {
   const sourceOriginal = owner + `/captures/${source.id}/original`;
   sourceHashes.set(sourceOriginal, await originalHash(sourceOriginal));
   const duplicateMarker = 'Сегодня полить İmamlı.';
-  let proposal = await poll(async () => intendedTask((await api(owner + '/confirmations')).items, source.id, duplicateMarker), 'Intended long source task missing');
-  const preparedTasks = sourceTasks((await api(owner + '/confirmations')).items, source.id);
-  assert.equal(preparedTasks.filter(p => p.revision.payload.original_instruction.startsWith('Сегодня полить')).length, 2, 'Both repeated source task slots survive');
-  assert.equal(preparedTasks.filter(p => p.revision.payload.original_instruction.includes('Проверить давление')).length, 1, 'Pressure instruction survives independently');
-  const pressure = preparedTasks.find(p => p.revision.payload.original_instruction.includes('Проверить давление'));
-  assert.equal(pressure.revision.payload.worker_id ?? null, null, 'A generic TEST marker never identifies the synthetic worker');
-  assert.equal(pressure.revision.payload.language ?? null, null, 'Unknown worker identity never supplies a worker language');
-  assert.equal(preparedTasks.filter(p => p.revision.payload.original_instruction.startsWith('Сверить каждую строку')).length, 4, 'Every explicit sibling instruction survives');
+  const audienceOrigin = await poll(async () => intendedTaskCandidate((await api(owner + '/confirmations')).items, source.id, duplicateMarker), 'Intended unresolved long source task missing');
+  const preparedTasks = sourceTasks(await readSourceProposals(api,owner,source.id), source.id);
+  assert.equal(preparedTasks.length,7,'All seven original task slots remain before audience choice');
+  assert.equal(preparedTasks.filter(p => taskFacts(p).original_instruction.startsWith('Сегодня полить')).length, 2, 'Both repeated source task slots survive');
+  assert.equal(preparedTasks.filter(p => taskFacts(p).original_instruction.includes('Проверить давление')).length, 1, 'Pressure instruction survives independently');
+  const pressure = preparedTasks.find(p => taskFacts(p).original_instruction.includes('Проверить давление'));
+  assert.equal(taskFacts(pressure).worker_id ?? null, null, 'A generic TEST marker never identifies the synthetic worker');
+  assert.equal(taskFacts(pressure).language ?? null, null, 'Unknown worker identity never supplies a worker language');
+  assert.equal(preparedTasks.filter(p => taskFacts(p).original_instruction.startsWith('Сверить каждую строку')).length, 4, 'Every explicit sibling instruction survives');
+  await navigateOwner(page,'review');
+  await sheet().locator(`[data-proposal="${audienceOrigin.id}"] [data-r2-open]`).click();
+  let proposal=await chooseTaskAudience(page,api,owner,audienceOrigin,'personal');await close();
+  assert.equal(proposal.action_type,'PERSONAL_TASK');
+  const withSuccessor=sourceTasks(await readSourceProposals(api,owner,source.id),source.id);
+  assert.equal(withSuccessor.length,preparedTasks.length+1,'Seven task originals plus one explicit personal successor are retained');
+  assert.equal(intendedTask(withSuccessor,source.id,duplicateMarker).id,proposal.id);
+  assert.equal(withSuccessor.filter(p=>taskFacts(p).original_instruction.startsWith('Сегодня полить')).length,3,'Both repeated originals plus their one chosen successor remain visible to source accounting');
   // Isolate summary rendering from parser slot ordering. The normal TEST
   // revision path provides a repeated long title; source text stays immutable.
   const reviewTitle = longText.slice(0, 200);
@@ -350,7 +364,7 @@ try {
   proposal = await api(owner + `/confirmations/${proposal.id}/revise`, {expected_version: proposal.version,
     payload: {...proposal.revision.payload, title: reviewTitle}});
   assert.equal(proposal.revision.payload.title, reviewTitle);
-  const sourceTaskSnapshots = taskSnapshots((await api(owner + '/confirmations')).items, source.id);
+  const sourceTaskSnapshots = taskSnapshots(await readSourceProposals(api,owner,source.id), source.id);
   fixtures.proposal = proposal.id;
   const proposalBefore = await api(owner + `/confirmations/${proposal.id}/preview`);
   const openReview = async () => {
@@ -606,7 +620,7 @@ try {
 
 
   const proposalAfter = await api(owner + `/confirmations/${proposal.id}/preview`);
-  assert.deepEqual(taskSnapshots((await api(owner + '/confirmations')).items, source.id), sourceTaskSnapshots, 'All source task siblings and payloads survive layout/disclosure checks unchanged');
+  assert.deepEqual(taskSnapshots(await readSourceProposals(api,owner,source.id), source.id), sourceTaskSnapshots, 'All source task siblings and payloads survive layout/disclosure checks unchanged');
   assert.equal(proposalAfter.version, proposalBefore.version, 'Layout/disclosure checks never revise a proposal');
   assert.equal(proposalAfter.state, proposalBefore.state, 'Layout/disclosure checks never authorize posting');
   for (const [path, hash] of sourceHashes) assert.equal(await originalHash(path), hash, 'Original source bytes are immutable');

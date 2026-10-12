@@ -69,6 +69,19 @@ jobs:
             node tests/e2e/day-workers.mjs
             python scripts/day_workers_sql_evidence.py --verify "$E2E_ARTIFACTS/browser.json" --baseline "$E2E_ARTIFACTS/before.json" --output "$E2E_ARTIFACTS/sql.json"
           done
+      - name: Connected task audience clarification and immutable recovery
+        run: |
+          set -euo pipefail
+          for engine in chromium webkit; do
+            export TASK_AUDIENCE_ENGINE="$engine"
+            export E2E_ARTIFACTS="artifacts/task-audience/$engine"
+            mkdir -p "$E2E_ARTIFACTS"
+            python scripts/private_daily_pilot_provision.py --reset-fixture-rate-limits
+            python scripts/task_audience_sql_evidence.py --prepare --credentials "$PILOT_E2E_CREDENTIALS" --output "$E2E_ARTIFACTS/setup.json"
+            python scripts/task_audience_sql_evidence.py --before "$E2E_ARTIFACTS/before.json"
+            node tests/e2e/task-audience.mjs
+            python scripts/task_audience_sql_evidence.py --verify "$E2E_ARTIFACTS/browser.json" --baseline "$E2E_ARTIFACTS/before.json" --output "$E2E_ARTIFACTS/sql.json"
+          done
       - name: Preserve owned diagnostics
         if: always()
         run: |
@@ -83,7 +96,9 @@ jobs:
         if: always() && steps.guard.outcome == 'success'
         with:
           name: day-workers-${{ github.sha }}
-          path: artifacts/day-workers/
+          path: |
+            artifacts/day-workers/
+            artifacts/task-audience/
           retention-days: 14
           if-no-files-found: error
       - name: Stop only owned TEST runtime

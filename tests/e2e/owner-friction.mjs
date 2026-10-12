@@ -7,6 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {chromium} from 'playwright';
 import {navigateOwner, waitOwnerRoute} from './navigation.mjs';
+import {chooseTaskAudience} from './task-review-fixture.mjs';
 import {metricDefinitions, summarizeCase, summarizeFamilies, installClickAudit, createMeasuredActions} from './friction-metrics.mjs';
 
 const base = process.env.PREVIEW_URL || 'http://127.0.0.1:4173';
@@ -167,13 +168,24 @@ async function runCase(test) {
     let proposal = await api(owner + `/confirmations/${record.proposal_id}/preview`);
     record.initial_kind = proposal.action_type; record.initial_missing = proposal.revision.missing;
     record.initial_prepared_fields = proposal.revision.payload;
-    assert.equal(proposal.action_type, test.kind, `${test.id}: wrong route cannot be repaired by silently changing its business meaning`);
+    if(test.id==='GOLD-0403'){
+      assert.equal(proposal.action_type,'UNRESOLVED','The unchanged historical phrase requires an explicit audience under the current contract');
+      assert.equal(proposal.revision.payload.task_candidates.original_instruction,test.text);
+      record.historical_expected_kind=test.kind;record.current_contract_requires_audience=true;
+    }else assert.equal(proposal.action_type, test.kind, `${test.id}: wrong route cannot be repaired by silently changing its business meaning`);
     // Capture/preparation alone must never post a business effect.
     assert.ok(['READY', 'NEEDS_INPUT'].includes(proposal.state), `Unexpected prepared state ${proposal.state}`);
     assert.deepEqual((await snapshot()).economic, caseBefore.economic, 'Saving/preparing a source cannot change domain positions');
     await measured.click(page.locator('#nav [data-page=review]'), 'Open confirmation queue');
     await waitOwnerRoute(page, 'review');
     await measured.click(sheet().locator(`[data-proposal="${record.proposal_id}"] [data-r2-open]`), 'Open source proposal');
+    if(test.id==='GOLD-0403'){
+      record.audience_origin_id=proposal.id;
+      proposal=await chooseTaskAudience(page,api,owner,proposal,'personal',measured);
+      record.proposal_id=proposal.id;record.explicit_audience='personal';
+      assert.deepEqual((await snapshot()).economic,caseBefore.economic,'Explicit audience preparation still has no business effect');
+    }
+    assert.equal(proposal.action_type,test.kind,'Original target lifecycle applies only after explicit audience choice when required');
     await sheet().locator('#r2-confirm').waitFor();
 
     if (test.kind === 'UNRESOLVED' || test.expectedBlock) {

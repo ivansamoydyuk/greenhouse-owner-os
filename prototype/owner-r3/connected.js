@@ -36,6 +36,7 @@ import {
 } from "./connected-adapter.js";
 import {
   proposalSummary,
+  canClarifyTaskAudience,taskAudienceCommand,taskAudienceFields,taskAudienceSummary,workerSelectionPayload,
   displayQuantity as legacyDisplayQuantity,
   displayMetric as legacyDisplayMetric,
 } from "/assets/owner-r2.js";
@@ -501,6 +502,7 @@ function needsPaidReview(p) {
   return p.action_type === "DIRECT_EXPENSE" && (p.revision.provenance?.payment_purpose?.basis === "owner_payment_confirmation_required" || p.revision.payload.payment_purpose === "expense" || p.revision.missing?.some(x => x.includes("факт оплаты")));
 }
 function nextMissingFact(p) {
+  if(p.action_type==='WORKER_TASK'&&p.revision.missing?.length&&!p.revision.payload.worker_id)return 'worker_id';
   if(!['DIRECT_EXPENSE','PAYABLE','PAYMENT'].includes(p.action_type)||!p.revision.missing?.length)return null;
   const keys=['amount','description','currency','event_date',...(p.action_type!=='DIRECT_EXPENSE'?['counterparty_id']:[]),...(p.action_type!=='PAYABLE'?['money_account_id']:[]),...(p.action_type==='PAYMENT'?['payment_purpose','obligation_id']:needsPaidReview(p)?['payment_purpose']:[])];
   return keys.find(k=>p.revision.payload[k]==null||p.revision.payload[k]==='');
@@ -517,7 +519,13 @@ function moneyIntentReview(p) {
     ['Факт оплаты','Не установлен из источника'],
   ])}<details class="source-provenance"><summary>Исходный текст</summary><p class="original-text" data-testid="source-original">${e(p.source.text || p.revision.payload.note || '')}</p></details>${target?link('Открыть выбранное действие','review/'+target,'btn primary full'):['REJECTED','POSTED','CONFIRMED_NONPOSTING'].includes(p.state)?notice('Решение по этому источнику уже сохранено.'):form('money-intent',select('Что произошло','intent',[{value:'operating_payable',label:'Новый операционный расход, ещё не оплачен'},{value:'paid_expense',label:'Текущий расход уже оплачен'},{value:'debt_payment',label:'Оплата ранее учтённого долга'}],'','Выберите явно')+'<p class="note">Выбранный вид действия закрепится за этой записью. Сумма и остальные известные факты перейдут в проверку; проводка будет только после отдельного подтверждения.</p>','Открыть проверку')}${link('К исходнику','source/'+p.source.id,'btn secondary')}`);
 }
+function taskAudienceReview(p) {
+  const target=p.recovery?.recovery_proposal_id,pending=draft?.task_audience_submission;
+  const original=`<details class="source-provenance"><summary>Оригинал и источник · неизменяемые</summary><p class="original-text" data-testid="source-original">${e(p.source.text||'Текст отсутствует')}</p>${p.source.has_file?`<a href="${entityPath('/owner/captures/'+p.source.id+'/original')}" class="btn secondary" target="_blank" rel="noopener">Открыть оригинал</a>`:''}</details>`;
+  return Header('Уточнить задачу','Известные факты и оригинал сохранены',true)+panel(taskAudienceSummary(p,{owner:data.home})+original+(target?link('Открыть выбранную проверку','review/'+target,'btn primary full'):canClarifyTaskAudience(p)?form('task-audience',taskAudienceFields(pending?.body.audience),pending?'Повторить выбранное уточнение':'Открыть проверку')+btn('Обновить текущую карточку','refresh','secondary'):notice('Решение по этому источнику уже сохранено.'))+link('К исходнику','source/'+p.source.id,'btn secondary'));
+}
 function proposalDetail(p) {
+  if((p.action_type==='UNRESOLVED'&&p.revision.payload.task_candidates)||(['PERSONAL_TASK','WORKER_TASK'].includes(p.action_type)&&(draft?.task_audience_submission||p.recovery?.recovery_proposal_id&&p.recovery.recovery_proposal_id!==p.id)))return taskAudienceReview(p);
   if(p.action_type==='UNRESOLVED' && p.revision.payload.money_candidates)return moneyIntentReview(p);
   if(p.action_type==='PAYABLE' && p.revision.payload.invoice_intent==='undecided' && p.invoice_match_id)return Header('Счёт поставщика','Выберите назначение документа',true)+compactMoneyReview(p)+panel(`${link('Выбрать приход и назначение','invoice-select/'+p.invoice_match_id,'btn primary full')}${link('К исходнику','source/'+p.source.id,'btn secondary')}`);
   if(p.action_type==='PAYABLE' && p.source.capture_context==='supplier_invoice' && p.source.invoice_receipt_id)return Header('Счёт поставщика','Расход и долг проверяются отдельно от прихода',true)+panel(`${stateTag(p.state)}${link('Открыть счёт и связь','invoice-source/'+p.source.invoice_receipt_id+'/'+p.source.id,'btn primary full')}${link('К исходнику','source/'+p.source.id,'btn secondary')}`);
@@ -549,7 +557,7 @@ function proposalDetail(p) {
             .map((k) => btn(e(k === "payment_purpose" && p.action_type === "DIRECT_EXPENSE" ? "Факт оплаты" : fieldLabel(k)), `edit:${k}`, nextMissingFact(p) === k ? "primary" : "secondary"))
             .join(
               "",
-            )}</div></details>${p.action_type === "UNRESOLVED" ? btn("Оформить прямой расход", "recover:" + p.id) : ""}`,
+            )}</div></details>${p.action_type === "UNRESOLVED" ? btn("Оформить прямой расход", "recover:" + p.id) : ""}${['PERSONAL_TASK','WORKER_TASK'].includes(p.action_type)&&canClarifyTaskAudience(p)?'<details><summary>Изменить адресата задачи</summary>'+form('task-audience',taskAudienceFields(),'Открыть проверку')+'</details>':''}`,
         )
       : "") +
     (p.action_type === "DIRECT_EXPENSE"
@@ -1405,6 +1413,9 @@ async function render() {
         if(token!==epoch)return;
         current.invoice_match_id=source.proposals?.find(p=>p.action_type==='INVOICE_MATCH')?.id;
       }
+      if((current.action_type==='UNRESOLVED'&&current.revision.payload.task_candidates||['PERSONAL_TASK','WORKER_TASK'].includes(current.action_type))&&canClarifyTaskAudience(current)){
+        const saved=await getDraft(route);if(token!==epoch)return;draft=saved;
+      }
       body = proposalDetail(current);
     } else if (page === "review") body = reviewList();
     else if (page === "sources") body = await sourceList();
@@ -1802,6 +1813,12 @@ function integerOrUnknown(value) {
     throw Error("Укажите положительное целое количество.");
   return Number(value);
 }
+function restoreTaskAudienceReview(snapshot,token,error){
+  if(!ready||route!==snapshot.route||epoch!==token||api.scope!==snapshot.scope||api.generation!==snapshot.generation)return;
+  draft=snapshot.draft;current=snapshot.current;
+  shell(taskAudienceReview(current));document.querySelector('#main').dataset.renderedRoute=route;
+  showError(error,document.querySelector('[data-form=task-audience]'));
+}
 async function submitForm(formEl, snapshot) {
   assertSubmissionScope(snapshot);
   const { draft, current, route } = snapshot;
@@ -1849,6 +1866,17 @@ async function submitForm(formEl, snapshot) {
     go(financeRoute(current.selection,{date_from:v.date_from,date_to:v.date_to,currency:v.currency,greenhouse_id:v.greenhouse_id || null,money_account_id:v.currency!==current.selection.currency?null:(Object.hasOwn(v,"money_account_id")?(v.money_account_id || null):current.selection.money_account_id)}));
   } else if (name === "harvest-filters") {
     go(harvestRoute(current.selection,{season_start_year:Number(v.season_start_year),greenhouse_id:v.greenhouse_id || null,currency:v.currency || current.selection.currency,allocation:v.allocation || "all",month:null}));
+  } else if(name==='task-audience') {
+    if(!draft)throw Error('Обновите текущую карточку перед выбором адресата.');
+    const operationEpoch=epoch;
+    let operation=draft.task_audience_submission;
+    if(!operation){const body=taskAudienceCommand(current,v.audience);operation={path:'/owner/captures/'+current.source.id+'/task-recovery',body,key:current.id+':task-audience:'+current.version+':'+body.audience};draft.task_audience_submission=operation;await api.draft(savedRoute,draft);}
+    assertSubmissionScope(snapshot);
+    let proposal;
+    try{proposal=await api.entityPost(operation.path,operation.body,operation.key);if(!proposal?.id)throw Error('Ответ не подтверждён. Обновите текущую карточку.');}
+    catch(error){assertSubmissionScope(snapshot);if([400,409,422].includes(error.status)){delete draft.task_audience_submission;await api.draft(savedRoute,draft);assertSubmissionScope(snapshot);}restoreTaskAudienceReview(snapshot,operationEpoch,error);throw error;}
+    assertSubmissionScope(snapshot);await clearDraft(savedRoute);
+    return finish('review/'+proposal.id,'Адресат уточнён. Проверьте задачу перед отдельным подтверждением.');
   } else if(name==='money-intent') {
     if(!['operating_payable','paid_expense','debt_payment'].includes(v.intent))throw Object.assign(Error('Выберите, что произошло.'),{field:'intent'});
     const proposal=await api.entityPost('/owner/captures/'+current.source.id+'/money-recovery',{origin_proposal_id:current.id,expected_version:current.version,intent:v.intent},current.id+':money-intent:'+current.version+':'+v.intent);
@@ -2203,6 +2231,7 @@ async function submitForm(formEl, snapshot) {
     let value = v.value === "" ? null : v.value;
     if (key === "amount" && value) value = exactMoney(value);
     payload[key] = value;
+    if(current.action_type==='WORKER_TASK'&&key==='worker_id')Object.assign(payload,workerSelectionPayload(current.revision.payload,value,data.workers?.workers||[]));
     await api.entityPost(
       "/owner/confirmations/" + current.id + "/revise",
       {

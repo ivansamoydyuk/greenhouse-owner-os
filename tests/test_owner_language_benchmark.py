@@ -236,7 +236,24 @@ COMMON_TRAIN_IDS=[
 @pytest.mark.parametrize('case_id',COMMON_TRAIN_IDS)
 def test_common_clear_training_scenarios_remain_explicit_regressions(case_id):
     c=next(c for c in load(CORPUS/'train.jsonl') if c['id']==case_id)
-    result=score(c,prepare_case(c))
+    slots=prepare_case(c)
+    result=score(c,slots)
+    if case_id=='GOLD-0403':
+        # Owner's 2026-10-12 rule and independently reviewed v2 entry: this
+        # unchanged bare instruction does not establish a personal audience.
+        # Keep the frozen v1 mismatch explicit; require useful retained task
+        # facts and the actual short audience question under the new contract.
+        from scripts.owner_language_contract_v2 import load_contract,evaluate_case
+        assert c['text']=='Завтра полить Озвади полчаса'
+        assert c['expected'][0]['kind']=='PERSONAL_TASK'
+        assert not result['route_ok'] and not result['key_fields_ok'],result
+        assert not result['unsafe'] and not result['invented'],result
+        contract,baseline=load_contract()
+        expectation=contract['reviewed_expectations'][case_id]
+        assert expectation['expected_kind']=='UNRESOLVED'
+        reviewed=evaluate_case(c,slots,baseline['train'][case_id],expectation)
+        assert reviewed['strict_passed'],reviewed
+        result=reviewed['versioned_score']
     assert result['route_ok'] and result['key_fields_ok'],result
     assert not result['unsafe'] and not result['invented'],result
 

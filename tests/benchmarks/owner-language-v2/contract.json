@@ -1,0 +1,1324 @@
+{
+  "version": "owner-task-audience-v2",
+  "status": "INDEPENDENTLY_REVIEWED",
+  "authority": {
+    "message_id": "messageSentinel_23ec5a187ea481919e0b1ac30a8ad153",
+    "at": "2026-10-12T20:54:54Z"
+  },
+  "baseline_commit": "7c323f13e35477a355f00853756e38b5d3f45561",
+  "frozen_v1_files": {
+    "tests/benchmarks/owner-language/manifest.json": "3fa1d33fb2f5d5f2c353c4d16a12432003e09b92d5aff305f4881e97daa35886",
+    "tests/benchmarks/owner-language/first-unseen-report.json": "8fc37d3c65976ae0056383e670898791ff978157c3e2a3226d3543c0be1974ff",
+    "tests/benchmarks/owner-language/train.jsonl": "e007a80b77b091d35d9388284ac0eac84586b023361377a65c87094b5e26d283",
+    "tests/benchmarks/owner-language/taxonomy.json": "2103791ac504575f2dd61bac9f0349f91d81d5766a144bd8f38d73d32807ef05",
+    "tests/benchmarks/owner-language/README.md": "47341dfbd9c9b42e61f56c1950a57d1eaf335c49e135d6335807ae4fdbd419a1",
+    "tests/benchmarks/owner-language/label_errata.json": "7b61230cc02ecf42a14a2e2b85eb94194943bcf4b661c3dc75cfb2856b678ae5",
+    "tests/benchmarks/owner-language/audience_diagnostic_overlay.json": "c5b8e40eb5e944146527551819905cab2b57c02dd765088605d22315586d529b",
+    "tests/benchmarks/owner-language/holdout.jsonl": "1321173a79c494ee1db7e824cc3798035de225d879cf4cb931b6a403f3c87249",
+    "scripts/owner_language_benchmark.py": "09036c0d426dbfe7bdae6982a36673b9c9aa87f98d76e05ffca856266434242c",
+    "scripts/generate_owner_language_variants.py": "3301d49eb8291f9276075cae7ab6a968fe84d979169f1219aec300bdd51949f7",
+    "scripts/diagnose_owner_language_audience.py": "ffd8a4f4486a698565a3ecfd02b80017bf7912dd5f2fe59f1ca930da615cc84d",
+    "scripts/run_owner_language_exposed_ci.py": "2a2f6e81f32666e85f4b0450404b14c1422e23b79d9fb94b4ded3fe69924e98a",
+    "scripts/report_owner_language_benchmark.py": "3183761b9baee2aac0ba87176dcac90dd9a81ca45842ae8d0e01c017f39f0f33"
+  },
+  "case_counts": {
+    "train": 618,
+    "holdout": 187,
+    "semantic": 5200,
+    "noise": 5200
+  },
+  "reviewed_expectations": {
+    "GOLD-0001": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра договориться о визите агронома",
+      "source_sha256": "323c9e1e3669196014a9c2ada023a1b91e09236f5a07bb7f0f4b1965d819e815"
+    },
+    "GOLD-0002": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Сегодня отвезти образцы воды в LABEN",
+      "source_sha256": "5f9f53f9e14fb331050b960c4311b9d650f9f84e589854ee8f8e104b87015cd5"
+    },
+    "GOLD-0003": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят завтра собрать образцы почвы в Имамлы для лаборатории",
+      "source_sha256": "32d4398a93ced3707799e6a4050685da140243d2021df6af743900bc2d8f4844"
+    },
+    "GOLD-0004": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Послезавтра проверить результаты анализа почвы",
+      "source_sha256": "13a5957f322400af0c006a594695d1207d16d39b2f5a52015bd61e2a4b8c934f"
+    },
+    "GOLD-0018": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра сфотографировать поврежденные корни в Озвади для агронома",
+      "source_sha256": "3294862480f2b7e1440cb4cfdb11536b8203627f44766f6a9c765604c2d4c861"
+    },
+    "GOLD-0019": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар послезавтра проверить листья в Ешилёз, пока без обработки",
+      "source_sha256": "d6f3b39752cd378ba9dfd0b143c32aa4a48987440c6b42f12343d432aa2709b2"
+    },
+    "GOLD-0088": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра внести не 20, а 10 литров Multilex в Ешилёз",
+      "source_sha256": "08b532f0ae9a2ccf0f707b152a34af076131ac4d8474879b65c3c10497544c3d"
+    },
+    "GOLD-0092": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра внести только половину бочки в Ешилёз",
+      "source_sha256": "124e911f202c4d9195d226d717a3518aa7dff08d10d9909df8ab0a671725257e"
+    },
+    "GOLD-0093": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра полить Озвади: сначала вода, потом Multilex, снова вода",
+      "source_sha256": "497f08b2213d153b1d667ccdca220939f720217e4d19331ed2d89dafc92315a3"
+    },
+    "GOLD-0095": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра внести в Ешилёз 15 кг KNO3 и 10 л Multilex через бочку",
+      "source_sha256": "0a2765f0488103dba82d1c4f5dbd2bfa757dbb2c5400b2d7f1f1c7a6da604862"
+    },
+    "GOLD-0096": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня внести 2 литра Atocrop в Имамлы",
+      "source_sha256": "ebcc4ee08c9b932daa6dbb9b79e1d490ca5c1a51ab032989f8e04c57d8893abc"
+    },
+    "GOLD-0097": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра внести 5 кг сульфата калия в Озвади",
+      "source_sha256": "834c89c4008b5acce50d96982449e4b2b6996cec3736506cf1df09c3ec8cac4f"
+    },
+    "GOLD-0098": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед сегодня внести по 3 кг KNO3 на каждую часть Имамлы",
+      "source_sha256": "a442bf75847f221b80d441364f85d577e4833c61ee01ca357b8a0df6b5cf9545"
+    },
+    "GOLD-0109": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Каждый день нужно открывать окна утром.",
+      "source_sha256": "9a340b010a1d43113e704f0face7d5b1c7ad2cd8ef6d152fa1d7091ec3b8e9a7"
+    },
+    "GOLD-0111": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Если пошел сильный дождь или ветер - закрыть нужно сразу.",
+      "source_sha256": "d1eb4f09c30e0c6816e8319b760bb0d45d3cfeb3b9ae97c407938dd1e59a2e28"
+    },
+    "GOLD-0118": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "«Заедьте ... возьмите веревку ... на мое имя» distinguishes a physical executor from the speaking owner. This is a delegated errand with missing executor, not an owner-personal reminder; preserve worker intent and ask the executor without guessing identity.",
+      "original_text": "Заедьте в Шимшек или второй магазин - возьмите веревку как обычно на мое имя",
+      "source_sha256": "6a86096997d8df2a30b14c801d3ac49473b0261c21372a5ddc120943248addfa"
+    },
+    "GOLD-0125": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "Размешивай хорошо не только с помощью воды но и деревянной палкой.",
+      "source_sha256": "454ea335b8d09e66c8d8a753bab7dd167f06b20043c5fba57a34e5b8b754b34c"
+    },
+    "GOLD-0126": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "После того как удобрение закончится - еще 2 минуты поливаешь водой и выключаешь полив.",
+      "source_sha256": "ca98b5670d4764b7e7d4d4ff5970755f961404f890d56890b412f05f6fd97004"
+    },
+    "GOLD-0129": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "И посмотри пожалуйста на когда нужно заказывать машину для резки банана на Ешилоз ",
+      "source_sha256": "c5731feba3e40e4fc1079d33a14e1bad82ee321d524ed5ca1f0ac64c2f39af0d"
+    },
+    "GOLD-0134": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "завтра утром долей то что не долил сейчас",
+      "source_sha256": "04fabe903904ccd22131796f142892ad3216c1e9e993f84dd54b11c1aa018b9a"
+    },
+    "GOLD-0135": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "завтра вечером снова делай обычный полив",
+      "source_sha256": "ecb48dfeedf320f37c81eeba754efa3f31130e15f7146bf60e46b3bfe8f1a04b"
+    },
+    "GOLD-0141": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Бензин сегодня куплю",
+      "source_sha256": "2ec77e77fa33b0edb36e9b03a72bc72a54bc40736e801b041b2de0d659198d9d"
+    },
+    "GOLD-0145": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Нужно еще напомни мне, пожалуйста, через недели две, чтобы я связался с патроном Асефа",
+      "source_sha256": "fd0a21f152a267fc0531b96de1b8770a5aaf693e19686c83893b90a742136787"
+    },
+    "GOLD-0156": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра срезать 42 ветки в Ешилёз",
+      "source_sha256": "32a6e91d82d53178a2a2378d0f582b9db2c5527dc4fad5b44565dce48e801315"
+    },
+    "GOLD-0157": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня срезать бананы в Имамлы на две машины",
+      "source_sha256": "6629c59610222f51a4649545a0a4bbb62471e19947a555790cb51fc26bcdd824"
+    },
+    "GOLD-0158": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра проверить готовность бананов к срезке в Озвади",
+      "source_sha256": "6e51974da3cbc74a6175ecd0a3791548001ed32ffb4df935b708bf285cb8672f"
+    },
+    "GOLD-0159": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед послезавтра подготовить первую машину к срезке в Имамлы",
+      "source_sha256": "da154b3143cd8b178cd4b6f5d4b394aadc5bbdfe3e86f3ecbe08b323a7e0a81f"
+    },
+    "GOLD-0179": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Брат завтра утром нужно будет хорошо полить теплицу.",
+      "source_sha256": "1e5883b62005d790c26488421bcdb15097dc9c04d4d6249cf9e2dc685bacf8ac"
+    },
+    "GOLD-0181": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "Договорись чтобы тебя отвез кто то",
+      "source_sha256": "f25bc2c77c6fcd0dd447c61a82fac63e603cfb154173ee0cd6d3888f0a749211"
+    },
+    "GOLD-0183": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Завтра или после завтра разберусь с этими сообщениями чтобы они два раза не засчитали один и тот же платеж",
+      "source_sha256": "596012265847fcd9dc3f04ea135f44ef74f45c6c432949f12ca58280f31e5bc9"
+    },
+    "GOLD-0186": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Бурьян который порос в каналах тоже нужно будет вычищать лопатой.",
+      "source_sha256": "034c251f98de7b8839872ae11363fbe7ea6ecd922cd6a0b282474fcdcd40a0c8"
+    },
+    "GOLD-0187": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Траву вокруг теплицы нужно будет подстричь.",
+      "source_sha256": "1b34a4e38b00cfa69200b81f53dc3795c5ba5e5bc7316199b26f4d6c81a7ad27"
+    },
+    "GOLD-0188": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Необходимо обрезать сухие ветки маракуйи.",
+      "source_sha256": "cca0067597e6a743c9b0e09fee72992d14c5c9cd4d54a987b249e8e0c1a60d11"
+    },
+    "GOLD-0189": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Есть пластик и мусор по стороне Аланье который нужно убрать .",
+      "source_sha256": "ec8e380cda896e92d8f0514a15e5123a090fd883b3239625aebaaa5501f23617"
+    },
+    "GOLD-0191": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "И ворота на Имаммлы тоже нужно покрасить.",
+      "source_sha256": "143cac5314de2353816d1d3ed72aaca9361f5042ecbd4105c442c1a4a6e1262d"
+    },
+    "GOLD-0202": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Нужно будет перетянуть немного трубу большую для полива и посоединять переходники у трубе.",
+      "source_sha256": "5a0ff13af120a970bf203ae6428121c60c10798cbc445e540de94fb67b5c1576"
+    },
+    "GOLD-0208": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "на завтра нужна пожалуйста машина ( Озвади )",
+      "source_sha256": "72812d143383ecab712d847cb989fc411243b26177344055def5bfd8825c1c7a"
+    },
+    "GOLD-0219": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "На завтра задача порезать во всех теплицах маленький банан.",
+      "source_sha256": "d7d3a5771d60d87a42d9b941d7aaf1232999e94ff257ca1f4aa5c3e89216a796"
+    },
+    "GOLD-0220": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "Тот что дэпо возьмет - отдавайте им. Тот что дэпо не возьмет - режьте на мусор.",
+      "source_sha256": "f9f67aa3911cdb0732f232cb59ecab8fd4ec254fb9f62ff08b40a7e069bb50bb"
+    },
+    "GOLD-0221": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Но завтра на всех теплицах будет резать брат Хиддаят.",
+      "source_sha256": "9b4eede1aa360658e2b064320157878d66a791017d84e77c310d1b0d583e156b"
+    },
+    "GOLD-0228": {
+      "expected_kind": "UNCHANGED",
+      "rationale": "This excerpt is retained as an unsupported comparison request and remainder, with no accepted operational task slot. The audience correction does not authorize adding a task or changing its segmentation.",
+      "original_text": "Ерли отдельно от икиинжи и Кавы. Сравни же по ценам на чеке",
+      "source_sha256": "99b14d8e96ccc205b833298f4738ab7f8439e773ce659b45c347b3ffa8118254"
+    },
+    "GOLD-0234": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt reports that Hashim will come to help an unidentified «тебе». This supplies no verified primary addressee or owner-personal intention; do not select helper Hashim as the recipient. Preserve the intended helping/work context and ask audience.",
+      "original_text": "К тебе в среду и четверг прийдет Хашим на Имаммлы помочь тебе на теплице.",
+      "source_sha256": "a2d2425e8de4714d9843d9e896e94dac5d599748f223f6c396434269c35dd0cc"
+    },
+    "GOLD-0235": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Задача номер 1 - порезать листья старые деревья И навести порядок.",
+      "source_sha256": "fde94bc49ff63d5bb923e3591bcc05fac54d0e3102c1977940fd34c785ccbd43"
+    },
+    "GOLD-0236": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Задача номер 2- переставить фитинги для полива также как мы сделали во второй и третей части.",
+      "source_sha256": "3e8e60deec1b8bfe9bdf3201811c791036982690b2b7640128055eff869f5eda"
+    },
+    "GOLD-0237": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Задача номер 3 - почистить фитинги для полива.",
+      "source_sha256": "090cb1cb2a2ac312ea622d324162ef39eb15a54a5f786486e8dc85c03e217a51"
+    },
+    "GOLD-0243": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Мне же нужно спросить по поводу второй машины.",
+      "source_sha256": "f49503d08688d4f47f8a796561071f11b712e85771c5ebeef66fc87e11d21f16"
+    },
+    "GOLD-0245": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Хорошо, брат езжайте пожалуйста на Ешилоз, сейчас туда машина едет",
+      "source_sha256": "a26a1d6168a51326e176ed9907282ea3aa44e65cebdd947bbd141901f4c3b092"
+    },
+    "GOLD-0254": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "Сначала 10 минут обычной воды, потом включаешь лекарство, и потом оставшееся время снова вода.",
+      "source_sha256": "ee075baad8d01fe4fef8292f81d9b55661db4fe2dc7d667139c6f0fabc520760"
+    },
+    "GOLD-0264": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Шербек, в 4:30 заедь на Озвади и закрой, пожалуйста, вентиляцию.",
+      "source_sha256": "b435bb371f15b7c2fcee1fea3f741eae5ac97d9ef36840284fae12c0763a83f1"
+    },
+    "GOLD-0267": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "привет брат, мне сказал Иван. проблем нет. приходи завтра, работа есть",
+      "source_sha256": "01c39fe8a03911e486a2e14e3e5332e71b67a80be67a6ad03094354c948f40cb"
+    },
+    "GOLD-0272": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The planned agronomist visit has no stated executor; the named agronomist is the destination/contact, not assignee evidence. Clarify that task’s audience and preserve the separate unresolved remainder.",
+      "original_text": "с самого утра заехать к агроному ( Омэру) взять фунгицид. Мантар Илач",
+      "source_sha256": "096ac2c239382cca9d65effdb67c6eb9ff677ee5343f29e8f5b8d78cc6401aec"
+    },
+    "GOLD-0273": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "открыть теплицы на проветривание",
+      "source_sha256": "d107d64363810394fe721ce01db3c29eeec1e9cc8c02038341a26c8290163296"
+    },
+    "GOLD-0274": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "поднять все упавшие деревья в Ешилоз",
+      "source_sha256": "60bc441774fe6d9e0c4d22ae9f1b6e306911687f18eadc468fe3d272c2057bdc"
+    },
+    "GOLD-0275": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "В 3 теплице проверить весь капельный полив",
+      "source_sha256": "60e8a49ccca8b4d88894698928f6f644a817b2febdc14d58088d2cff48f5f902"
+    },
+    "GOLD-0276": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "дать полив на Имаммлы- проверить и починить полив.",
+      "source_sha256": "4566730cea615647ed5a3d931da2d35d3a85ad8355ea39e590eb6cffa1898ab3"
+    },
+    "GOLD-0277": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "С собой берите плоскогубцы, все затычки, переходники, палочки и фитинги.",
+      "source_sha256": "f00094c8e9dc0894824573b53add1998e1d351e97ef48c5340635e50da0e1faf"
+    },
+    "GOLD-0278": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "поднять все упавшие деревья в Имаммлы",
+      "source_sha256": "d11a98c465d0b096685c293965b239ab1d699b046d314aa23937e984bb7b23d6"
+    },
+    "GOLD-0279": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "дать полив на Озвади- проверить и починить полив.",
+      "source_sha256": "f3ebfc16cb65bdd9e33fe0e311d5cf97159e259a75423c6a93a13069c3bf5f91"
+    },
+    "GOLD-0280": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "поднять все деревья в Озвади",
+      "source_sha256": "f4d00c00a5e20d41b7d97ec75b940c5766b5522a82a8bf12b63ff19f3694cda1"
+    },
+    "GOLD-0281": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "не забыть закрыть окна во всех теплицах",
+      "source_sha256": "4f0a686a7c6d31917e01441d599706d28cf77e80dad1d907bbc29ddf509c27bc"
+    },
+    "GOLD-0282": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Воду на поливе завтра не экономить. Пока чините полив и фитинги - все это время поливать",
+      "source_sha256": "e3d8d33083b6db2f9eeec913529daedfde063d943e0faef601ba5c60a731e41c"
+    },
+    "GOLD-0283": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Во второй половине дня продолжить работу на Имаммлы с уборкой, подрезкой листьев и уборкой.",
+      "source_sha256": "40d70f26acc20e1a275523493ec73c0140f8c53af9bbe4b20213422f50c9c6a9"
+    },
+    "GOLD-0284": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Брат Озгюр, проблема такая как говорил твой мастер. Насос нужно доставать.",
+      "source_sha256": "c62253f6d916f13ad4a3320ee0d09d0eaf3a851268acab15fe692f45286639f3"
+    },
+    "GOLD-0291": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "Берешь первое удобрение- наливаешь 5 литров в бочку",
+      "source_sha256": "dc382b0039c135a9eabea7cde644ef0df1ff65d7036d71c921bde9400a9fa2e5"
+    },
+    "GOLD-0292": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "Берешь второе - тоже 5 литров в бочку",
+      "source_sha256": "e79d42b84cb547201fb102f0f60f340e565911ff01b46d142a92d8b56550efd5"
+    },
+    "GOLD-0293": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "Берешь третье и тоже 5 литров в бочку.",
+      "source_sha256": "11afde9974abee1b8cab1b20d2c92d3c8bbb9b1dff519c87642808e564bc5006"
+    },
+    "GOLD-0294": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "То есть все три удобрения замешивать в одной бочке.",
+      "source_sha256": "12f6efc59d812c70788d4915febb74737ebb97c1a68ae5ece47204cb615dfb13"
+    },
+    "GOLD-0297": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "«ты пиши мне ... перед тем как заказывать работника ... будем с тобой согласовывать» explicitly addresses a distinct coordinator and separates that person from the owner. Preserve worker-facing coordination intent with unknown executor; the mention of daily workers does not itself identify or assign them.",
+      "original_text": "Просто перед тем как заказывать работника на дневные работы, ты пиши мне, говори, на какую работу, сколько дней и сколько человек, и будем уже с тобой согласовывать.",
+      "source_sha256": "bafe715b7f6dc2969182d5f25ad2e4ec32732c37a2da018e88eda16437cd3a02"
+    },
+    "GOLD-0301": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "Пока идёт полив одной части, ставите таймер и проходите смотреть, увидели цветы новые, не увидели цветы.",
+      "source_sha256": "d6e2f526ccef6cef7de26c3a9bab66396a5bd9abe16e16311611aa42c1057ae6"
+    },
+    "GOLD-0309": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "для авокадо максимум даем там 10-15 минут, не больше.",
+      "source_sha256": "a6b6876f8ce57a9bc27c9713500520cd3cf7271e352d6c3496cf2891efb4dd6f"
+    },
+    "GOLD-0317": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "просто пускай выключает насос через телефон .",
+      "source_sha256": "4f64497072d76aebd01498553b560cefee540935e82891ba73d5d21f0eb8da07"
+    },
+    "GOLD-0324": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "пускай мастер просто закроет окно в маленькой теплице и все.",
+      "source_sha256": "9debdf0db0f38c44104fe3e86591da04d823b5e83d979d7f37dbdd6db8ef5650"
+    },
+    "GOLD-0325": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Пускай доделает окна из за которых мы его пригласили",
+      "source_sha256": "b768ea2f4c58ee646fadb13a4df6a72bb5eb1687fba1eb1d54aa8d43fc4159f9"
+    },
+    "GOLD-0327": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "Закрой пожалуйста окно - так как он было.",
+      "source_sha256": "2c1ed2fc09cc38ab79f5e8bf616ee9f1caced6ce116463b72ffaf6107519ced8"
+    },
+    "GOLD-0328": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "Сделай пожалуйста окно в теплице возле леса и в большой теплице там я видел небольшая проблема есть в 3 или 4 окне",
+      "source_sha256": "b2e359421ffe5689c4df95a69e29057d25b3ba9bb6c158edc018e87ec3ff2f23"
+    },
+    "GOLD-0331": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Брат все инструменты после мастера спрятать в дэпо, а лучше в домике.",
+      "source_sha256": "55d924c01727ee81adaf778dd41d86a3dd7415f74005f6265e101b8571265608"
+    },
+    "GOLD-0333": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "не забудь написать сколько откуда срезали",
+      "source_sha256": "b426ac340cdfeb8bef8801d28e7d3ffb6c38659638818be9ad6cba9929bc4406"
+    },
+    "GOLD-0334": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The intended window-closing action is recognizable, but «поезд» is an ordinary noun/noisy token, not verified personal identity or explicit owner intent; preserve instruction and ask audience.",
+      "original_text": "поезд закрой все окна на Имаммлы",
+      "source_sha256": "a874f11091382a38f89aac0d20cf64f497ed5ce3b5b8c310132704b9e1bcc269"
+    },
+    "GOLD-0335": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "сфотографируй бассейн снизу на Имаммлы",
+      "source_sha256": "e3529152c2e0e1d4342bedf4f93fc352777d185bf6018e71cd86fe058ef61374"
+    },
+    "GOLD-0344": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Я завтра распишу план внесения удобрений.",
+      "source_sha256": "e6ae8fec6bc31575448360d0afe5e795bd7459a0615b6f9015e53e9789906723"
+    },
+    "GOLD-0345": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар сегодня проверить течь в Ешилёз",
+      "source_sha256": "94f793b726916b0a23aa55f9b2d229333a40ec98970d5c3cc1f2d14ec59a4ef4"
+    },
+    "GOLD-0346": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра вызвать мастера для насоса в Имамлы",
+      "source_sha256": "b355057108498179630ffb6b4ca2b0f1aa08c209561b1164af6a7fab51f514f1"
+    },
+    "GOLD-0347": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня проверить, почему нет воды в Озвади",
+      "source_sha256": "444f583b7e182002b6e8b7a49b4f40652065b2c040cb5870c358300a4da33e04"
+    },
+    "GOLD-0348": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Сегодня позвонить поставщику насчет задержки доставки",
+      "source_sha256": "5bd0a26719234bc670e0dafd9c4b9536616b7b43fd1d3885ecc62b38c344fd36"
+    },
+    "GOLD-0387": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Асыф завтра полить Имамлы",
+      "source_sha256": "c898451a2d787f9975b63855f36e228abda12e7fa8fa8367e74aa1614b6be45a"
+    },
+    "GOLD-0388": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра полить одну из двух теплиц, какую скажу позже",
+      "source_sha256": "85d93808c958a56a5199e76a4c781d480f35d4e10784bac6688cf4ac11a1cf51"
+    },
+    "GOLD-0389": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра в Ешилёз сначала 10 минут полить водой, потом удобрение, еще 20 минут чистой водой",
+      "source_sha256": "057420634d21953e27144b5daaa714d677a307ec86fc7b288f59c26ac8a847d3"
+    },
+    "GOLD-0390": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня полить каждую часть Имамлы по 15 минут",
+      "source_sha256": "15b2aec98d05c9a5302bcc65763f5c3aa0675887cff1f86523fde10707d6d171"
+    },
+    "GOLD-0391": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра полить Озвади: верхнюю 20 минут, нижнюю 30 минут",
+      "source_sha256": "6c47216e38322af2e0eca9220e4c142ee70e1128b9bf26acb73fa66ebf511652"
+    },
+    "GOLD-0392": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед сегодня полить первую и третью части Имамлы, вторую не трогай",
+      "source_sha256": "d1a92969191674f0f9eba72721cd459c462798b27d49452dbb4fcc163d56fc2d"
+    },
+    "GOLD-0397": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Не Умар, Мухаммед завтра полить Имамлы 25 минут",
+      "source_sha256": "d5155e8555e2ee4cd464829bc6c7bcb59ed44722b53ee8a03bb0f7bb5141ce33"
+    },
+    "GOLD-0398": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар полить не завтра, а послезавтра Озвади 30 минут",
+      "source_sha256": "b389e0ef94413f36cb89ea5ce44d0baa58aabc7bb2b922bb536bb8cd711632de"
+    },
+    "GOLD-0399": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня полить не Имамлы, а Ешилёз 20 минут",
+      "source_sha256": "4bf9a32946732f30d31eefc2a27b3b79556334292d19820653c7e06fd02e43ff"
+    },
+    "GOLD-0400": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра полить Имамлы не 15, а 35 минут",
+      "source_sha256": "223aedda58391b9fcf8ebc1acf2097d106ff138930f4a7786efb4ed9faa8c541"
+    },
+    "GOLD-0401": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра полить Ешилёз 40 минут",
+      "source_sha256": "991fa2f9e0882cfc5ce2b43e49c45664869713e6be5b9f17226a5e7dd8945d84"
+    },
+    "GOLD-0402": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня полить Имамлы 20 минут",
+      "source_sha256": "1283c677f60ff81492218f625a59f4648f00378972837b0d91dc72561245ff06"
+    },
+    "GOLD-0403": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра полить Озвади полчаса",
+      "source_sha256": "715e155d44057c3147980be30a9a6710796927acd6207573c6b80d80c0d195d1"
+    },
+    "GOLD-0404": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед послезавтра полить нижнюю часть Имамлы",
+      "source_sha256": "2f5f29670a807f99f61fc40b82891c9cbe60c2e3daf3af9285a9fcd7961a9ac6"
+    },
+    "GOLD-0409": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар сегодня проверить поврежденные растения в Ешилёз",
+      "source_sha256": "08c6ecd86ce1e751e8d0c623aff65cbee7638c28b07b28c10b4ef46f9b23b71f"
+    },
+    "GOLD-0410": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят завтра собрать образцы почвы в Имамлы",
+      "source_sha256": "34e3971d620144497c5da8ac8b7742ef5ec6e77e7dcaa3fc67fe689208f9010b"
+    },
+    "GOLD-0411": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра проверить муравьев возле корней в Озвади",
+      "source_sha256": "95205ddd94a405d69f93dad1bf75c6f5e6534b528f964629593d43dbaa555895"
+    },
+    "GOLD-0412": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед сегодня проверить погибшие растения в Имамлы и прислать фото",
+      "source_sha256": "90962ad0bba5ae3ba2db18dff75266067d10d78799299921810e359f69a232fe"
+    },
+    "GOLD-0417": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра убрать пасынки в Ешилёз",
+      "source_sha256": "4b0b26aad627efa8e265b2fef065a8376c89da6281ca012d1e5235a8407356a9"
+    },
+    "GOLD-0418": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня подвязать растения в Имамлы",
+      "source_sha256": "cb3796edb77b2a386a40229686cd40bbd7e27eb7b29e6158a6fee7e308e974fa"
+    },
+    "GOLD-0419": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед завтра срезать сухие листья в Озвади",
+      "source_sha256": "1e8d21a41d937b8b40c77599e5e8417cca18c0469dcccf6c481ffc3c07f904e3"
+    },
+    "GOLD-0420": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Сегодня проверить подвязку цветов в Имамлы",
+      "source_sha256": "ad23f02deb0fc6108713877d85cbc0f6d2ed2115e6f537837fa9523aa75cd732"
+    },
+    "GOLD-0421": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра обработать Ешилёз от клеща по согласованному плану",
+      "source_sha256": "ddb134e9e065eac5fc173ba8fa14d3c83d1ad072fe902a0fb3c3523e47d2d4f4"
+    },
+    "GOLD-0422": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня убрать сорняки в Имамлы",
+      "source_sha256": "96e92b4deb90c97f23f419d962ca8789c1ffeb0c8e7e4c4514427538e9043a88"
+    },
+    "GOLD-0423": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра проверить запас Триходермы для Озвади",
+      "source_sha256": "5c7eeff35282f07c15d0753fdf3d9c4a987350b886b6038dfbe9c3950c18391f"
+    },
+    "GOLD-0424": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед завтра очистить проходы в Имамлы",
+      "source_sha256": "791386e5d8448560b7763f2f985945833ae86e8d2780c0c01824db3ffae29889"
+    },
+    "GOLD-0428": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Напомни как-нибудь проверить документы",
+      "source_sha256": "dc3e542c2c2f77517048624786d54ebc1d61a4f8ab67763b2ed9eb52f9b8de9e"
+    },
+    "GOLD-0429": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра позвонить Серкану насчет насоса",
+      "source_sha256": "d81bbdaaff7c2b6ae38803080fd8e9895c0b1b0f8b2cb597e761a326be581695"
+    },
+    "GOLD-0430": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Сегодня забрать документы из офиса",
+      "source_sha256": "8a266ca83ba1cffac86510517453dfd25c6eb0ba6c7f4fe02fb1bc415bbdadeb"
+    },
+    "GOLD-0431": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Послезавтра съездить в лабораторию",
+      "source_sha256": "b2ddef8310eb713b27dcd6f581f4e62362a271326ee0a3a2881eca96355c93b0"
+    },
+    "GOLD-0432": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Напомни завтра связаться с агрономом",
+      "source_sha256": "71f4eb58da27ed66b4ad0a16c6e1e91488b25df32a0cc6146c15761699640abd"
+    },
+    "GOLD-0433": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Напомни завтра оплатить электричество, пока не оплачено",
+      "source_sha256": "6c7a162e89f732d339ee3f35983161abbac1f7d7e5c65688cc84f76694a28cea"
+    },
+    "GOLD-0434": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Послезавтра позвонить по долгу Серкану",
+      "source_sha256": "0ea14a1d047d5f12df32ef5050f2200cbc5d89589d70949a6a09f2e943544c84"
+    },
+    "GOLD-0435": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра проверить, прошел ли банковский перевод",
+      "source_sha256": "7928d489a9d1360fa1f31800a6c77184f832b473a7a6e3f021a76ffe959866d0"
+    },
+    "GOLD-0436": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Сегодня уточнить сумму за ремонт",
+      "source_sha256": "4e6c9c7d65e9e28173e61a8dd7e32fa3d19f12839213da0105bb31e262507283"
+    },
+    "GOLD-0437": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Напомни через две недели забрать документы",
+      "source_sha256": "4b1cf01e03d81dece64a783668c8dad745a35b71f36b482a33d115c05f1f76bc"
+    },
+    "GOLD-0438": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Через три дня позвонить Серкану",
+      "source_sha256": "413b6ca8014b9a720df9d7a813be50e716e95be00df2e4bf008777c88ef2a4f6"
+    },
+    "GOLD-0439": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Позвонить в LABEN не завтра, а послезавтра",
+      "source_sha256": "6e5670437d4d3656c8993822b8c0f4b43946b4fede7377675de712fc818b0f93"
+    },
+    "GOLD-0440": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "2 ноября 2026 забрать бумаги из офиса",
+      "source_sha256": "37002db77e38111c07a7651896815a7ddbd0cfe0a71c362d29c9c96fbe955631"
+    },
+    "GOLD-0441": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Сегодня проверить результат анализа воды",
+      "source_sha256": "7bbdcc0c9fb19f6d0d9c35296ad6518651481f135fd535b1dac25b64e6bfdb1b"
+    },
+    "GOLD-0442": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра забрать чек из Görgün Depo",
+      "source_sha256": "825e5a9003f62c001d1f796adcac78c4d63d7894366c769f8ecedba781871836"
+    },
+    "GOLD-0443": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Послезавтра проверить ответ LABEN",
+      "source_sha256": "acf8927bba186c32a8ce94e37d80b2e721b67922a1660a92bfedb65b5df527e6"
+    },
+    "GOLD-0444": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра собрать бумаги для аренды",
+      "source_sha256": "d5a283e3fb4fbb5cee79f7fd104cfc6b840f4d4a7f342f30d2758d4478822f97"
+    },
+    "GOLD-0482": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "Future intended money transfer is task content only; executor/audience is unstated. Preserve date and action, ask audience, and create no payment/payable effect.",
+      "original_text": "Завтра перевести деньги Серкану",
+      "source_sha256": "a7dee7c06ae39c91cfb5caa5c23ac13703b075c3f26b31b80085824c84a82738"
+    },
+    "GOLD-0485": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Для Умара задача на завтра: в Имамлы проверить крепления, после работы нужен снимок.",
+      "source_sha256": "6b85a192a79780b686a2c7a84a08a11bb4fb167c6d258960073e2a7eac6369f9"
+    },
+    "GOLD-0486": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Работник Инаят, твоя работа на сегодня в Озвади: закрытие окон к вечеру.",
+      "source_sha256": "b2ae45314f418829814c313597210d8b640d06354b6d7138d14db2bb9a2d1f84"
+    },
+    "GOLD-0487": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "В Ешилёз на послезавтра назначаю Мухаммеда: убрать срезанные листья.",
+      "source_sha256": "0ca905b31473e51dfafdf9e7ba6b36c53473d2013e5e311ecf237baaf2d326e0"
+    },
+    "GOLD-0488": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "По Имамлы есть работа для Асыфа Газипаша на завтра: ремонт крепления пленки.",
+      "source_sha256": "b00352826661a8fcfd07ac63f293853b2669a2cb08dda2e09320a9fa8c931526"
+    },
+    "GOLD-0489": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Запиши Умару поручение, дата 2026-10-12, теплица Озвади: полив каждой части по 25 минут.",
+      "source_sha256": "bf732cd7509b03096f68b93d752fb7f4ab54538dd2ed7d8ea9e14a9f2816d868"
+    },
+    "GOLD-0490": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Исполнитель Мухаммед. На завтра поручаю проверку подвязки в Имамлы.",
+      "source_sha256": "ae27906d7d37fc8a5eda1fd1524dcef501c673284836abb3f494e4e9684ce3bc"
+    },
+    "GOLD-0491": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "«мой список» explicitly places the intended action in the owner’s list.",
+      "original_text": "Добавь в мой список на 2026-10-14: забрать лабораторный ответ из LABEN.",
+      "source_sha256": "9a1d7ebd15135d75f81ac0b91515939081895acebc81a2ec5a86213ed6778d20"
+    },
+    "GOLD-0492": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "«Мне ... нужна задача» explicitly requests a task for the owner.",
+      "original_text": "Мне на завтра нужна задача: позвонить по поводу машины для банана.",
+      "source_sha256": "a24a6ca2ec7caf24bd230578ad2fbd271dd34ea40f512212b26f0c9e7db3e487"
+    },
+    "GOLD-0493": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Для меня, не для работника: послезавтра отвезти в лабораторию образец из Озвади.",
+      "source_sha256": "89b4fb508d3382306f29244b51efb6c948c7613ca33f412b3840353a6e520208"
+    },
+    "GOLD-0494": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "«мое дело» explicitly identifies the owner’s personal action.",
+      "original_text": "Запиши мое дело на сегодня: сверить в офисе электрические счета по Имамлы.",
+      "source_sha256": "e78d5994b1102ef9f405eda2d5db3417aaf068e09b1fcbf71ec62f5bb4a4ac74"
+    },
+    "GOLD-0538": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра проверить счет за электричество",
+      "source_sha256": "3769ea333efdb4c6e53ed4b9b711209e276a1686230c4dd10fe441871926668c"
+    },
+    "GOLD-0554": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра починить шланг в Ешилёз",
+      "source_sha256": "2e8cdff1441cc13d8caf1fe9598c948729d083268c93bb747f047267ed213ce5"
+    },
+    "GOLD-0555": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня отремонтировать переходник в Имамлы",
+      "source_sha256": "4f44729d6fbbfb6ea0cfbb9e6d6be20ab3d132d4bcae032f837730b7d9bc19d1"
+    },
+    "GOLD-0556": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра починить насос в Озвади",
+      "source_sha256": "9331803463ccfcfc9697d75ab74fe49eaf0277f05baf6e996aa041676a2a6b18"
+    },
+    "GOLD-0557": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед послезавтра проверить электрику в Имамлы",
+      "source_sha256": "d082c85bf0a13e828a9fb76932c61c522d1903da837ef613e3594200052face7"
+    },
+    "GOLD-0564": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The pump-inspection task has no stated audience. Only that task slot changes to audience clarification; the independent 1500 TRY payable slot and its source/fields remain unchanged.",
+      "original_text": "Завтра проверить насос в Имамлы. Должен Серкану 1500 TRY за прошлый ремонт",
+      "source_sha256": "434ee3493640db9f35d85f5a50a48c469fea32e0cd2d8e5eba279c11c3ff9e9f"
+    },
+    "GOLD-0588": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра сравнить новый анализ воды с анализом почвы Имамлы",
+      "source_sha256": "55ba0ad9ce85aa26bd2862f4c78e95523082a0576c617b77d77cfcab355e2c68"
+    },
+    "GOLD-0590": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят завтра подписать образцы по частям Имамлы перед отправкой в лабораторию",
+      "source_sha256": "aa814f3f4069708c455554ed14f574fa1c0ebd6106e15eda132cdf62b101855d"
+    },
+    "GOLD-0616": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра подготовить удобрения для Ешилёз, вносить будем после согласования",
+      "source_sha256": "05c73ab753d57e5b7e7e6944ce773fd5ae2f06f0cf9424a6490ed9ffe71e772c"
+    },
+    "GOLD-0623": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра перед срезкой отдельно посчитай ветки в каждой части Ешилёз",
+      "source_sha256": "3b354b6b8915583fdbbc385a7279fd28f4c68eb1b7d7eb112d636fafa38f3a07"
+    },
+    "GOLD-0632": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра отдельно сфотографировать срезку и номер машины в Ешилёз",
+      "source_sha256": "4f6d321a94db21becce81d84e97ecf051bcaf544842726fa2452fb36a1542ed4"
+    },
+    "GOLD-0636": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра проверить течь в Озвади после устранения аварии",
+      "source_sha256": "16ac864c604a57dbfc54c670109622224cd86fb1675bc229f389d4e99f37889c"
+    },
+    "GOLD-0668": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар, на завтра оставь полив Имамлы, только после проверки влажности",
+      "source_sha256": "3796242e1fb035702a18c0f989d7fec4f1941704ed73cc85a2518da3f6a4f65b"
+    },
+    "GOLD-0669": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Полить Озвади после возвращения воды, точный день еще неизвестен",
+      "source_sha256": "6fee91c0d33908c9aea035b407c24a2805da41023ad67948ca09e62c70197ecc"
+    },
+    "GOLD-0672": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят, завтра проверь фитинги во время полива Имамлы, воду не отключай до окончания проверки",
+      "source_sha256": "4b3cfacf7aafecfbb2ca20a4736b10a2e9be286e2ee665a31ce315b307357af3"
+    },
+    "GOLD-0675": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра сравни подвязку за ствол и за кисть в Ешилёз, покажи ошибочные места на фото",
+      "source_sha256": "6a2b1d50e6f598071f19c583a461d57cc61763490a0fdc5ceb1abd33299dcfe8"
+    },
+    "GOLD-0676": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра осмотреть четвертую часть Имамлы справа, где пропущена подвязка",
+      "source_sha256": "ad22a202c5cf27057406b94d236b9ee9e37fa7072cbab7ec466d95b882c09299"
+    },
+    "GOLD-0678": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят завтра убери пластик со стороны Аланьи в Озвади, Газипашу сейчас не трогай",
+      "source_sha256": "1be8d42740b4e0540e6cee3d12969a77a2135646121fc590e36540aa8d53b19a"
+    },
+    "GOLD-0680": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "После завершения подкормки приступить к уборке территории Озвади",
+      "source_sha256": "7d2a4a17e2d9c0444d5a52cff08b21139ad98d36534620212383ddd0f5997ebd"
+    },
+    "GOLD-0682": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "«Поставь мне» explicitly requests a personal reminder/check for the owner.",
+      "original_text": "Поставь мне на завтра проверку: сколько LABEN еще нужно времени для результата",
+      "source_sha256": "a5b40965c113d957841eda32024c30f9de9553936c91d81a733065a891e8484b"
+    },
+    "GOLD-0683": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Напомни забрать документы после звонка из офиса, даты пока нет",
+      "source_sha256": "47965590469e60b227ef0b484754d184d943eb376c3f85bd256fd670b8c3bc0c"
+    },
+    "GOLD-0685": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "На послезавтра себе запиши звонок по поводу второго автомобиля",
+      "source_sha256": "c993d3cc0b00ecfcc7f9236f538d4a8d1e7c2d082f1590140a0ded53d1332b81"
+    },
+    "GOLD-0687": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Сегодня себе записать: найти чек по уже сделанной оплате",
+      "source_sha256": "860ffdb081a26c36778138d683d9ab715190a81652266b80008e9b858e05f3a6"
+    },
+    "GOLD-0689": {
+      "expected_kind": "PERSONAL_TASK",
+      "rationale": "Explicit first-person intention or a personal reminder/list request establishes the owner as audience. Incidental third-party names are objects/contacts, not assignees; preserve personal classification and known facts.",
+      "original_text": "Напомни 31 декабря забрать документы, год уточню позже",
+      "source_sha256": "0a05ef3cd497115550b724aab203c0574175753de2aa679544640a735d7bffc6"
+    },
+    "GOLD-0736": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра проверить соединения труб 25 и 32 мм в Имамлы",
+      "source_sha256": "b4fcd65455fc49a86196c05add0ff8c7e2496f06afad38d1e735598770937a28"
+    },
+    "GOLD-0739": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед завтра сфотографируй сломанное крепление в Имамлы до ремонта",
+      "source_sha256": "d261e016636eb2552fef7d15828f36dd4e2fba5f296c0f826e8ac34a3a15a700"
+    },
+    "GOLD-0750": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра проверь, что окна в Ешилёз действительно закрылись",
+      "source_sha256": "9d48094472f220cde273453391b4db5663d5b423fce653e3e6205e5d22fc48d6"
+    },
+    "GOLD-0751": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра проверить трос окна в Имамлы, мотор пока не включать",
+      "source_sha256": "3343919489cc8eb6e017e435e9659b58700ab442d78c356a943cc5ac54e3bf07"
+    },
+    "GOLD-0753": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед, когда закончится дождь, проверить окна Озвади",
+      "source_sha256": "7b13cad64888e8febd919e3dcfae5c0e9307db16e76d2511dfbb12d287cc9120"
+    },
+    "GOLD-0755": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Завтра один из двух Асыфов должен проверить Имамлы, какой именно еще не решили",
+      "source_sha256": "0639183ce24f3a129b835698076bc5161d50c083552f5441d44354088749d9ad"
+    },
+    "GOLD-0756": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра помочь на Озвади, твоя обычная теплица на этот раз не нужна",
+      "source_sha256": "ccb6d6fec830e325827a8113730e46eb642bf71ac4543505155caee532c939e7"
+    },
+    "GOLD-0759": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра прислать фото Имамлы",
+      "source_sha256": "4bd98010115d6b470a571d8963d584cf1e10302b72188292cb2416d51d3d29a7"
+    },
+    "GOLD-0762": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра проверить Имамлы. Мухаммед послезавтра проверить Озвади",
+      "expected_task_kinds": [
+        "WORKER_TASK",
+        "WORKER_TASK"
+      ],
+      "source_sha256": "6992f7b9b685f58b8c743be7f6ae297dc87fb24da70d602cd03e52098457afff"
+    },
+    "GOLD-0763": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Проверить Имамлы завтра поручаю не Умару, а Инаяту",
+      "source_sha256": "80b83965087a3fcf50505c57a32a7090199fa810ad0d51b2a8148a9615e40935"
+    },
+    "GOLD-0765": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Он завтра должен проверить Ешилёз, имя в сообщении не названо",
+      "source_sha256": "0689cf60f2516dec5b7a13480bb4a99dbe7186acba22647ea9ee5a36c3fa41aa"
+    },
+    "GOLD-0766": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра проверить третью часть, теплицу еще не выбрали",
+      "source_sha256": "7f36216c16afc024aa4a38df8869659c2c94b804921346e6254abb2fb3d7596a"
+    },
+    "GOLD-0768": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар проверить Имамлы 31 февраля 2027",
+      "source_sha256": "22a701fbe6278595bb7b69442ed946a8097688b45e5dcc737f56dfc0dd023519"
+    },
+    "GOLD-0769": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед завтра проверить Озвади, а слова Инаят и Имамлы в прошлой записи были ошибкой",
+      "source_sha256": "b6e90e128ffa8b6beb8c09ec399bec662edcf0415275f7c3de6bc64c9245b82b",
+      "reviewed_field_improvement": {
+        "status": "INDEPENDENTLY_REVIEWED",
+        "kind": "existing_expected_worker_reference",
+        "slot_index": 0,
+        "reviewer": "/root/review_day_workers_integrity",
+        "rationale": "Allow only the source-supported existing expected worker reference and current same-entity language to improve, while exact remaining baseline payload and score are preserved; expected Ozvadi remains a strict unresolved coverage gap.",
+        "acceptance_sha256": "b56cfcaf8422db5c64b962739d552b117153564659419c7fa59702eda9ba0be6"
+      }
+    },
+    "GOLD-0780": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Скажи брату Иннаяту чтобы он сфотографировал какие удобрения есть в дэпо - я скажу что сегодня нужно давать.",
+      "source_sha256": "81af7f80099031fe6a792688c7db3d637c65a102382ccfb4317d31a01bf4529b"
+    },
+    "GOLD-0781": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The isolated imperative/second-person excerpt preserves a meaningful action but supplies no verified recipient, explicit worker role, or explicit personal task request. Omitted conversation audience is not an input. Ask the short audience question without selecting personal.",
+      "original_text": "И ты тоже сфотографируй на Иммамлы.",
+      "source_sha256": "6719a062d86fdbbf5ce4361eecbe06df94794b35072f6e4f6c63c18daf6023d4"
+    },
+    "GOLD-0786": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра закрыть окна в Ешилёз, если пойдет дождь",
+      "source_sha256": "281342c523ecc8f0f5c83c3375ffd4d6a96a8845096a2c89ec864573aa732d1d"
+    },
+    "GOLD-0787": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня открыть окна с северной стороны Имамлы",
+      "source_sha256": "399a22da50bacf10a84ff7cc666cf58f46040df4ac2ea454111b4fd872a47013"
+    },
+    "GOLD-0788": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед сегодня открыть окна в Озвади и проверь пленку",
+      "source_sha256": "04896ae0f393a57d6606d375c14654aa8afc328ebdb843a70f23f8e9ecf259ee"
+    },
+    "GOLD-0789": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Завтра проверить окна в Имамлы, оставить днем открытыми",
+      "source_sha256": "f30fc0ada5d4bee03b7b5a8a9114d78cc646a40ad5d7152c8d7a0b4566050895"
+    },
+    "GOLD-0794": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра открыть окна в Ешилёз. Инаят завтра закрыть окна в Имамлы",
+      "expected_task_kinds": [
+        "WORKER_TASK",
+        "WORKER_TASK"
+      ],
+      "source_sha256": "577877ed5c02ea4e8744a801bf18645772e555c47b529c3c365833c24cb14164"
+    },
+    "GOLD-0795": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед сегодня закрыть только верхние окна в Озвади",
+      "source_sha256": "e8446ca569cb951df74a7ecaceebbb3e844712ed6d86f014f8979ede321b88a8"
+    },
+    "GOLD-0796": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар закрыть окна в Ешилёз не завтра, а послезавтра",
+      "source_sha256": "4caaac72ba63af5e0f91ca9398d98f06bac1ccf8b2171e1dfcbc0c3de6709021"
+    },
+    "GOLD-0797": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Асыф сегодня открыть окна в Имамлы",
+      "source_sha256": "8e644dceb36bf7dc3421558f3e32ce78832f6b6edecd9e9f429c0fc7e82ce357"
+    },
+    "GOLD-0802": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар сегодня открыть окна в Ешилёз утром",
+      "source_sha256": "9bbbb636e29744ed70c360b2ee3dccead2ad25af3f832b312cd85fc4085be49c"
+    },
+    "GOLD-0803": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят завтра закрыть окна в Имамлы вечером",
+      "source_sha256": "03b324298d1c868c1510b351508d3b82c8c035cbd52fad1424fa45397619e7b3"
+    },
+    "GOLD-0804": {
+      "expected_kind": "UNRESOLVED",
+      "rationale": "The excerpt specifies intended work but has no explicit personal intention, worker recipient/role, or verified assignment context. Preserve all known task facts and the original instruction; ask «Для себя или работнику?».",
+      "original_text": "Сегодня открыть окна в Озвади",
+      "source_sha256": "112d3488ddeee083390228797c694fe21837c3075b915b07dcfc54fbdc055c79"
+    },
+    "GOLD-0805": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед послезавтра закрыть окна в Имамлы после полива",
+      "source_sha256": "056373d3be5d431a53cadeebcc5ee3969618f3b69e41908a5fadeacc6ce8b633"
+    },
+    "GOLD-0806": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Асыф завтра проверить Имамлы",
+      "source_sha256": "76d2b5233cf40de87eb59685b813d97a80c795cd402205f94e87366d0522d34d"
+    },
+    "GOLD-0807": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Asif сегодня полить Озвади",
+      "source_sha256": "4cf64f2b698a48725089af20c123fe277b7c6b59513645974f3223cebcf12a5f"
+    },
+    "GOLD-0808": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Рустам завтра убрать Ешилёз",
+      "source_sha256": "51c83f3bdaba84f36dc2dbb13fe08635b77cbb6c6a277d3ee8814b9a81f0d74e"
+    },
+    "GOLD-0809": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра проверить растения",
+      "source_sha256": "621f721c92df91708cb9f595c4823c9875850eedeb0b5728d73429d6743e6125"
+    },
+    "GOLD-0810": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра проверить растения в Ешилёз",
+      "source_sha256": "17910ff7e6d0ac7e8dcd1e72db5c10997fcc0a5c44e2395f54b9b186c71472e4"
+    },
+    "GOLD-0811": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня помочь с подвязкой в Имамлы",
+      "source_sha256": "d5fe0d22baa44435e935ec0607a767c050ebabb584eab5e1149dc7dd05639912"
+    },
+    "GOLD-0812": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед завтра убрать пленку в Озвади",
+      "source_sha256": "1de41f9b17a024aa1e9ae85cb9b0d30b4da690668082154bf232dbb29742ef00"
+    },
+    "GOLD-0813": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Асыф Газипаша сегодня починить дверь в Озвади",
+      "source_sha256": "0eae4b891fc0ec36470e8e75c50a71d726ccc00cc9ea7911f4993ba9af946beb"
+    },
+    "GOLD-0814": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра полить Ешилёз. Инаят завтра полить Имамлы",
+      "expected_task_kinds": [
+        "WORKER_TASK",
+        "WORKER_TASK"
+      ],
+      "source_sha256": "18bf33336bd4dc565603530aefeff0c96e92917a8b4ea32a36341a1afd4e7d76"
+    },
+    "GOLD-0815": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня помочь Мухаммеду в Озвади убрать листья",
+      "source_sha256": "98f3fc7c3523d89ce8015e823f10ea0e97207d521a471dc8f677fc840b280f2b"
+    },
+    "GOLD-0816": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед послезавтра открыть окна в Имамлы. Умар послезавтра проверить Ешилёз",
+      "expected_task_kinds": [
+        "WORKER_TASK",
+        "WORKER_TASK"
+      ],
+      "source_sha256": "c545abb3c7b8b9c0c707e093cf0fb8fef802f2ef9f975ceb24238a6eec7c6026"
+    },
+    "GOLD-0817": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар и Инаят завтра убрать Имамлы",
+      "source_sha256": "0c99a310c6ec1b786eb3475e517e634486e24dc1e6efcb58472caa53e306da2b"
+    },
+    "GOLD-0818": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра проверить полив в Ешилёз и прислать фото",
+      "source_sha256": "803a17a5268bf96e5c8386202a4eb00de38acb760c749ee785eb7cbba26908c0"
+    },
+    "GOLD-0819": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Инаят сегодня убрать Имамлы и вечером отчитаться",
+      "source_sha256": "60ad330b8ec56af5cecb9936f665564978e5ff00b81599e959f16ac19e415e63"
+    },
+    "GOLD-0820": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Мухаммед по пятницам проверять сетку в Имамлы",
+      "source_sha256": "47898141305bd0ffb412c44b5d299f8ffaad5e65d67ebee6f11238bf9b6b63f0"
+    },
+    "GOLD-0821": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар раз в неделю проверить окна в Ешилёз",
+      "source_sha256": "dfca8560c546b3b2c969a9602b6a99e8c6d0bd5a343f4c34b928beb3029c08f8"
+    },
+    "GOLD-0823": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Не Умар, Мухаммед завтра полить Ешилёз",
+      "source_sha256": "510515f46a9f9f80e084aaff3cf84cd0bf2f735744c01fb7fa879cd788e49ade"
+    },
+    "GOLD-0824": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Умар завтра проверить Имамлы",
+      "source_sha256": "765f849ea0dc1dd0bcd6cc157955cd20d867456f1d2f05e7670c494a1a121bef"
+    },
+    "GOLD-0825": {
+      "expected_kind": "WORKER_TASK",
+      "rationale": "The excerpt explicitly names/directly addresses a person, identifies a worker role, or delegates to a distinct third person. Preserve worker-task intent; any missing/ambiguous executor remains unknown and no assignment/send occurs before confirmation.",
+      "original_text": "Асыф Алания завтра проверить Озвади, не свою обычную теплицу",
+      "source_sha256": "25d71e53f907414d681ffe01818406b0ce1c7c5f9da0594e4f20a90a55c3b07f"
+    }
+  },
+  "independent_review": {
+    "reviewer": "/root/review_day_workers_integrity",
+    "authority_message_id": "messageSentinel_23ec5a187ea481919e0b1ac30a8ad153",
+    "rationale": "Independent source/context review of all 208 original gold task cases and unrelated GOLD-0228; all generated lineage, unchanged frozen v1 evidence, baseline7c323f1 source and case hashes, useful-candidate adapter, safety/provenance guards and 788 changed case results independently reviewed. This accepts the versioned oracle, not release; strict coverage gaps remain FAIL.",
+    "source_review_sha256": "8fee79c0c000e21f42ba45a5e1f55a9907c6b7133288ca3dc0ac3022a4ce5cd3",
+    "acceptance_sha256": "0350ee277756527ff1428494f85c1fc41f314f556842b3910a92890641db5a42",
+    "strict_dto_acceptance_sha256": "1ca116b7c500f252468521311e05e14334df9ec2a4ceff95614062b46833259d",
+    "accepted_adapter_sha256": "07288483971a4f3574e15844164bb8b15491156c6380726616e198a6b7e7d893",
+    "accepted_wrapper_sha256": "fc93c3bef7b0165b9f1e07b2930a04222abbce552c4e7a982123e3012db39a8e",
+    "dependency_provenance_acceptance_sha256": "9176ed89ba60b14437a0d8e97c48293f580fd9ee03328533ee9c0cbff3be3b4f",
+    "dependency_path_acceptance_sha256": "217f7d56ec5522396658add16d1df96fe80353cf547795a415cb35ea79600732",
+    "worker_prefill_improvement_acceptance_sha256": "b56cfcaf8422db5c64b962739d552b117153564659419c7fa59702eda9ba0be6"
+  },
+  "baseline_manifest_sha256": "84ceeac42991693c7d85cbc52f68dfaa33077941be98b34e8feca5e6461ae68a"
+}

@@ -51,7 +51,21 @@ def check_day_workers_selection(root):
     assert candidate['if'] == "matrix.mode == 'candidate'"
     day = yaml.load((directory / 'day-workers-checkpoint.yml').read_text(), Loader=yaml.BaseLoader)
     assert BRANCH in day['on']['push']['branches']
-    assert day['jobs']['day-workers-browser-sql']['env']['DAY_WORKERS_PHASE'] == 'full'
+    job = day['jobs']['day-workers-browser-sql']
+    assert job['env']['DAY_WORKERS_PHASE'] == 'full'
+    semantic = [step for step in job['steps'] if 'node tests/e2e/task-audience.mjs' in step.get('run', '')]
+    assert len(semantic) == 1 and _selected(semantic[0].get('if'))
+    script = semantic[0]['run']
+    assert 'set -euo pipefail' in script and 'for engine in chromium webkit; do' in script
+    assert 'export TASK_AUDIENCE_ENGINE="$engine"' in script
+    assert 'export E2E_ARTIFACTS="artifacts/task-audience/$engine"' in script
+    assert 'task_audience_sql_evidence.py --prepare' in script
+    assert 'task_audience_sql_evidence.py --before' in script
+    assert 'task_audience_sql_evidence.py --verify' in script
+    upload = next(step for step in job['steps'] if step.get('uses') == 'actions/upload-artifact@v4')
+    assert 'artifacts/task-audience/' in upload['with']['path'].splitlines()
+    assert upload['if'] == "always() && steps.guard.outcome == 'success'"
+
 
 
 def test_day_workers_branch_runs_all_retained_ci_suites():

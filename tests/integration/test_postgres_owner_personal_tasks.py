@@ -51,7 +51,7 @@ def state(i, item, version, value, key=None, expected=200):
 def make_tasks(i, count=5, undated=2):
     tasks = []
     for n in range(count):
-        raw = f'Сегодня проверить давление в Имамлы TEST {n}'
+        raw = f'Для меня сегодня проверить давление в Имамлы TEST {n}'
         saved = source(i, raw)
         proposal = next(p for p in queue(i) if p['inbox_id'] == saved['id'] and p['action_type'] == 'PERSONAL_TASK')
         proposal = revise(i, proposal, dict(title=f'TEST личная задача {n+1}', original_instruction=raw,
@@ -101,7 +101,7 @@ def test_personal_task_five_reachable_pagination_context_and_read_no_effect(inv)
     fourth = detail(inv, second['items'][0]['id'])
     assert fourth['id'] == tasks[3]['id'] and fourth['state'] == 'TO_DO'
     assert fourth['category'] == 'irrigation' and fourth['relative_time_context'] == 'без установленной даты'
-    assert fourth['original_instruction'] == 'Сегодня проверить давление в Имамлы TEST 3'
+    assert fourth['original_instruction'] == 'Для меня сегодня проверить давление в Имамлы TEST 3'
     assert fourth['title'] == 'TEST личная задача 4' and fourth['note'] == 'TEST отдельная заметка 4'
     assert [(a['version'], a['state']) for a in fourth['actions']] == [(1, 'TO_DO')]
     assert page(inv, offset=5)['items'] == []

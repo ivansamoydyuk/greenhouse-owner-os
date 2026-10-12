@@ -21,7 +21,8 @@ def test_unique_partial_name_is_not_an_explicit_worker_identity(name, prefix):
     assert entity_matches(raw, refs, 'worker', inflect=True, require_explicit=True) == []
     slots = prepare_owner_source(raw, today=DAY, refs=dict(workers=refs))
     assert slots and all(p.get('worker_id') is None and p.get('language') is None for _, p, _ in slots)
-    assert any(p.get('original_instruction') == raw for _, p, _ in slots)
+    assert any(p.get('task_candidates', p).get('original_instruction') == raw for _, p, _ in slots)
+    assert all(kind == 'UNRESOLVED' for kind, _, _ in slots)
 
 
 @pytest.mark.parametrize('raw', ['Асыф завтра проверить давление', 'Асыф и Умар завтра проверить давление', 'TEST и Умар завтра проверить давление'])

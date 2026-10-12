@@ -8,13 +8,14 @@ from datetime import date
 from decimal import Decimal
 from .preparation_language import (corrected,date_value,entity_matches,fold,money_amount,
                                   source_currency,value,names,comparison_source,nonfinancial_modal,meta_or_report,NUMBER,CURRENCY,NEXT_WEEK,DATE_PATTERN,relative_time_context)
+from .task_audience_language import task_recipient_evidence
 from .tasks_capture import extract_task,task_audience,irrigation_rework,IRRIGATION_REWORK,IRRIGATION_OBJECT
 from .preparation_scope import (PAID,OWED,PURCHASE,financial_evidence_view,other_financial_actor,
                                 split_outside_quotes,reported_speech,future_financial_intent,enumerated_fragments)
 from .inventory_capture import (extract_inventory,inventory_document_facts,
                                 no_arrival_evidence,DOCUMENT_RECEIVED)
 
-INTERPRETATION_VERSION='owner-language-preparation-r2-v4'
+INTERPRETATION_VERSION='owner-language-preparation-r2-v5'
 
 INVOICE=r'\b(?:fatura|invoice|счет\s+поставщика)\b'
 UNSUPPORTED=r'\b(?:аванс\w*|предоплат\w*|стратегическ\w*|финансирован\w*|кредит(?:а|у|ом|е|ы|ов|ный|ная|ное)?|заем\w*|займ\w*|обменял|обменяли|перевод\s+между|перевел\s+между|между\s+своими\s+счетами|внес\s+свои|переместил\w*)\b|\b(?:получил|получили)\s+(?:деньги|оплату)|\b(?:должен|должны)\s+мне\b'
@@ -356,7 +357,19 @@ def _prepare_one(raw,semantic,*,today,refs,pages):
         if relative:payload['relative_time_context']=relative
         worker=next((w for w in refs.get('workers',()) if str(value(w,'id'))==payload['worker_id']),None)
         if worker:payload['language']=value(worker,'language')
-        return [(task_audience(semantic,refs.get('workers',()),areas=refs.get('areas',())),payload,provenance(payload,raw,inferred=('category','greenhouse_id','worker_id','language')))]
+        audience=task_audience(semantic,refs.get('workers',()),areas=refs.get('areas',()))
+        if audience=='PERSONAL_TASK':
+            payload['worker_id']=None
+            payload.pop('language',None)
+        evidence=provenance(payload,raw,inferred=('category','greenhouse_id','worker_id','language'))
+        if audience=='WORKER_TASK' and payload['worker_id'] is None:
+            recipient=task_recipient_evidence(semantic,areas=refs.get('areas',()))
+            if recipient:evidence['original_instruction']['audience_evidence']=recipient
+        if audience=='UNKNOWN':
+            return [('UNRESOLVED',dict(note=raw[:2000],task_candidates=payload),
+                     dict(note=dict(category='SOURCE FACT',source_text=raw),
+                          task_candidates=dict(category='INFERENCE',basis='task_audience_requires_owner_choice',fields=evidence,source_text=raw)))]
+        return [(audience,payload,evidence)]
     quantity_provenance={}
     inventory=extract_inventory(raw,products=refs.get('products',()),locations=refs.get('locations',()),areas=refs.get('areas',()),today=today,preparation_evidence=quantity_provenance)
     if inventory:
@@ -454,9 +467,9 @@ def prepare_owner_source(raw,*,today,refs,binary=False,pages=()):
                     item['normalization']='explicit_same_source_correction'
                     item['source_text']=part
         if len(parts)>1 and re.match(r'(?i)^(?:привет\s+)?брат\b',corrected(raw,**refs)) and not re.match(r'(?i)^я\b',part):
-            slots=[('WORKER_TASK',p,prov) if k=='PERSONAL_TASK' else (k,p,prov) for k,p,prov in slots]
+            slots=[('WORKER_TASK',p['task_candidates'],prov['task_candidates']['fields']) if k=='UNRESOLVED' and p.get('task_candidates') else (k,p,prov) for k,p,prov in slots]
         # Independent unsupported remainder survives as its own review slot.
-        if output and slots[0][0]=='UNRESOLVED' and output[-1][0]=='UNRESOLVED' and len(output[-1][1]['note'])+1+len(slots[0][1]['note'])<=2000:
+        if output and slots[0][0]=='UNRESOLVED' and output[-1][0]=='UNRESOLVED' and not slots[0][1].get('task_candidates') and not output[-1][1].get('task_candidates') and len(output[-1][1]['note'])+1+len(slots[0][1]['note'])<=2000:
             output[-1]=unresolved(output[-1][1]['note']+'\n'+slots[0][1]['note'])
             output.extend(slots[1:])
         else:output.extend(slots)

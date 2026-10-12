@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import text
 
 from greenhouse_owner_os.domain.errors import ConflictError, NotFoundError, ValidationError
-from greenhouse_owner_os.domain.owner_capture import MoneyProposal
+from greenhouse_owner_os.domain.owner_capture import MoneyProposal, TaskProposal
 from greenhouse_owner_os.infrastructure.inbox_models import InboxRow
 from .finance import _hash_request
 from .inventory import rows
@@ -134,6 +134,8 @@ class ExpenseRecoveryMixin:
                     return self._view(u, origin)
                 if origin['action_type'] != 'UNRESOLVED' or origin['state'] not in ('NEEDS_INPUT', 'READY', 'DEFERRED', 'STALE'):
                     raise ConflictError('Этот тип действия нельзя преобразовать в прямой расход')
+                if rows(u, "SELECT version FROM core.proposal_revisions WHERE proposal_id=:p AND version=1 AND jsonb_typeof(payload->'task_candidates')='object'", p=origin['id']):
+                    raise ConflictError('Распознанная задача требует выбора исполнителя, а не денежного действия')
                 if rows(u, 'SELECT proposal_id FROM core.confirmation_effects WHERE proposal_id=:p', p=origin['id']):
                     raise ConflictError('Исходное действие уже подтверждено')
             else:
@@ -215,6 +217,79 @@ class ExpenseRecoveryMixin:
             return self._view(u, self._proposal(u, e, pid))
         return self._write(e, a, key, 'owner_money_recovery', dict(source_id=str(source_id), **body.model_dump(mode='json')), run)
 
+    def recover_task(self, e, a, source_id, key, body):
+        """Explicit audience choice prepares one linked task; it has no effect.
+
+        Reuse immutable prepared facts/current owner edits, never reparse an old
+        proposal in place or turn an already confirmed personal task into work.
+        """
+        kind = {'personal': 'PERSONAL_TASK', 'worker': 'WORKER_TASK'}[body.audience]
+
+        def run(u):
+            original = u.session.get(InboxRow, source_id)
+            if not original or original.entity_id != e or original.source != 'owner:r2' or original.created_by != a:
+                raise NotFoundError('Источник не найден')
+            selected = self._proposal(u, e, body.origin_proposal_id)
+            if selected['inbox_id'] != str(source_id) or selected['created_by'] != str(a):
+                raise NotFoundError('Предложение этого источника не найдено')
+            self._source_lock(u, e, source_id)
+            links = rows(u, 'SELECT * FROM core.owner_recovery_links WHERE origin_proposal_id=:p', p=body.origin_proposal_id)
+            if links:
+                link = links[0]
+                target = self._proposal(u, e, link['recovery_proposal_id'], True)
+                if link['origin_version'] != body.expected_version or target['action_type'] != kind:
+                    raise ConflictError('Для исходной версии уже выбрано другое действие')
+                return self._view(u, target)
+            jobs = rows(u, 'SELECT * FROM core.processing_jobs WHERE entity_id=:e AND inbox_id=:s ORDER BY id FOR UPDATE', e=e, s=source_id)
+            if not jobs or any(j['state'] in ('QUEUED', 'RUNNING') or j['state'] == 'FAILED' and j['attempts'] < 3
+                               or j['lease_token'] is not None or j['lease_until'] is not None for j in jobs):
+                raise ConflictError('Подготовка ещё активна или доступен повтор; оригинал сохранён')
+            origin = self._proposal(u, e, body.origin_proposal_id, True)
+            self._recovery_origin_guard(u, origin)
+            if origin['version'] != body.expected_version or origin['state'] not in ('NEEDS_INPUT', 'READY', 'DEFERRED', 'STALE'):
+                raise ConflictError('Карточка изменилась или уже подтверждена; обновите её')
+            if origin['action_type'] not in ('UNRESOLVED', 'PERSONAL_TASK', 'WORKER_TASK'):
+                raise ConflictError('Это предложение не является задачей')
+            if rows(u, 'SELECT proposal_id FROM core.confirmation_effects WHERE proposal_id=:p', p=origin['id']):
+                raise ConflictError('Подтверждённую задачу нельзя преобразовать')
+            first = rows(u, 'SELECT * FROM core.proposal_revisions WHERE proposal_id=:p AND version=1', p=origin['id'])[0]
+            previous = self._view(u, origin)['revision']
+            if origin['action_type'] == 'UNRESOLVED':
+                if not first['payload'].get('task_candidates') or not previous['payload'].get('task_candidates'):
+                    raise ConflictError('В исходном предложении нет распознанной задачи')
+                payload = previous['payload']['task_candidates']
+                evidence = previous['provenance'].get('task_candidates', {})
+                provenance = evidence.get('fields') or {k: {'category': evidence.get('category', 'INFERENCE')} for k in payload}
+            else:
+                if origin['action_type'] == kind:
+                    return self._view(u, origin)
+                payload = previous['payload']
+                provenance = dict(previous['provenance'])
+            payload = TaskProposal.model_validate(payload).model_dump(mode='json')
+            provenance = dict(provenance)
+            if kind == 'PERSONAL_TASK':
+                for field in ('worker_id', 'language', 'rendered_text'):
+                    payload[field] = None
+                    provenance[field] = {'category': 'OWNER INPUT', 'basis': 'explicit_personal_audience_choice'}
+                payload.pop('execution_contract', None)
+                provenance.pop('execution_contract', None)
+            else:
+                payload['execution_contract'] = 'R2_RECEIVED_REPORT'
+                provenance['execution_contract'] = {'category': 'CONTEXT DEFAULT', 'basis': 'worker_execution_contract_r2_v1'}
+            pid = uuid4()
+            rows(u, """INSERT INTO core.proposed_actions(id,entity_id,inbox_id,slot,action_type,state,version,priority,created_by,first_unresolved_at)
+                VALUES(:id,:e,:s,:slot,:kind,'PREPARING',1,2,:a,:saved) RETURNING id""",
+                id=pid, e=e, s=source_id, slot='manual:task:' + str(body.origin_proposal_id), kind=kind, a=a, saved=original.created_at)
+            self._revision(u, self._proposal(u, e, pid), payload, provenance, a, 'PREPARE',
+                           run_id=previous.get('extraction_run_id'),
+                           warnings=[message for message in previous['missing'] if message.startswith('Возможный повтор источника:')],
+                           review_reason=body.reason or 'Явный выбор: ' + body.audience)
+            rows(u, """INSERT INTO core.owner_recovery_links(entity_id,inbox_id,origin_proposal_id,origin_version,recovery_proposal_id,created_by)
+                VALUES(:e,:s,:origin,:version,:target,:a) RETURNING recovery_proposal_id""",
+                e=e, s=source_id, origin=body.origin_proposal_id, version=body.expected_version, target=pid, a=a)
+            return self._view(u, self._proposal(u, e, pid))
+        return self._write(e, a, key, 'owner_task_recovery', dict(source_id=str(source_id), **body.model_dump(mode='json')), run)
+
     def _retire_recovery_origin(self, u, target, actor):
         from .owner_capture import js
         links = rows(u, 'SELECT * FROM core.owner_recovery_links WHERE recovery_proposal_id=:p', p=target['id'])
@@ -231,7 +306,7 @@ class ExpenseRecoveryMixin:
             missing=js(old['missing']), basis=js(old['basis']), digest=digest, a=actor)
         rows(u, "UPDATE core.proposed_actions SET version=:v,state='REJECTED',updated_at=clock_timestamp() WHERE id=:p RETURNING id", p=origin['id'], v=version)
         self._audit(u, origin, actor, 'REJECT', version,
-                    dict(payload=old['payload'], preview_digest=digest, recovery_proposal_id=target['id'], reason='Confirmed source-linked money recovery' if target['slot'].startswith('manual:money:') else 'Confirmed source-linked DirectExpense recovery'))
+                    dict(payload=old['payload'], preview_digest=digest, recovery_proposal_id=target['id'], reason='Confirmed source-linked task audience recovery' if target['slot'].startswith('manual:task:') else 'Confirmed source-linked money recovery' if target['slot'].startswith('manual:money:') else 'Confirmed source-linked DirectExpense recovery'))
 
     def _recovery_view(self, u, p, revision):
         links = rows(u, 'SELECT * FROM core.owner_recovery_links WHERE origin_proposal_id=:p OR recovery_proposal_id=:p', p=p['id'])

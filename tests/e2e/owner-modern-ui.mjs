@@ -1,3 +1,4 @@
+import {chooseTaskAudience, intendedTaskCandidate} from './task-review-fixture.mjs';
 // Visual + behavioral regression gate for the source-first owner shell.
 // Run only through the disposable preview runner. No business posting or live
 // integration is performed. Image/PDF pixels use the existing TEST OCR corpus.
@@ -252,8 +253,12 @@ try {
   // must move focus into the new content. No edit is saved or confirmed here.
   await page.setViewportSize({width: 390, height: 844});
   await navigateOwner(page, 'review');
-  const fixtureProposal = fixtures.proposals[0];
+  const fixtureOrigin = intendedTaskCandidate(proposals,capture.id,'Сегодня полить İmamlı.');assert.ok(fixtureOrigin);
+  let fixtureProposal = fixtureOrigin.id;
   await sheet().locator(`[data-proposal="${fixtureProposal}"] [data-r2-open]`).click();
+  const selectedTask = await chooseTaskAudience(page,checkedApi,owner,fixtureOrigin,'personal');
+  assert.equal(selectedTask.action_type,'PERSONAL_TASK');
+  fixtureProposal=selectedTask.id;fixtures.proposals.push(selectedTask.id);proposals.push(selectedTask);
   await sheet().getByRole('heading', {name: 'Проверить действие', exact: true}).waitFor();
   await dialogLayout('queue-to-fresh-review-focus');
   await sheet().locator('#r2-edit').click();
@@ -378,7 +383,13 @@ try {
   for (const id of fixtures.proposals) {
     const proposal = await checkedApi(owner + `/confirmations/${id}/preview`);
     assert.notEqual(proposal.state, 'POSTED');
-    await checkedApi(owner + `/confirmations/${id}/reject`, {expected_version: proposal.version});
+    if(proposal.recovery?.recovery_proposal_id && proposal.recovery.recovery_proposal_id!==proposal.id){
+      assert.ok(fixtures.proposals.includes(proposal.recovery.recovery_proposal_id),'Tracked source lineage includes its successor');
+      const blocked=await context.request.post(base+owner+`/confirmations/${id}/reject`,{data:{expected_version:proposal.version},headers:{'Idempotency-Key':crypto.randomUUID()}});
+      assert.equal(blocked.status(),409,'Linked source origin cannot be independently rejected');
+      const retained=await checkedApi(owner+`/confirmations/${id}/preview`);
+      assert.deepEqual(retained.revision,proposal.revision);assert.equal(retained.state,proposal.state);assert.equal(retained.version,proposal.version);
+    }else await checkedApi(owner + `/confirmations/${id}/reject`, {expected_version: proposal.version});
   }
   assert.deepEqual((await checkedApi(owner + '/home')).finance.balances, before.finance.balances, 'Presentation and capture must not move Finance');
   assert.deepEqual((await checkedApi(prefix + '/inventory')).stock, initialStock, 'Draft receipt must not move stock');
