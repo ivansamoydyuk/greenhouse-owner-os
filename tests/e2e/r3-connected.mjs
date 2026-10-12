@@ -159,7 +159,17 @@ async function edit(page, action, value, selectValue = false) {
     if (request.method() === "POST") helperPosts.push(request.url());
   };
   page.on("request", observe);
-  const editButton = page.locator(`[data-action="edit:${action}"]`);
+  const selector = `[data-action="edit:${action}"]`;
+  const candidates = page.locator(selector);
+  await candidates.first().waitFor({state: "attached"});
+  // Known facts live in an owner-opened disclosure. A missing critical fact
+  // also has a visible shortcut, so do not address both buttons ambiguously.
+  while (!(await page.locator(`${selector}:visible`).count())) {
+    const summary = candidates.first().locator('xpath=ancestor::details[not(@open)][last()]/summary');
+    assert.equal(await summary.count(), 1, "hidden edit control must have an owner-openable disclosure");
+    await summary.click();
+  }
+  const editButton = page.locator(`${selector}:visible`).first();
   assert.equal(await editButton.getAttribute("type"), "button");
   await editButton.click();
   if (selectValue) await select(page, "value", value);
@@ -686,6 +696,43 @@ try {
       );
     });
     await fill(page, "caption", `TEST ${engine} separate owner caption`);
+    await page.locator('[data-form=depot] [data-fertilizer-draft-status][data-state=saved]').waitFor();
+    captionCheck.domCaption = await page.locator("[name=caption]").inputValue();
+    captionCheck.storedCaption = (
+      await readStoredDraft(
+        page,
+        ownerDraftScope(config),
+        "attach-depot/" + reportId,
+      )
+    ).value.caption;
+    assert.equal(
+      captionCheck.domCaption,
+      `TEST ${engine} separate owner caption`,
+    );
+    assert.equal(captionCheck.storedCaption, captionCheck.domCaption);
+    const captureRequest=page.waitForRequest(request=>request.method()==='POST' && request.url()===base+root+'/owner/captures');
+    assert.equal(await page.locator('[name=depot],[name=quality],[name=kg]').count(),0,'Original intake must not require retyped document rows');
+    await click(page,'Сохранить оригинал');
+    captionCheck.requestCaption=(await captureRequest).postDataJSON().text;
+    assert.equal(captionCheck.requestCaption,captionCheck.domCaption);
+    await waitHash(page,'source/');
+    const depotSourceId=page.url().split('#source/')[1];
+    const preparedLink=page.locator('a[href^="#review/"]').first();
+    await preparedLink.waitFor({state:'visible',timeout:60000});
+    await preparedLink.click();
+    await waitHash(page,'review/');
+    const depotProposalId=page.url().split('#review/')[1];
+    let depotProposal=await read(context,root+'/owner/confirmations/'+depotProposalId+'/preview');
+    assert.equal(depotProposal.source.id,depotSourceId);
+    assert.equal(depotProposal.source.text,captionCheck.domCaption);
+    // These retained TEST fixtures intentionally use a tiny unreadable pixel
+    // and a minimal PDF; complete them through the explicit same-source editor.
+    await nav(page,'edit-depot/'+depotProposalId);
+    const fieldReport=await read(context,root+'/harvest/reports/'+reportId);
+    await fill(page,'date',fieldReport.event_date);
+    await select(page,'currency','TRY');
+    await page.getByText('Связь с полевыми срезами',{exact:true}).click();
+    await page.locator(`[name="report_${reportId}"]`).check();
     await select(page, "depot", fixture.counterparties.depot.id);
     await fill(
       page,
@@ -703,26 +750,11 @@ try {
       "source_line",
       `Grand 60 kg x ${receiptPrice} TRY, ADET 6`,
     );
-    captionCheck.domCaption = await page.locator("[name=caption]").inputValue();
-    captionCheck.storedCaption = (
-      await readStoredDraft(
-        page,
-        ownerDraftScope(config),
-        "attach-depot/" + reportId,
-      )
-    ).value.caption;
-    assert.equal(
-      captionCheck.domCaption,
-      `TEST ${engine} separate owner caption`,
-    );
-    assert.equal(captionCheck.storedCaption, captionCheck.domCaption);
-    const captureRequest=page.waitForRequest(request=>request.method()==='POST' && request.url()===base+root+'/owner/captures');
+    if(await page.locator('[name=unreadable_reviewed]').count())await page.locator('[name=unreadable_reviewed]').check();
     await click(page,'Открыть короткую проверку');
-    captionCheck.requestCaption=(await captureRequest).postDataJSON().text;
-    assert.equal(captionCheck.requestCaption,captionCheck.domCaption);
     await waitHash(page,'review/');
-    const depotProposalId=page.url().split('#review/')[1];
-    let depotProposal=await read(context,root+'/owner/confirmations/'+depotProposalId+'/preview');
+    assert.equal(page.url().split('#review/')[1],depotProposalId,'Manual correction retains the prepared proposal');
+    depotProposal=await read(context,root+'/owner/confirmations/'+depotProposalId+'/preview');
     assert.equal(depotProposal.state,'NEEDS_INPUT');
     assert.equal(depotProposal.revision.basis.arithmetic.field_count,7);
     assert.equal(depotProposal.revision.basis.arithmetic.depot_count,6);
@@ -734,6 +766,14 @@ try {
     await page.setViewportSize({width:320,height:844});
     await layout(page,'depot-review-320');await snap(page,engine+'-320-depot-mismatch');
     await page.setViewportSize({width:390,height:844});
+    assert.equal(depotProposal.revision.payload.quality_reviewed,false,'Typed categories still need explicit owner review');
+    await click(page,'Качества этого депо проверены');
+    await page.locator('[data-action=review-depot-quality]').waitFor({state:'hidden'});
+    const originalReview=page.locator('[data-action=review-document]');
+    if(await originalReview.count()) {
+      await originalReview.click();
+      await originalReview.waitFor({state:'hidden'});
+    }
     await click(page,'Арифметика и расхождения проверены');
     await page.getByText('Арифметика проверена владельцем',{exact:true}).waitFor();
     assert.equal(await page.locator('[data-action=confirm-proposal]').isDisabled(),false);

@@ -28,7 +28,9 @@ export function depotEditorFields(proposal) {
 export function mergeDepotEditor(saved,proposal) {
   const fresh=depotEditorFields(proposal);
   if(saved?.editor_base)for(const [key,value] of Object.entries(saved)) {
-    if(Object.hasOwn(saved.editor_base,key) && value!==saved.editor_base[key])fresh[key]=value;
+    const hadBase=Object.hasOwn(saved.editor_base,key);
+    const manualRow=!hadBase && /^(?:line_\d+_)?(?:quality|quality_category|kg|price|stated_amount|confirmed_amount|count|source_line)$/.test(key) && value!=='' && value!=null;
+    if((hadBase && value!==saved.editor_base[key]) || manualRow)fresh[key]=value;
   }
   else if(saved?.proposal_id)Object.assign(fresh,saved);
   return {...saved,...fresh,editor_base:depotEditorFields(proposal),proposal_version:proposal.version};

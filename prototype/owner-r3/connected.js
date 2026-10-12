@@ -53,6 +53,7 @@ const btn = (...args) =>
 const attachmentReads = new DraftAttachmentReads();
 const preparationRefresh = new PreparationRefreshWindow();
 let activeActionRoute = null;
+let readRefreshSequence = 0, ownerEditSequence = 0;
 let estimateReview = null;
 let lastHarvestRoute = "harvest";
 let lastFinanceRoute = "money";
@@ -1641,8 +1642,30 @@ async function logoutOwner(){
  }catch(error){if(api.scope===savedScope){ready=true;showError(error,document.querySelector('[data-form]'));}}
  finally{ownerLoggingOut=false;app.inert=false;}
 }
+async function refreshReadOnly(button) {
+  if(busy || ownerLoggingOut || button.dataset.readRefresh==='pending')return;
+  const origin={route,epoch,scope:api.scope,generation:api.generation,edits:ownerEditSequence};
+  const sequence=++readRefreshSequence;
+  const valid=()=>sequence===readRefreshSequence && route===origin.route && epoch===origin.epoch && api.scope===origin.scope && api.generation===origin.generation && ownerEditSequence===origin.edits && !ownerLoggingOut;
+  const check=()=>{if(!valid() || busy)throw Error('Устаревшее чтение не применяется.');};
+  button.dataset.readRefresh='pending';button.setAttribute('aria-busy','true');
+  preparationRefresh.reset();clearTimeout(readTimer);
+  try {
+    // refreshData calls this guard before every cache assignment, not just render.
+    await refreshData(check);
+    check();
+    if(radial || sheetRoot.querySelector('[role=dialog]'))return;
+    ready=true;
+    await render();
+  } catch(error) {
+    if(valid() && !busy)showError(error);
+  } finally {
+    if(button.isConnected){delete button.dataset.readRefresh;button.removeAttribute('aria-busy');}
+  }
+}
 async function action(run, node = null) {
   if (busy) return;
+  readRefreshSequence++;
   busy = true;
   activeActionRoute = route;
   const previousInert = node?.inert;
@@ -1703,6 +1726,20 @@ async function clearDraft(id) {
   if (scope !== api.scope || generation !== api.generation) throw Error("Сессия изменилась.");
   if (stored?.id) attachmentReads.clear(scope, id, stored.id);
   await api.store.delete(`${scope}:draft:${id}`);
+}
+async function clearConfirmedDepotDrafts(proposal) {
+  const scope=api.scope,generation=api.generation,store=api.store;
+  const check=()=>{if(scope!==api.scope || generation!==api.generation)throw Error('Сессия изменилась.');};
+  const context=await api.readDraft('depot-source:'+proposal.source.id);check();
+  const matches=record=>record?.scope===scope && record.type==='draft' && (record.value?.proposal_id===proposal.id || (context?.origin_route && record.id===context.origin_route && record.id.startsWith('attach-depot/') && record.value?.source_id===proposal.source.id));
+  const records=await store.all();check();
+  for(const saved of records)if(matches(saved)) {
+    // A replaced intake draft is a new capture, even when it uses the same route.
+    const latest=await store.get(saved.key);check();
+    if(!matches(latest) || latest.value?.id!==saved.value?.id)continue;
+    if(latest.value?.id)attachmentReads.clear(scope,latest.id,latest.value.id);
+    await store.delete(latest.key);check();
+  }
 }
 async function finish(to, message) {
   const origin = activeActionRoute;
@@ -2289,6 +2326,7 @@ function clearFieldValidation(input) {
   delete error.dataset.validationField;
 }
 document.addEventListener("input", (event) => {
+  if(event.target.closest("form"))ownerEditSequence++;
   clearFieldValidation(event.target);
   const formEl = event.target.closest("[data-form]");
   if (
@@ -2310,6 +2348,7 @@ document.addEventListener("input", (event) => {
   }
 });
 document.addEventListener("change", (event) => {
+  if(event.target.closest("form"))ownerEditSequence++;
   if (event.target.id === "duplicate-reviewed" && event.target.isConnected) {
     syncReceiptConfirmation();
     return;
@@ -2385,6 +2424,7 @@ document.addEventListener("click", (event) => {
   const [name, ...rest] = command.split(":"),
     arg = rest.join(":");
   if(name==='logout')return logoutOwner();
+  if(name==='refresh' && api.scope)return refreshReadOnly(button);
   if(name.startsWith('fert-')) return action(async()=>{
     await fertilizerWrites.flush(route);
     const origin=route,scope=api.scope,generation=api.generation,plan=current?.plan;
@@ -2553,21 +2593,19 @@ document.addEventListener("click", (event) => {
       return finish(route,name==='invoice-confirm-payable'?'Расход и долг подтверждены сервером. Теперь отдельно проверьте связь с приходом.':'Связь подтверждена. Склад и деньги повторно не проводились.');
     }
     if (name === "confirm-proposal") {
+      const proposal=current;
       const confirmed = await api.entityPost(
-        "/owner/confirmations/" + current.id + "/confirm",
+        "/owner/confirmations/" + proposal.id + "/confirm",
         {
-          expected_version: current.version,
-          preview_digest: current.revision.preview_digest,
+          expected_version: proposal.version,
+          preview_digest: proposal.revision.preview_digest,
           confirmed: true,
           reason: "Владелец проверил текущие факты и эффект",
         },
-        current.id + ":confirm:" + current.version,
+        proposal.id + ":confirm:" + proposal.version,
       );
-      if(current.action_type==='DEPOT_RECEIPT' && confirmed.effect?.id) {
-        for(const saved of await api.store.all()) if(saved.scope===api.scope && saved.type==='draft' && saved.value?.proposal_id===current.id)
-          await api.store.delete(saved.key);
-      }
-      return finish(current.action_type==='DEPOT_RECEIPT' && confirmed.effect?.id ? 'depot/'+confirmed.effect.id : route, "Сервер подтвердил действие.");
+      if(proposal.action_type==='DEPOT_RECEIPT' && confirmed.effect?.id)await clearConfirmedDepotDrafts(proposal);
+      return finish(proposal.action_type==='DEPOT_RECEIPT' && confirmed.effect?.id ? 'depot/'+confirmed.effect.id : route, "Сервер подтвердил действие.");
     }
     if (name === "defer-proposal" || name === "reject-proposal") {
       await api.entityPost(

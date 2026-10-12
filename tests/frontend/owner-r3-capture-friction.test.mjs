@@ -109,7 +109,7 @@ test('actual validation action exposes text before its scheduled focus and fence
   const node={isConnected:true,inert:false,dataset:{form:'fertilizer-actual'},querySelector:selector=>selector==='.form-error'?target:field};details.parentElement=node;
   const field={isConnected:true,parentElement:details,value:'bad',focus(){focused=true},scrollIntoView(){scrolled=true}};
   const create=new Function('node','requestAnimationFrame','document',`
-   let route='fertilizer-actual/plan',epoch=1,busy=false,activeActionRoute=null;
+   let route='fertilizer-actual/plan',epoch=1,busy=false,activeActionRoute=null,readRefreshSequence=0;
    const api={generation:1},fertilizerWrites={flush:async()=>{}};
    function syncReceiptConfirmation(){}
    ${body}

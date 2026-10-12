@@ -43,6 +43,36 @@ test('new preparation enriches untouched editor facts but preserves unsaved owne
  p.version=2;p.revision.payload.lines[0].unit_price='55.00';
  const d=mergeDepotEditor(saved,p);assert.equal(d.kg,'101.000');assert.equal(d.price,'55.00');assert.equal(d.editor_base.kg,'100.000');assert.equal(d.proposal_version,2);assert.equal(d.id,'draft');
 });
+test('manual first and added rows survive blank proposal reload and later OCR enrichment',()=>{
+ const blank=proposal();blank.revision.payload.lines=[];blank.revision.payload.qualities=[];
+ const base=depotEditorFields(blank),saved={id:'draft',...base,editor_base:base,line_count:'2',quality:'Grand',kg:'101.000',price:'50.00',count:'0',stated_amount:'',line_1_quality:'Birinci',line_1_kg:'200.000',line_1_price:'40.00',line_1_source_line:'Owner entered second row'};
+ const unchanged=mergeDepotEditor(saved,blank);assert.equal(unchanged.kg,'101.000');assert.equal(unchanged.line_1_kg,'200.000');
+ const enriched=proposal();enriched.version=2;enriched.revision.payload.lines.push({original_quality_name:'Birinci OCR',net_weight_kg:'180.000',unit_price:'39.00',source_line:'recognized row'});enriched.revision.payload.qualities.push('FIRST');
+ const result=mergeDepotEditor(saved,enriched);
+ for(const key of ['id','source_id','proposal_id','line_count','quality','kg','price','count','line_1_quality','line_1_kg','line_1_price','line_1_source_line'])assert.equal(result[key],saved[key],key);
+ assert.equal(result.stated_amount,'5000.00','untouched blank gets recognized amount');assert.equal(result.line_1_quality_category,'FIRST');assert.equal(result.editor_base.kg,'100.000');assert.equal(result.editor_base.line_1_kg,'180.000');assert.equal(result.proposal_version,2);
+});
+test('confirmed depot clears only its editor and exact source-first origin draft, preserving other captures',async()=>{
+ const record=(id,value,scope='owner',type='draft')=>({key:`${scope}:${type}:${id}`,scope,type,id,value});
+ const original=record('attach-depot/report',{id:'capture-id',source_id:'source'}),editor=record('edit-depot/proposal',{id:'editor-id',proposal_id:'proposal'});
+ const other=[record('attach-depot/other',{id:'another',source_id:'source'}),record('attach-depot/report',{id:'other-person',source_id:'source'},'other'),record('capture/text',{id:'text',source_id:'another-source'}),record('confirm',{proposal_id:'proposal'},'owner','pending'),record('depot-source:source',{report_id:'report',origin_route:'attach-depot/report'})];
+ const code=extract('async function clearConfirmedDepotDrafts(', 'async function finish(');
+ for(const boundary of ['normal','replaced','scope','generation']) {
+  const entries=new Map([original,editor,...other].map(r=>[r.key,structuredClone(r)])),cleared=[];
+  const api={scope:'owner',generation:1,readDraft:async()=>({origin_route:'attach-depot/report'}),store:{all:async()=>{
+   const snapshot=[...entries.values()].map(r=>structuredClone(r));
+   if(boundary==='replaced')entries.set(original.key,record(original.id,{id:'new-capture',source_id:'new-source'}));
+   if(boundary==='scope')api.scope='other';if(boundary==='generation')api.generation++;
+   return snapshot;
+  },get:async key=>entries.get(key),delete:async key=>entries.delete(key)}};
+  const run=new Function('api','attachmentReads',code+';return clearConfirmedDepotDrafts;')(api,{clear:(...args)=>cleared.push(args)});
+  if(['scope','generation'].includes(boundary)){await assert.rejects(run(proposal()),/Сессия/);assert.equal(entries.size,7);assert.equal(cleared.length,0);continue;}
+  await run(proposal());assert.equal(entries.has(editor.key),false);assert.equal(entries.has(original.key),boundary==='replaced');
+  for(const untouched of other)assert.deepEqual(entries.get(untouched.key),untouched);
+  if(boundary==='replaced')assert.equal(entries.get(original.key).value.id,'new-capture');
+ }
+ const confirm=extract('if (name === "confirm-proposal")', 'if (name === "defer-proposal"');assert.match(confirm,/proposal.action_type==='DEPOT_RECEIPT' && confirmed.effect\?\.id\)await clearConfirmedDepotDrafts\(proposal\)/);
+});
 test('read-only refresh is bounded and reset only by distinct view/session or explicit refresh',()=>{
  let now=0;const w=new PreparationRefreshWindow({now:()=>now,maxReads:2,durationMs:100});const id={route:'sources',scope:'owner-1',generation:1};w.enter(id);
  assert.equal(w.claim(id),true);w.enter(id);assert.equal(w.claim(id),true);assert.equal(w.claim(id),false);assert.equal(w.matches({...id,scope:'owner-2'}),false);
@@ -196,4 +226,54 @@ test('long invoice description is collapsed accessibly without truncating author
  const long='FATURA KNO3 100 kg 5 TRY 500 TRY <source>\n'.repeat(10),rendered=view(long,escape);
  assert.deepEqual(rendered.facts,[]);assert.match(rendered.detail,/<details class="source-provenance invoice-document-description">/);assert.match(rendered.detail,/<summary>Описание из документа<\/summary>/);assert.ok(rendered.detail.includes(escape(long)));assert.doesNotMatch(rendered.detail,/<details[^>]*\sopen(?:\s|>)/);
  const workflow=extract('function invoiceWorkflowView(', 'function transferForm(');assert.match(workflow,/description=invoiceDescriptionView\(f.description\)/);assert.match(workflow,/\['Сумма',f.amount/);assert.match(workflow,/\['Дата',displayDate\(f.event_date/);assert.match(workflow,/\['Поставщик',f.counterparty_id/);assert.match(workflow,/\['amount','currency','event_date','counterparty_id','description','due_date'\]/);
+});
+
+function manualRefreshHarness() {
+ let release;const gate=new Promise(resolve=>release=resolve),events=[];
+ const code=extract('async function refreshReadOnly(', 'async function action(');
+ const refreshDataCode=extract('async function refreshData(', 'function unavailable(');
+ const actionCode=extract('async function action(', 'function assertSubmissionScope(');
+ const factory=new Function('gate','events',`
+ let route='home',epoch=1,busy=false,ownerLoggingOut=false,readRefreshSequence=0,ownerEditSequence=0,ready=true,radial=false,readTimer=null,dialog=false;
+ const data={home:{before:true}},failures={},config={daily_pilot:false};
+ const capture={disabled:false},logout={disabled:false},button={disabled:false,isConnected:true,dataset:{},setAttribute:(k,v)=>events.push([k,v]),removeAttribute:k=>events.push(['remove',k])};
+ const api={scope:'owner',generation:1,entityGet:async path=>{events.push(['GET',path]);await gate;return {path,new:true}}},preparationRefresh={reset(){}},clearTimeout=()=>{},sheetRoot={querySelector:()=>dialog};
+ const render=async()=>events.push(['render']),showError=error=>events.push(['error',error.message]),document={querySelectorAll:()=>[capture,logout,button]},fertilizerWrites={flush:async()=>{}},syncReceiptConfirmation=()=>{};let activeActionRoute=null;
+ capture.dataset={};logout.dataset={action:'logout'};
+ ${refreshDataCode}
+ ${code}
+ ${actionCode}
+ return {run:()=>refreshReadOnly(button),data,failures,button,capture,logout,state:()=>({busy,ready,route,epoch}),navigate:()=>{route='capture/text';epoch++},edit:()=>ownerEditSequence++,scope:()=>api.scope='other',generation:()=>api.generation++,expire:()=>{ownerLoggingOut=true;ready=false;epoch++;api.generation++},write:()=>busy=true,completeWrite:()=>action(async()=>{data.home={written:true}}),dialog:()=>dialog=true,radial:()=>radial=true};
+ `);
+ return {state:factory(gate,events),release,events};
+}
+
+test('actual read-only refresh leaves capture/logout controls and mutation busy flag unlocked',async()=>{
+ const h=manualRefreshHarness();const read=h.state.run();
+ assert.equal(h.state.capture.disabled,false);assert.equal(h.state.logout.disabled,false);assert.equal(h.state.button.disabled,false);assert.equal(h.state.state().busy,false);assert.equal(h.events.filter(e=>e[0]==='GET').length,6);
+ await h.state.run();assert.equal(h.events.filter(e=>e[0]==='GET').length,6,'same pending refresh coalesces without a global lock');
+ h.release();await read;assert.equal(h.events.filter(e=>e[0]==='render').length,1);assert.equal(h.state.data.home.new,true);assert.equal(h.state.button.dataset.readRefresh,undefined);
+});
+
+test('completed authoritative action permanently invalidates an older read even without navigation or rendering',async()=>{
+ const h=manualRefreshHarness(),read=h.state.run();await h.state.completeWrite();
+ assert.equal(h.state.state().busy,false);assert.equal(h.state.state().epoch,1);assert.deepEqual(h.state.data.home,{written:true});
+ h.release();await read;assert.deepEqual(h.state.data,{home:{written:true}});assert.deepEqual(h.state.failures,{});assert.equal(h.events.some(e=>e[0]==='render'||e[0]==='error'),false);
+});
+
+test('actual refreshData cache and rendering discard late responses after navigation, edit, logout, or new writer',async()=>{
+ for(const boundary of ['navigate','edit','scope','generation','expire','write']){
+  const h=manualRefreshHarness();const read=h.state.run();h.state[boundary]();h.release();await read;
+  assert.deepEqual(h.state.data,{home:{before:true}},boundary);assert.deepEqual(h.state.failures,{},boundary);assert.equal(h.events.some(e=>e[0]==='render'||e[0]==='error'),false,boundary);
+  if(boundary==='expire')assert.equal(h.state.state().ready,false,'late read cannot revive logged-out readiness');
+ }
+ for(const boundary of ['dialog','radial']){
+  const h=manualRefreshHarness();const read=h.state.run();h.state[boundary]();h.release();await read;assert.equal(h.events.some(e=>e[0]==='render'),false,boundary);
+ }
+});
+
+test('refresh bypass is authenticated/read-only and authoritative action locking stays in place',()=>{
+ assert.match(source,/if\(name==='refresh' && api.scope\)return refreshReadOnly\(button\)/);
+ const read=extract('async function refreshReadOnly(', 'async function action(');assert.doesNotMatch(read,/entityPost|mutate\(|clearDraft|busy\s*=/);
+ const write=extract('async function action(', 'function assertSubmissionScope(');assert.match(write,/if \(busy\) return/);assert.match(write,/busy = true/);assert.match(write,/b.disabled = true/);assert.match(write,/await fertilizerWrites.flush\(route\)/);
 });
