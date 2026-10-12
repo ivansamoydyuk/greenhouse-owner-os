@@ -1,4 +1,4 @@
-import {PreparationRefreshWindow,preparationPending,mergeDepotEditor,preservesDepotQualityReview} from './capture-daily.js';
+import {PreparationRefreshWindow,preparationPending,mergeDepotEditor,preservesDepotQualityReview,depotReviewGates,approvedDepotDocumentCount} from './capture-daily.js';
 import {FertilizerDraftWrites} from './fertilizer-draft-writes.js';
 import {ColdBootstrapAttempt} from './cold-bootstrap.js';
 import {fertilizerDraft,fertilizerDraftAction,fertilizerCopyDraft,fertilizerResolutionInput,fertilizerResolutionView,fertilizerEditRestriction,invalidateFertilizerReview,fertilizerPlanInput,fertilizerEditorView,fertilizerPreviewView,fertilizerCalendarView,fertilizerDetailView,fertilizerReferenceView,fertilizerActualDraft,fertilizerActualInput,fertilizerActualView,exactFertilizerNumber} from './fertilizer-connected.js';
@@ -109,6 +109,10 @@ const operationLabels = {
   plan: "План",
 };
 const statuses = {
+  SERVER_SAVED: "Сохранено на сервере",
+  PROCESSING: "Подготовка",
+  NEEDS_REVIEW: "Нужно проверить",
+  CONFIRMED: "Подтверждено",
   open: "Открыто",
   partial: "Частично оплачено",
   settled: "Погашено",
@@ -383,14 +387,14 @@ function sourceDetail(s) {
   return (
     Header(
       "Оригинал",
-      "Сохранён на сервере · " + (statuses[s.state] || s.state),
+      "Сохранён на сервере · " + (s.manual_document_recovery_available?"нужен ручной ввод":statuses[s.state] || s.state),
       true,
     ) +
     panel(
       `<span class="eyebrow">ОРИГИНАЛ</span><p class="original-text" data-testid="source-original">${e(s.text || "Текст не добавлен")}</p>${s.original_name ? `<p>${e(s.original_name)}</p><a class="btn secondary" href="${entityPath("/owner/captures/" + s.id + "/original")}" target="_blank" rel="noopener">Открыть неизменённый файл</a>` : ""}<p class="note">Источник остаётся доступен после подтверждения и исправления фактов.</p>`,
     ) +
     panel(
-      `<p role="status">Оригинал сохранён на сервере. Можно уйти и вернуться позже.</p><h2>Подготовка</h2>${preparationPending(s)?preparationRefreshStatus():''}${stateTag(s.job?.state || s.state)}<p>${e(s.job?.error_code || "")}</p>${recognitionDetails(s)}${btn("Обновить", "refresh")}${s.retryable ? btn("Повторить подготовку", "prepare:" + s.id) : ""}${(s.proposals || []).map((p) => `<div class="list-row">${link(e((title[p.action_type] || p.action_type || "Открыть предложение") + " · " + (statuses[p.state] || p.state)), `review/${p.id}`, "btn secondary")}</div>`).join("")}<details><summary>Ручной режим, если подготовка не помогла</summary>${notice("Если это именно оплаченный текущий расход, откройте связанный ручной режим. Долг или аванс расходом не становится.")}${canRecoverSourceExpense(s) ? btn("Оформить прямой расход", "recover-source:" + s.id, "secondary") : s.proposals?.length ? notice("Выберите существующее предложение выше. Ручной расход открывается из выбранного предложения и сохраняет его связь с оригиналом.") : notice("Дождитесь подготовки или повторите её при ошибке. Оригинал уже сохранён.")}${(s.proposals||[]).filter(p=>p.action_type==='DEPOT_RECEIPT'&&!['POSTED','REJECTED'].includes(p.state)).map(p=>link('Ввести недостающие строки вручную','edit-depot/'+p.id,'btn secondary')).join('')}</details>`,
+      `<p role="status">Оригинал сохранён на сервере. Можно уйти и вернуться позже.</p><h2>Подготовка</h2>${preparationPending(s)?preparationRefreshStatus():''}${stateTag(s.manual_document_recovery_available?"Нужен ручной ввод":s.job?.state || s.state)}<p>${e(s.job?.error_code || "")}</p>${recognitionDetails(s)}${btn("Обновить", "refresh")}${s.retryable && s.job?.state === "FAILED" ? btn("Повторить подготовку", "prepare:" + s.id) : ""}${s.manual_document_recovery_available?btn("Ввести вручную", "prepare:"+s.id, "secondary"):""}${(s.proposals || []).map((p) => `<div class="list-row">${link(e((title[p.action_type] || p.action_type || "Открыть предложение") + " · " + (statuses[p.state] || p.state)), `review/${p.id}`, "btn secondary")}</div>`).join("")}<details><summary>Ручной режим, если подготовка не помогла</summary>${notice("Если это именно оплаченный текущий расход, откройте связанный ручной режим. Долг или аванс расходом не становится.")}${canRecoverSourceExpense(s) ? btn("Оформить прямой расход", "recover-source:" + s.id, "secondary") : s.proposals?.length ? notice("Выберите существующее предложение выше. Ручной расход открывается из выбранного предложения и сохраняет его связь с оригиналом.") : notice("Дождитесь подготовки или повторите её при ошибке. Оригинал уже сохранён.")}${(s.proposals||[]).filter(p=>p.action_type==='DEPOT_RECEIPT'&&!['POSTED','REJECTED'].includes(p.state)).map(p=>link('Ввести недостающие строки вручную','edit-depot/'+p.id,'btn secondary')).join('')}</details>`,
     )
   );
 }
@@ -465,15 +469,22 @@ function compactMoneyReview(p) {
   const f=p.revision.payload,basis=p.revision.basis||{},payment=p.action_type==='PAYMENT';
   const reviewedName=(table,id)=>{const r=basis[table+':'+id];return r?.original_name||r?.name||r?.description||refName(id);};
   const debt=basis['finance.obligations:'+f.obligation_id];
+  const remaining=typeof basis.debt_remaining==='object'?basis.debt_remaining?.remaining_amount:basis.debt_remaining;
+  const after=remaining!=null&&f.amount!=null&&cents(remaining)>=cents(f.amount)?decimal(cents(remaining)-cents(f.amount)):null;
+  const done=['POSTED','CONFIRMED_NONPOSTING'].includes(p.state);
+  const effect=p.state==='REJECTED'?'Предложение отклонено.':f.invoice_intent==='undecided'?'Назначение счёта ещё не выбрано. Приход, долг и оплата не подтверждены этим источником.':payment?(done?'Оплата выбранного долга подтверждена. Новый расход не создан.':'После подтверждения: оплата выбранного долга с выбранного счёта. Новый расход не создаётся.'):(done?'Операционный расход и долг подтверждены. Оплата этим действием не создавалась.':'После подтверждения: операционный расход и долг. Оплата не создаётся.');
   return panel(`${stateTag(p.state)}<h2>${e(f.description || 'За что: нужно уточнить')}</h2><strong class="exact-value">${e(f.amount==null?'Сумма не указана':money(f.amount,f.currency || 'Валюта не указана'))}</strong>${facts([
     ['Дата',displayDate(f.event_date,'Не указана')+(factOrigin(p,'event_date')?' · '+factOrigin(p,'event_date'):'')],
+    ...(factOrigin(p,'currency')?[['Валюта',(f.currency || 'Не указана')+' · '+factOrigin(p,'currency')]]:[]),
     ['Контрагент',f.counterparty_id?reviewedName('core.counterparties',f.counterparty_id):'Нужно выбрать'],
     ...(payment?[
       ['Счёт',f.money_account_id?reviewedName('finance.money_accounts',f.money_account_id):'Нужно выбрать'],
       ['Назначение',f.payment_purpose==='debt'?'Погашение выбранного долга':'Нужно подтвердить назначение'],
       ['Долг',f.obligation_id?(debt?.description || 'Выбранный долг'):'Нужно выбрать явно'],
+      ...(remaining!=null?[['Остаток до этой оплаты',money(remaining,f.currency)]]:[]),
+      ...(after!=null?[['Остаток после этой оплаты',money(after,f.currency)]]:[]),
     ]:[]),
-  ])}${notice(payment?'После подтверждения: оплата выбранного долга с выбранного счёта. Новый расход не создаётся.':'После подтверждения: операционный расход и долг. Оплата не создаётся.')}${(p.revision.missing||[]).map(m=>'<p class="form-error">'+e(m)+'</p>').join('')}`,'compact-expense-review');
+  ])}${notice(effect)}${(p.revision.missing||[]).map(m=>'<p class="form-error">'+e(m)+'</p>').join('')}`,'compact-expense-review');
 }
 function documentReview(p) {
   if(p.revision.payload.document_reviewed!==false || ['POSTED','CONFIRMED_NONPOSTING','REJECTED'].includes(p.state))return '';
@@ -487,7 +498,22 @@ function nextMissingFact(p) {
   const keys=['amount','description','currency','event_date',...(p.action_type!=='DIRECT_EXPENSE'?['counterparty_id']:[]),...(p.action_type!=='PAYABLE'?['money_account_id']:[]),...(p.action_type==='PAYMENT'?['payment_purpose','obligation_id']:needsPaidReview(p)?['payment_purpose']:[])];
   return keys.find(k=>p.revision.payload[k]==null||p.revision.payload[k]==='');
 }
+function moneyIntentReview(p) {
+  const f=p.revision.payload.money_candidates;
+  const provenance=p.revision.provenance?.money_candidates?.fields || {};
+  const origin=key=>factOrigin({revision:{provenance}},key);
+  const target=p.recovery?.recovery_proposal_id;
+  return Header('Уточнить событие','Известные факты сохранены',true)+panel(`<h2>${e(f.description || 'Денежная запись')}</h2><strong class="exact-value">${e(f.amount==null?'Сумма не указана':money(f.amount,f.currency || 'Валюта не указана'))}</strong>${facts([
+    ...(origin('currency')?[['Валюта',(f.currency || 'Не указана')+' · '+origin('currency')]]:[]),
+    ['Контрагент',f.counterparty_id?refName(f.counterparty_id):'Не указан'],
+    ['Дата',displayDate(f.event_date,'Не указана')+(origin('event_date')?' · '+origin('event_date'):'')],
+    ['Факт оплаты','Не установлен из источника'],
+  ])}<details class="source-provenance"><summary>Исходный текст</summary><p class="original-text" data-testid="source-original">${e(p.source.text || p.revision.payload.note || '')}</p></details>${target?link('Открыть выбранное действие','review/'+target,'btn primary full'):['REJECTED','POSTED','CONFIRMED_NONPOSTING'].includes(p.state)?notice('Решение по этому источнику уже сохранено.'):form('money-intent',select('Что произошло','intent',[{value:'operating_payable',label:'Новый операционный расход, ещё не оплачен'},{value:'paid_expense',label:'Текущий расход уже оплачен'},{value:'debt_payment',label:'Оплата ранее учтённого долга'}],'','Выберите явно')+'<p class="note">Выбранный вид действия закрепится за этой записью. Сумма и остальные известные факты перейдут в проверку; проводка будет только после отдельного подтверждения.</p>','Открыть проверку')}${link('К исходнику','source/'+p.source.id,'btn secondary')}`);
+}
 function proposalDetail(p) {
+  if(p.action_type==='UNRESOLVED' && p.revision.payload.money_candidates)return moneyIntentReview(p);
+  if(p.action_type==='PAYABLE' && p.revision.payload.invoice_intent==='undecided' && p.invoice_match_id)return Header('Счёт поставщика','Выберите назначение документа',true)+compactMoneyReview(p)+panel(`${link('Выбрать приход и назначение','invoice-select/'+p.invoice_match_id,'btn primary full')}${link('К исходнику','source/'+p.source.id,'btn secondary')}`);
+  if(p.action_type==='PAYABLE' && p.source.capture_context==='supplier_invoice' && p.source.invoice_receipt_id)return Header('Счёт поставщика','Расход и долг проверяются отдельно от прихода',true)+panel(`${stateTag(p.state)}${link('Открыть счёт и связь','invoice-source/'+p.source.invoice_receipt_id+'/'+p.source.id,'btn primary full')}${link('К исходнику','source/'+p.source.id,'btn secondary')}`);
   if(p.action_type==='INVOICE_MATCH')return Header('Счёт к приходу','Приход, счёт и оплата проверяются отдельно',true)+panel(`${stateTag(p.state)}<p>Выберите существующий физический приход и назначение документа. Исходник уже сохранён.</p>${recognitionDetails(p.source)}${p.revision.payload.receipt_id?link('Открыть проверку счёта','invoice-source/'+p.revision.payload.receipt_id+'/'+p.source.id,'btn primary full'):link('Выбрать приход и назначение','invoice-select/'+p.id,'btn primary full')}${link('К исходнику','source/'+p.source.id,'btn secondary')}`);
   const done = ["POSTED", "CONFIRMED_NONPOSTING"].includes(p.state),
     context = {
@@ -832,8 +858,8 @@ function qualityProvenance(depotId, mappings=[],reviews=[]) {
 }
 function compactDepotProposal(p) {
   const f=p.revision.payload, arithmetic=p.revision.basis?.arithmetic || {};
-  const editable=!['POSTED','CONFIRMED_NONPOSTING','REJECTED'].includes(p.state);
-  return panel(`<h2>${e(refName(f.depot_id))}</h2>${facts([['Дата',displayDate(f.event_date)],['Валюта',f.currency],['Продажа и долг',arithmetic.total_amount==null?'Не рассчитано':money(arithmetic.total_amount,f.currency)],['Эффект','Продажа и долг депо. Оплата не создаётся.'],['Полевое количество',arithmetic.field_count==null?'Неизвестно':arithmetic.field_count+' веток'],['ADET документа',f.document_count==null?'Не указано':f.document_count+' ADET'],['ADET по строкам',arithmetic.depot_count==null?'Покрытие неполное':arithmetic.depot_count+' ADET']])}${(f.lines||[]).map((l,i)=>`<div class="depot-review-line"><strong>${e(l.original_quality_name)} · ${e({HIGHEST:'Высшее',FIRST:'Первое',SECOND:'Второе'}[f.qualities?.[i]] || 'Категория неизвестна')}${!f.quality_reviewed?' · нужно проверить':''}</strong><p>${e(displayQuantity(l.net_weight_kg))} кг × ${e(displayQuantity(l.unit_price))} ${e(f.currency)}/кг</p><p>Расчёт: ${e(arithmetic.lines?.[i]?.calculated_amount ?? 'Неизвестно')} · Подтверждаемая сумма: ${e(arithmetic.lines?.[i]?.selected_amount ?? 'Неизвестно')} ${e(f.currency)}</p><p>ADET: ${e(l.count ?? 'Не указан')} · Сумма документа: ${e(l.stated_amount ?? 'Не указана')}</p>${editable?btn('Исправить строку '+(i+1),'edit-depot-line:'+i,'secondary'):''}</div>`).join('')}${arithmetic.count_discrepancy?notice('Расхождение: '+arithmetic.field_count+' веток по полю и '+arithmetic.depot_count+' ADET по документу. Ни одно значение не заменяется.','amber'):''}${arithmetic.stated_total_discrepancy?notice('Итог документа не совпадает с выбранной суммой строк. Проверьте оригинал.','amber'):''}<p class="note">Полевые ветки и ADET депо остаются независимыми значениями. Выбранных партий: ${f.batch_ids.length}.</p>${(p.revision.missing||[]).map(x=>'<p class="form-error">'+e(x)+'</p>').join('')}${editable&&!f.quality_reviewed&&f.lines?.length&&f.qualities?.length===f.lines.length&&f.qualities.every(Boolean)?btn('Качества этого депо проверены','review-depot-quality','secondary full'):''}${editable&&!f.arithmetic_reviewed?btn('Арифметика и расхождения проверены','review-depot-arithmetic','primary full'):notice('Арифметика проверена владельцем')}${qualityProvenance(f.depot_id,p.revision.basis?.quality_mappings || [])}${editable?link('Уточнить реквизиты, связь или строки','edit-depot/'+p.id,'btn secondary full'):''}`);
+  const editable=!['POSTED','CONFIRMED_NONPOSTING','REJECTED'].includes(p.state),gates=depotReviewGates(p);
+  return panel(`<h2>${e(refName(f.depot_id))}</h2>${facts([['Дата',displayDate(f.event_date)+(factOrigin(p,'event_date')?' · '+factOrigin(p,'event_date'):'')],['Валюта',(f.currency || 'Не указана')+(factOrigin(p,'currency')?' · '+factOrigin(p,'currency'):'')],['Продажа и долг',arithmetic.total_amount==null?'Не рассчитано':money(arithmetic.total_amount,f.currency)],['Эффект','Продажа и долг депо. Оплата не создаётся.'],['Полевое количество',arithmetic.field_count==null?'Неизвестно':arithmetic.field_count+' веток'],['ADET документа',f.document_count==null?'Не указано':f.document_count+' ADET'],['ADET по строкам',arithmetic.depot_count==null?'Покрытие неполное':arithmetic.depot_count+' ADET']])}${(f.lines||[]).map((l,i)=>`<div class="depot-review-line"><strong>${e(l.original_quality_name)} · ${e({HIGHEST:'Высшее',FIRST:'Первое',SECOND:'Второе'}[f.qualities?.[i]] || 'Категория неизвестна')}${!f.quality_reviewed?' · нужно проверить':''}</strong><p>${e(displayQuantity(l.net_weight_kg))} кг × ${e(displayQuantity(l.unit_price))} ${e(f.currency)}/кг</p><p>Расчёт: ${e(arithmetic.lines?.[i]?.calculated_amount ?? 'Неизвестно')} · Подтверждаемая сумма: ${e(arithmetic.lines?.[i]?.selected_amount ?? 'Неизвестно')} ${e(f.currency)}</p><p>ADET: ${e(l.count ?? 'Не указан')} · Сумма документа: ${e(l.stated_amount ?? 'Не указана')}</p>${editable?btn('Исправить строку '+(i+1),'edit-depot-line:'+i,'secondary'):''}</div>`).join('')}${arithmetic.count_discrepancy?notice('Расхождение: '+arithmetic.field_count+' веток по полю и '+arithmetic.depot_count+' ADET по документу. Ни одно значение не заменяется.','amber'):''}${arithmetic.stated_total_discrepancy?notice('Итог документа не совпадает с выбранной суммой строк. Проверьте оригинал.','amber'):''}<p class="note">Полевые ветки и ADET депо остаются независимыми значениями. Выбранных партий: ${f.batch_ids.length}.</p>${editable&&gates.pending.length?'<p class="note review-gates" role="status">Осталось проверить: '+e(gates.pending.join(' и '))+'.</p>':''}${gates.missing.map(x=>'<p class="form-error">'+e(x)+'</p>').join('')}${editable&&gates.qualityAction?btn('Качества этого депо проверены','review-depot-quality','secondary full'):''}${editable&&!f.arithmetic_reviewed?btn('Арифметика и расхождения проверены','review-depot-arithmetic','primary full'):notice('Арифметика проверена владельцем')}${qualityProvenance(f.depot_id,p.revision.basis?.quality_mappings || [])}${editable?link('Уточнить реквизиты, связь или строки','edit-depot/'+p.id,'btn secondary full'):''}`);
 }
 const issueNames = {
   count_discrepancy: "Полевое количество и ADET различаются",
@@ -849,6 +875,7 @@ const issueNames = {
   receipt_draft: "Черновик",
 };
 function depotDetail(s) {
+  const documentCount=approvedDepotDocumentCount(s);
   return (
     Header("Чек депо", refName(s.depot_id), true) +
     panel(
@@ -871,10 +898,11 @@ function depotDetail(s) {
     panel(
       `<h2>Срез и ADET</h2>${facts([
         ["Полевое количество", s.reconciliation.field_count ?? "UNKNOWN"],
-        ["ADET документа", s.reconciliation.depot_count ?? "UNKNOWN"],
+        ["ADET по строкам", s.reconciliation.depot_count ?? "Неизвестно · покрытие неполное"],
+        ...(documentCount!=null?[["ADET всего документа · проверенный источник",documentCount]]:[]),
         ["Полевой вес, кг", s.reconciliation.field_weight_kg ?? "UNKNOWN"],
         ["Вес депо, кг", s.reconciliation.depot_weight_kg],
-      ])}${s.reports.map((r) => link(e(r.original_greenhouse) + " · " + displayDate(r.event_date), "report/" + r.id, "list-row")).join("")}${notice("Расхождение не исправляет ни источник, ни второй показатель. Покрытие показывается только по известным данным.", "amber")}`,
+      ])}${s.reports.map((r) => link(e(r.original_greenhouse) + " · " + displayDate(r.event_date), "report/" + r.id, "list-row")).join("")}${notice("Полевое количество и ADET сохраняются отдельно. Суммарный ADET источника не распределяется по строкам и не подставляется в средний вес.")}`,
     ) +
     panel(
       `<h2>Строки</h2>${s.lines
@@ -984,12 +1012,10 @@ function receiptForm(productId) {
   );
 }
 function invoiceNewForm(receipt) {
-  return Header('Счёт к приходу','Оригинал сохраняется отдельно от физического движения',true)+panel(form('invoice-source',
+  return Header('Счёт к приходу','Сначала сохраним оригинал',true)+panel(form('invoice-source',
     facts([['Приход',displayDate(receipt.event_date)],['Товары',receipt.lines.map(l=>l.original_product_name+' · '+l.quantity+' '+l.unit).join('; ')]])+
-    select('Что нужно сделать','intent',[{value:'operating_expense',label:'Новый счёт на операционный расход'},{value:'existing_payable',label:'Связать с уже учтённым долгом'}],draft.intent,'Выберите явно')+
-    '<p class="note">Новый операционный счёт после отдельного подтверждения создаст расход и долг. Для актива, материала или иного неоперационного обязательства используйте уже правильно учтённый документ; классификацию система не угадывает.</p>'+
-    area('Текст документа или подпись · необязательно с файлом','text',draft.text)+fileField('Фото / PDF счёта')+(draft.file?.filename?notice('Копия на телефоне: '+draft.file.filename):'')+
-    '<p class="note">Сохранение оригинала и подготовка не создают второй приход, оплату или долг.</p>','Сохранить счёт и подготовить'));
+    area('Текст документа или отдельный комментарий · необязательно с файлом','text',draft.text)+fileField('Фото / PDF счёта')+(draft.file?.filename?notice('Копия на устройстве: '+draft.file.filename):'')+
+    '<p class="note">Выбор нового расхода или связи с учтённым долгом будет после подготовки. Приход уже выбран. Оригинал сохраняется без проводок.</p>','Сохранить счёт и подготовить'));
 }
 function invoiceChoiceView(c) {
   return Header('Счёт к существующему приходу','Выбор владельца · склад и деньги не меняются',true)+panel(`${recognitionDetails(c.proposal.source)}${form('invoice-choice',select('Ранее подтверждённый приход','receipt',c.receipts.items.filter(r=>r.kind==='receipt'&&r.status==='posted').map(r=>({id:r.id,name:displayDate(r.event_date)+' · '+r.lines.map(l=>l.original_product_name+' '+l.quantity+' '+l.unit).join('; ')})),draft.receipt)+select('Что нужно сделать','intent',[{value:'operating_expense',label:'Проверить новый операционный расход и долг'},{value:'existing_payable',label:'Связать с учтённым долгом; отклонить предложение нового'}],draft.intent,'Выберите явно')+'<p class="note">Выбор уже учтённого долга отклонит неподтверждённое предложение нового долга из этого источника. Отмена не удаляет оригинал. Счёт сам по себе не подтверждает приход, оплату или вид затрат. Для материалов и активов выберите уже правильно учтённый долг.</p>','Открыть короткую проверку')}${c.receipts.next_offset!=null?link('Следующие приходы','invoice-select/'+c.proposal.id+'/'+c.receipts.next_offset,'btn secondary'):''}${c.offset?link('Предыдущие приходы','invoice-select/'+c.proposal.id+'/'+Math.max(0,c.offset-20),'btn secondary'):''}${link('К исходнику','source/'+c.proposal.source.id,'btn secondary')}`);
@@ -997,8 +1023,8 @@ function invoiceChoiceView(c) {
 function invoiceWorkflowView(c) {
   const {receipt,source,match,documents}=c,payable=c.payable?.state==='REJECTED'?null:c.payable,done=p=>['POSTED','CONFIRMED_NONPOSTING'].includes(p?.state);
   let body=Header('Проверить счёт и связь','Каждое учётное действие подтверждается отдельно',true)+panel(facts([['Физический приход',displayDate(receipt.event_date)],['Товары',receipt.lines.map(l=>l.original_product_name+' · '+l.quantity+' '+l.unit).join('; ')]])+`${source.invoice_receipt_id&&source.invoice_receipt_id!==receipt.id?'<p class="note">Исходный контекст другого прихода сохранён; здесь показан приход из текущей явной ревизии связи.</p>':''}<p class="note">Приход уже учтён. Этот выбор сделан владельцем и не является извлечённым из счёта фактом.</p><details class="source-provenance"><summary>Оригинал счёта</summary><p class="original-text">${e(source.text || 'Текст не добавлялся')}</p>${source.original_name?`<a class="btn secondary" href="${entityPath('/owner/captures/'+source.id+'/original')}" download>${e(source.original_name||'Скачать оригинал')}</a>`:''}</details>`);
-  if(!source.invoice_intent && !draft.invoice_intent && c.payable?.state!=='REJECTED' && match && !done(match))return body+panel(`<p>Укажите назначение этого документа перед проверкой.</p>${link('Выбрать приход и назначение','invoice-select/'+match.id,'btn primary full')}`);
-  if(!match) return body+panel(`<h2>Источник сохранён</h2>${stateTag(source.job?.state||source.state)}<p>${e(source.job?.error_code||'Подготовка ещё не завершена.')}</p>${btn('Обновить','refresh')}${source.retryable?btn('Повторить подготовку','prepare:'+source.id):''}${(source.proposals||[]).map(p=>link('Открыть подготовленное действие','review/'+p.id,'btn secondary')).join('')}`)+link('К истории поставки','purchase/'+receipt.id,'btn secondary');
+  if(!source.invoice_intent && c.payable?.revision.payload.invoice_intent!=='operating_expense' && c.payable?.state!=='REJECTED' && match && !done(match))return body+panel(`<p>Укажите назначение этого документа перед проверкой.</p>${link('Выбрать приход и назначение','invoice-select/'+match.id,'btn primary full')}`);
+  if(!match) return body+panel(`<h2>Источник сохранён</h2>${stateTag(source.manual_document_recovery_available?"Нужен ручной ввод":source.job?.state||source.state)}<p>${e(source.job?.error_code||'Подготовка ещё не завершена.')}</p>${btn('Обновить','refresh')}${source.retryable&&source.job?.state==='FAILED'?btn('Повторить подготовку','prepare:'+source.id):''}${source.manual_document_recovery_available?btn('Ввести вручную','prepare:'+source.id,'secondary'):''}${(source.proposals||[]).map(p=>link('Открыть подготовленное действие','review/'+p.id,'btn secondary')).join('')}`)+link('К истории поставки','purchase/'+receipt.id,'btn secondary');
   if(payable){const f=payable.revision.payload;body+=documentReview(payable).replaceAll('data-action="review-document"','data-action="invoice-review-document"')+panel(`<h2>1. Операционный счёт</h2>${stateTag(payable.state)}${facts([['За что',f.description||'Нужно уточнить'],['Сумма',f.amount?money(f.amount,f.currency):'Не указана'],['Дата',displayDate(f.event_date,'Не указана')],['Поставщик',f.counterparty_id?refName(f.counterparty_id):'Нужно выбрать'],['Срок',displayDate(f.due_date,'Не указан')]])}<details class="source-provenance"><summary>Происхождение подготовленных фактов</summary>${['amount','currency','event_date','description','counterparty_id'].map(k=>'<p>'+e(fieldLabel(k))+': '+e(factOrigin(payable,k)||'Не установлено из источника')+'</p>').join('')}</details><p class="note">После подтверждения: операционный расход и долг поставщику. Деньги не списываются; склад повторно не меняется.</p>${!done(payable)&&payable.state!=='REJECTED'?`<div class="page-actions fact-actions">${['amount','currency','event_date','counterparty_id','description','due_date'].map(k=>btn(fieldLabel(k),'invoice-edit:'+k)).join('')}</div>${(payable.revision.missing||[]).map(m=>'<p class="form-error">'+e(m)+'</p>').join('')}${btn('Подтвердить расход и долг в TEST','invoice-confirm-payable','primary full','invoice-confirm-payable',payable.revision.missing?.length?'disabled':'')}`:done(payable)?'<p>Расход и долг подтверждены сервером. Повтор не создаёт новый документ.</p>':'<p>Предложение отклонено. Новый долг по нему не создан.</p>'}`);}
   const effectId=payable?.confirmed_effect?.effect?.id,linkedId=match.revision.payload.finance_obligation_id,selected=documents.find(d=>d.obligation_id===linkedId),canChoose=!payable||done(payable),matchDone=done(match);
   body+=panel(`<h2>${payable?'2. ':''}Явная связь с финансовым документом</h2>${stateTag(match.state)}${matchDone?'<p>Связь подтверждена. Повторного прихода, расхода и оплаты нет.</p>':!canChoose?'<p>Сначала подтвердите отдельный операционный счёт выше. Его документ появится здесь без повторного ввода суммы.</p>':(!linkedId||draft.choose==='yes')?form('invoice-link',`${!payable?'<div class="page-actions">'+['TRY','USD','EUR','UAH'].map(cur=>link(cur,'invoice-source/'+receipt.id+'/'+source.id+'/'+cur,'btn secondary')).join('')+'</div>':''}${select('Уже учтённый долг · весь документ','obligation',documents.filter(d=>d.direction==='payable'&&d.status==='posted'&&(!effectId||d.obligation_id===effectId)).map(d=>({id:d.obligation_id,name:(d.source.description||'Документ')+' · '+money(d.original_amount,d.currency)+' · '+d.counterparty_name})),draft.obligation||effectId||linkedId,'Выберите документ')}${area('Основание связи · необязательно','note',draft.note)}<p class="note">Сумма всего документа не становится стоимостью этой строки товара. Сначала проверьте связь, затем подтвердите её отдельно.</p>`,'Проверить связь'):`${facts([['Документ',selected?.source.description||'Подтверждённый документ'],['Сумма всего документа',selected?money(selected.original_amount,selected.currency):'Проверьте выбранный документ'],['Поставщик',selected?.counterparty_name||'Откройте документ'],['Приход',displayDate(receipt.event_date)]])}${(match.revision.missing||[]).map(m=>'<p class="form-error">'+e(m)+'</p>').join('')}${btn('Подтвердить только связь в TEST','invoice-confirm-link','primary full','invoice-confirm-link',match.revision.missing?.length?'disabled':'')}${btn('Изменить выбранный документ','invoice-choose-link')}`}${linkedId?link('Финансовый документ и оплаты','money-document/'+linkedId+'/'+encodeURIComponent(route),'btn secondary'):''}<p class="note">Связь не проводит склад и не устанавливает неизвестную стоимость. Приход, счёт и оплата остаются отдельными событиями.</p>`);
@@ -1290,7 +1316,7 @@ function schedulePreparationRefresh() {
       } else {
         const source=await api.entityGet('/owner/captures/'+(page==='source'?arg:current.source.id));
         if(!valid()||editing()){schedule();return;}
-        if(page==='source'){current=source;shell(sourceDetail(source));document.querySelector('#main').dataset.renderedRoute=route;if(!preparationPending(source))return;}
+        if(page==='source'){const changed=JSON.stringify(current)!==JSON.stringify(source);current=source;if(changed){shell(sourceDetail(source));document.querySelector('#main').dataset.renderedRoute=route;}if(!preparationPending(source))return;}
         else if(!preparationPending(source)||source.proposals?.length){await render();return;}
       }
     } catch(error) {
@@ -1333,6 +1359,11 @@ async function render() {
         );
         if (token !== epoch) return;
         current = loaded;
+      }
+      if(current.action_type==='PAYABLE' && current.revision.payload.invoice_intent==='undecided') {
+        const source=await api.entityGet('/owner/captures/'+current.source.id);
+        if(token!==epoch)return;
+        current.invoice_match_id=source.proposals?.find(p=>p.action_type==='INVOICE_MATCH')?.id;
       }
       body = proposalDetail(current);
     } else if (page === "review") body = reviewList();
@@ -1454,7 +1485,9 @@ async function render() {
       if(proposal.action_type!=='INVOICE_MATCH')throw Error('Это не предложение связи счёта.');
       const offset=/^\d+$/.test(arg2||'')?Number(arg2):0;
       const receipts=await api.entityGet('/purchases?limit=20&offset='+offset);
-      const saved=await getDraft('invoice-select/'+arg,{receipt:proposal.revision.payload.receipt_id||'',intent:proposal.source.invoice_intent||''});
+      const selectedId=proposal.revision.payload.receipt_id || proposal.source.invoice_receipt_id;
+      if(selectedId && !receipts.items.some(r=>r.id===selectedId))receipts.items.unshift(await api.entityGet('/purchases/'+selectedId));
+      const saved=await getDraft('invoice-select/'+arg,{receipt:selectedId||'',intent:proposal.source.invoice_intent||''});
       if(token!==epoch)return;
       current={proposal,receipts,offset};draft=saved;body=invoiceChoiceView(current);
     } else if(page==='invoice-new') {
@@ -1721,34 +1754,44 @@ async function submitForm(formEl, snapshot) {
     go(financeRoute(current.selection,{date_from:v.date_from,date_to:v.date_to,currency:v.currency,greenhouse_id:v.greenhouse_id || null,money_account_id:v.currency!==current.selection.currency?null:(Object.hasOwn(v,"money_account_id")?(v.money_account_id || null):current.selection.money_account_id)}));
   } else if (name === "harvest-filters") {
     go(harvestRoute(current.selection,{season_start_year:Number(v.season_start_year),greenhouse_id:v.greenhouse_id || null,currency:v.currency || current.selection.currency,allocation:v.allocation || "all",month:null}));
+  } else if(name==='money-intent') {
+    if(!['operating_payable','paid_expense','debt_payment'].includes(v.intent))throw Object.assign(Error('Выберите, что произошло.'),{field:'intent'});
+    const proposal=await api.entityPost('/owner/captures/'+current.source.id+'/money-recovery',{origin_proposal_id:current.id,expected_version:current.version,intent:v.intent},current.id+':money-intent:'+current.version+':'+v.intent);
+    assertSubmissionScope(snapshot);
+    return finish('review/'+proposal.id,'Известные факты перенесены в проверку. Проводок пока нет.');
   } else if(name==='invoice-choice') {
     const selected=current.receipts.items.find(r=>r.id===draft.receipt&&r.kind==='receipt'&&r.status==='posted');
     if(!selected)throw Object.assign(Error('Выберите подтверждённый приход.'),{field:'receipt'});
     if(!['operating_expense','existing_payable'].includes(draft.intent))throw Object.assign(Error('Выберите назначение счёта.'),{field:'intent'});
     const p=current.proposal;
+    const source=await api.entityGet('/owner/captures/'+p.source.id);
+    assertSubmissionScope(snapshot);
+    const siblings=(source.proposals||[]).filter(p=>p.action_type==='PAYABLE');
+    if(siblings.length>1)throw Error('В источнике несколько предложений долга. Проверьте каждое отдельно.');
+    const sibling=siblings.length?await api.entityGet('/owner/confirmations/'+siblings[0].id+'/preview'):null;
+    assertSubmissionScope(snapshot);
     if(draft.intent==='existing_payable') {
-      const source=await api.entityGet('/owner/captures/'+p.source.id);
-      assertSubmissionScope(snapshot);
-      const siblings=(source.proposals||[]).filter(p=>p.action_type==='PAYABLE');
-      if(siblings.length>1)throw Error('В источнике несколько предложений долга. Проверьте каждое отдельно.');
-      if(siblings.length) {
-        const sibling=await api.entityGet('/owner/confirmations/'+siblings[0].id+'/preview');
-        assertSubmissionScope(snapshot);
+      if(sibling) {
         if(['POSTED','CONFIRMED_NONPOSTING'].includes(sibling.state))throw Error('Долг по этому источнику уже подтверждён. Откройте его проверку и используйте этот финансовый документ.');
         if(sibling.state!=='REJECTED')await api.entityPost('/owner/confirmations/'+sibling.id+'/reject',{expected_version:sibling.version,reason:'Владелец явно выбрал уже учтённый долг и отклонил создание нового по этому источнику'},sibling.id+':existing-debt:'+sibling.version);
-        assertSubmissionScope(snapshot);
       }
+    } else {
+      if(!sibling)throw Error('Предложение нового долга пока не подготовлено. Оригинал сохранён; повторите подготовку.');
+      if(sibling.state==='REJECTED')throw Error('Предложение нового долга уже отклонено. Используйте ранее выбранный учтённый документ.');
+      if(!['POSTED','CONFIRMED_NONPOSTING'].includes(sibling.state) && sibling.revision.payload.invoice_intent!=='operating_expense')
+        await api.entityPost('/owner/confirmations/'+sibling.id+'/revise',{expected_version:sibling.version,payload:{...sibling.revision.payload,invoice_intent:'operating_expense'},reason:'Владелец явно выбрал новый операционный расход и долг по этому счёту; оплаты и прихода нет'},sibling.id+':invoice-intent:'+sibling.version);
     }
+    assertSubmissionScope(snapshot);
     await api.entityPost('/owner/confirmations/'+p.id+'/revise',{expected_version:p.version,payload:{...p.revision.payload,receipt_id:selected.id},reason:'Владелец явно выбрал ранее подтверждённый физический приход'},p.id+':receipt:'+p.version);
     assertSubmissionScope(snapshot);
     const target='invoice-source/'+selected.id+'/'+p.source.id;
     await api.draft(target,{id:draft.id,captured_at:draft.captured_at,invoice_intent:draft.intent});
     return finish(target,'Приход выбран. Проверьте отдельный эффект документа.');
   } else if (name === 'invoice-source') {
-    if(!['operating_expense','existing_payable'].includes(draft.intent))throw Object.assign(Error('Выберите назначение документа.'),{field:'intent'});
     if(!draft.text?.trim()&&!draft.file)throw Object.assign(Error('Добавьте текст документа или оригинальный файл.'),{field:'text'});
-    const body={client_capture_id:draft.id,captured_at:draft.captured_at,timezone:'Europe/Istanbul',capture_context:'supplier_invoice',invoice_intent:draft.intent,invoice_receipt_id:current.id,mode:draft.file?(draft.file.mime_type==='application/pdf'?'file':'photo'):'text',...(draft.text?.trim()?{text:draft.text}:{}),...(draft.file||{})};
+    const body={client_capture_id:draft.id,captured_at:draft.captured_at,timezone:'Europe/Istanbul',capture_context:'supplier_invoice',invoice_receipt_id:current.id,mode:draft.file?(draft.file.mime_type==='application/pdf'?'file':'photo'):'text',...(draft.text?.trim()?{text:draft.text}:{}),...(draft.file||{})};
     const source=await api.entityPost('/owner/captures',body,draft.id);
+    assertSubmissionScope(snapshot);
     await clearDraft(savedRoute);await finish('invoice-source/'+current.id+'/'+source.id,'Оригинал счёта сохранён. Проведённых операций ещё нет.');
   } else if(name==='invoice-edit-fact') {
     const proposal=current.payable,key=formEl.dataset.field,payload={...proposal.revision.payload};

@@ -18,7 +18,7 @@ export class PreparationRefreshWindow {
   }
   reset() {this.window=null;}
 }
-export const preparationPending=source=>['QUEUED','RUNNING'].includes(source?.job?.state || source?.state);
+export const preparationPending=source=>!source?.manual_document_recovery_available && ['QUEUED','RUNNING'].includes(source?.job?.state || source?.state);
 export function depotEditorFields(proposal) {
   const f=proposal.revision.payload;
   const fields={source_id:proposal.source.id,proposal_id:proposal.id,line_count:String(f.lines?.length || 1),date:f.event_date || '',depot:f.depot_id || '',currency:f.currency || '',link_evidence:f.link_evidence || '',stated_total:f.stated_total ?? '',alacak_value:f.alacak_value ?? '',due_date:f.due_date || '',document_number:f.document_number || '',document_count:f.document_count ?? '',caption:proposal.source.text || ''};
@@ -40,4 +40,25 @@ export function preservesDepotQualityReview(previous,next) {
   if(!previous.quality_reviewed || !next.lines?.length || next.depot_id!==previous.depot_id || next.qualities?.length!==next.lines.length || !next.qualities.every(Boolean))return false;
   const basis=value=>(value.lines||[]).map((line,i)=>[line.original_quality_name,value.qualities?.[i]??null]);
   return JSON.stringify(basis(previous))===JSON.stringify(basis(next));
+}
+
+export function depotReviewGates(proposal) {
+  const f=proposal.revision.payload;
+  const qualityAction=!!f.lines?.length && f.qualities?.length===f.lines.length && f.qualities.every(Boolean) && !f.quality_reviewed;
+  const arithmeticAction=!f.arithmetic_reviewed;
+  const duplicate=new Set([
+    ...(qualityAction?['Подтвердите качества именно этого депо']:[]),
+    ...(arithmeticAction?['Проверьте строки и сумму; Alacak не является оплатой']:[]),
+  ]);
+  return {qualityAction,arithmeticAction,pending:[...(qualityAction?['качества этого депо']:[]),...(arithmeticAction?['арифметику и расхождения']:[])],missing:(proposal.revision.missing||[]).filter(message=>!duplicate.has(message))};
+}
+
+export function approvedDepotDocumentCount(settlement) {
+  if(!settlement.owner_source_id || !['posted','reversed'].includes(settlement.status) || settlement.evidence?.source!=='owner:r2-action')return null;
+  const sourceProposal=settlement.evidence.source_reference;
+  const reviews=(settlement.quality_reviews||[]).filter(r=>r.proposal_id===sourceProposal&&r.reviewed_by&&Number.isInteger(r.version)&&r.version>0);
+  if(!reviews.length)return null;
+  const counts=reviews.map(r=>r.basis?.arithmetic?.document_count);
+  if(!counts.every(n=>Number.isSafeInteger(n)&&n>0)||new Set(counts).size!==1)return null;
+  return counts[0];
 }

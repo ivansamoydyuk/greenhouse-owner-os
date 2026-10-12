@@ -94,6 +94,41 @@ def invoice_document_evidence(raw):
     return False
 
 
+def invoice_supplier_candidates(raw,parties):
+    """A labelled seller field is independent of document-number prefixes."""
+    labels=re.findall(r'(?im)^\s*(?:sat[ıi]c[ıi]|supplier|seller)\s*:\s*([^\n]+?)\s*$',raw)
+    if not labels:return entity_matches(raw,parties,inflect=True)
+    if len({fold(label) for label in labels})!=1:return []
+    label=fold(labels[0]).strip()
+    return [party for party in parties if value(party,'active',True) is not False
+            and any(fold(alias).strip()==label for alias in names(party))]
+
+
+def nominal_money_candidate(raw,*,today,refs):
+    """One bounded nominal note has facts but no paid/unpaid authority.
+
+    This grammar is deliberately not a fallback for arbitrary UNRESOLVED
+    language, reported speech, plans or negation. Recovery rechecks the same
+    immutable complete original, not client-editable candidate fields.
+    """
+    purpose=r'(?:ремонт(?:\s+(?:насоса|полива|теплицы|пл[её]нки))?|перевозка|доставка|топливо|бензин)'
+    match=re.fullmatch(r'\s*([^,\n.!?;:]{1,100})\s*,\s*('+purpose+r')\s*,\s*('+NUMBER+r')\s*('+CURRENCY+r')\s*[.]?\s*',raw,re.I)
+    if not match:return None
+    party_label=fold(match[1]).strip()
+    parties=[party for party in refs.get('counterparties',()) if value(party,'active',True) is not False
+             and any(fold(alias).strip()==party_label for alias in names(party))]
+    if len(parties)!=1:return None
+    amount=money_amount(match[3]+' '+match[4],implicit=True)
+    currency=source_currency(match[4],default=None)
+    if amount is None:return None
+    from greenhouse_owner_os.domain.owner_capture import MoneyProposal
+    payload=MoneyProposal(amount=amount,currency=currency,counterparty_id=value(parties[0],'id'),
+                          description=match[2].strip(),event_date=today).model_dump(mode='json')
+    prov=provenance(payload,raw,inferred=('counterparty_id',),defaults=('event_date',))
+    prov['event_date']={'category':'CONTEXT DEFAULT','basis':'capture_istanbul_date'}
+    return payload,prov
+
+
 def _depot_evidence(raw):
     # Quality rows can be tables or explicitly labelled prose. A loose mention
     # of a quality without a weight/row is not a receipt.
@@ -338,12 +373,13 @@ def _prepare_one(raw,semantic,*,today,refs,pages):
     if re.search(INVOICE,t) and (invoice_document_evidence(raw) or re.match(r'^(?:fatura|invoice)\b',t) or re.search(r'\b(?:счет\s+поставщика|(?:пришел|получили|получил|прислал|есть|вот)\s+(?:fatura|invoice))\b',t)):
         if re.search(r'\b(?:потом|завтра|пришлют|позже|не\s+(?:пришел|получил|дали|выдали))\b',t):return unresolved_parts(raw)
         event,mentioned=date_value(semantic,today)
-        payload=dict(description=raw[:2000],amount=money_amount(semantic),event_date=event if mentioned else today.isoformat(),currency=source_currency(semantic))
-        parties=entity_matches(semantic,refs.get('counterparties',()),inflect=True)
+        payload=dict(invoice_intent='undecided',description=raw[:2000],amount=money_amount(semantic),event_date=event if mentioned else today.isoformat(),currency=source_currency(semantic))
+        parties=invoice_supplier_candidates(raw,refs.get('counterparties',()))
         if len(parties)==1:payload['counterparty_id']=str(value(parties[0],'id'))
         prov=provenance(payload,raw,defaults=('event_date','currency'))
         evidence=nonposting_inventory_provenance(raw,refs,today)
         prov['description'].update(evidence)
+        prov['invoice_intent']={'category':'UNKNOWN','basis':'invoice_is_not_operating_classification'}
         return [('PAYABLE',payload,prov),('INVOICE_MATCH',dict(note=raw[:2000]),{'note':evidence})]
     unresolved_slots=unresolved_parts(raw)
     if re.search(DOCUMENT_RECEIVED,t) or no_arrival_evidence(raw):
@@ -360,6 +396,11 @@ def prepare_owner_source(raw,*,today,refs,binary=False,pages=()):
                 entry['interpretation_version']=INTERPRETATION_VERSION
         return slots
     output=[]
+    nominal=nominal_money_candidate(raw,today=today,refs=refs) if not binary else None
+    if nominal:
+        payload,fields=nominal
+        return annotated([('UNRESOLVED',dict(note=raw,money_candidates=payload),
+            {'money_candidates':{'category':'INFERENCE','basis':'payment_status_unknown','source_text':raw,'fields':fields}})])
     # An explicitly labelled bill list consists of independent payable slots;
     # it is neither physical receipt evidence nor evidence of cash payment.
     bill_list=re.match(r'(?is)^\s*(сегодняшние\s+)?счета\s*:\s*(.+)$',raw) if not binary else None
@@ -485,8 +526,8 @@ def prepare_context_document(raw, *, today, refs, context, invoice_intent=None,
         payload,prov=evidence(payload,prov,matched=matched)
         return [('DEPOT_RECEIPT',payload,prov)]
 
-    if context!='supplier_invoice' or invoice_intent not in ('operating_expense','existing_payable') or not receipt_id:
-        raise ValueError('Explicit invoice purpose and physical receipt context are required')
+    if context!='supplier_invoice' or invoice_intent not in (None,'operating_expense','existing_payable') or not receipt_id:
+        raise ValueError('Valid invoice purpose and physical receipt context are required')
     matched=kinds==['PAYABLE','INVOICE_MATCH']
     match_payload=InvoiceMatchProposal(receipt_id=receipt_id,note=raw[:2000] if recognized and raw else None).model_dump(mode='json')
     match_prov={'receipt_id':{'category':'OWNER CONTEXT','basis':'explicit_physical_receipt_selection'}}
@@ -508,5 +549,7 @@ def prepare_context_document(raw, *, today, refs, context, invoice_intent=None,
         for field in ('currency','event_date'):
             if facts.get(field) is None:prov[field]={'category':'UNKNOWN','basis':'manual_invoice_review_required','source_text':raw}
         payload=MoneyProposal.model_validate(facts).model_dump(mode='json')
+    payload['invoice_intent']=invoice_intent or 'undecided'
+    prov['invoice_intent']={'category':'OWNER CONTEXT' if invoice_intent else 'UNKNOWN','basis':'explicit_invoice_purpose' if invoice_intent else 'invoice_is_not_operating_classification'}
     payload,prov=evidence(payload,prov,matched=matched)
     return [('PAYABLE',payload,prov),match]

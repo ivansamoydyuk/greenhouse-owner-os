@@ -38,7 +38,7 @@ jobs:
           set -euo pipefail
           if [ "$CAPTURE_DAILY_MODE" = baseline ]; then
             mkdir -p "$RUNNER_TEMP/capture-harness"
-            cp --parents tests/e2e/capture-daily-checkpoint.mjs scripts/capture_daily_sql_evidence.py tests/capture_daily_corpus.py tests/fixtures/capture_daily_benchmark.json "$RUNNER_TEMP/capture-harness"
+            cp --parents tests/e2e/capture-daily-checkpoint.mjs scripts/capture_daily_sql_evidence.py tests/capture_daily_corpus.py tests/fixtures/capture_daily_benchmark.json tests/e2e/capture-daily-owner-journeys.mjs scripts/capture_daily_owner_sql_evidence.py "$RUNNER_TEMP/capture-harness"
             cp -R tests/fixtures/capture_daily_assets "$RUNNER_TEMP/capture-harness/tests/fixtures/"
             git checkout --detach 9a981766f217fe33364f32b601bfc2a4468b4f59
             cp -R "$RUNNER_TEMP/capture-harness/." .
@@ -73,10 +73,17 @@ jobs:
           python scripts/private_daily_pilot_sql_evidence.py --prepare artifacts/capture-daily --credentials "$PILOT_E2E_CREDENTIALS"
           python scripts/capture_daily_sql_evidence.py --prepare --credentials "$PILOT_E2E_CREDENTIALS" --output "$E2E_ARTIFACTS/capture-daily-setup.json"
       - name: Real browser source OCR review confirmation and retry
+        if: matrix.mode == 'candidate'
         run: |
           python scripts/capture_daily_sql_evidence.py --before "$E2E_ARTIFACTS/capture-daily-before.json"
           node tests/e2e/capture-daily-checkpoint.mjs
           python scripts/capture_daily_sql_evidence.py --verify "$E2E_ARTIFACTS/capture-daily-browser.json" --baseline "$E2E_ARTIFACTS/capture-daily-before.json" --output "$E2E_ARTIFACTS/capture-daily-sql.json"
+      - name: Real text invoice and recovery journeys with SQL reconciliation
+        run: |
+          python scripts/capture_daily_owner_sql_evidence.py --prepare --credentials "$PILOT_E2E_CREDENTIALS" --output "$E2E_ARTIFACTS/capture-daily-owner-setup.json"
+          python scripts/capture_daily_owner_sql_evidence.py --before "$E2E_ARTIFACTS/capture-daily-owner-before.json"
+          node tests/e2e/capture-daily-owner-journeys.mjs
+          python scripts/capture_daily_owner_sql_evidence.py --verify "$E2E_ARTIFACTS/capture-daily-owner-browser.json" --baseline "$E2E_ARTIFACTS/capture-daily-owner-before.json" --output "$E2E_ARTIFACTS/capture-daily-owner-sql.json"
       - name: Guard private evidence
         id: guard
         if: always()

@@ -143,3 +143,46 @@ def test_legacy_manual_extraction_never_claims_caption_as_ocr(inv):
     source=svc.source(e,a,UUID(saved['id']))
     assert source['text']==body.text and source['recognition']['state']=='NOT_RECOGNIZED'
     assert source['recognition']['text'] is None and source['recognition']['pages']==[]
+
+
+@pytest.mark.parametrize('context',['depot_receipt','supplier_invoice'])
+def test_third_attempt_crash_explicit_manual_materialization_is_concurrent_fenced(inv,context):
+    from concurrent.futures import ThreadPoolExecutor
+    from tests.integration.test_postgres_inventory import event, post
+    svc,e,a=service(inv);raw,mime=document('H01');token=uuid4()
+    extra=dict(invoice_receipt_id=post(inv,event(inv))['id']) if context=='supplier_invoice' else {}
+    saved=svc.capture(e,a,'third-crash',CaptureSource(client_capture_id=uuid4(),captured_at=datetime.now(timezone.utc),capture_context=context,mode='photo',mime_type=mime,filename='TEST-original.png',file_base64=base64.b64encode(raw).decode(),**extra))
+    with inv['preview'][0].begin() as db:
+        db.execute(text("UPDATE core.processing_jobs SET state='RUNNING',attempts=3,lease_token=:t,lease_until=clock_timestamp()+interval '1 hour' WHERE inbox_id=:s"),dict(t=token,s=saved['id']))
+    # Active worker retains its lease; an owner click cannot materialize around it.
+    assert not svc.source(e,a,UUID(saved['id']))['manual_document_recovery_available']
+    assert svc.retry_preparation(e,a,UUID(saved['id']))['proposals']==[]
+    with inv['preview'][0].begin() as db:
+        db.execute(text("UPDATE core.processing_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE inbox_id=:s"),dict(s=saved['id']))
+    assert svc.source(e,a,UUID(saved['id']))['manual_document_recovery_available']
+    with ThreadPoolExecutor(2) as pool:
+        results=list(pool.map(lambda _:svc.retry_preparation(e,a,UUID(saved['id'])),range(2)))
+    expected=['DEPOT_RECEIPT'] if context=='depot_receipt' else ['PAYABLE','INVOICE_MATCH']
+    assert {p['action_type'] for p in results[0]['proposals']}==set(expected)
+    assert results[0]['proposals']==results[1]['proposals']
+    assert results[0]['job']['attempts']==3 and results[0]['job']['state']=='FAILED'
+    assert not results[0]['retryable'] and not results[0]['manual_document_recovery_available']
+    for item in results[0]['proposals']:
+        p=svc.preview(e,a,UUID(item['id']))
+        assert p['source']['recognition']['state']=='NOT_RECOGNIZED'
+        assert p['state']=='NEEDS_INPUT'
+    with inv['preview'][0].begin() as db:
+        # A stale worker's original lease token no longer owns finalization.
+        changed=db.execute(text("UPDATE core.processing_jobs SET state='SUCCEEDED' WHERE inbox_id=:s AND lease_token=:t RETURNING id"),dict(s=saved['id'],t=token)).all()
+        assert changed==[]
+        assert db.scalar(text("SELECT count(*) FROM audit.events WHERE actor_id=:a AND action='owner_document_manual_recovery'"),dict(a=a))==1
+        assert db.scalar(text('SELECT count(*) FROM core.confirmation_effects WHERE entity_id=:e'),dict(e=e))==0
+    svc.process(UUID(saved['id']))
+    assert svc.source(e,a,UUID(saved['id']))['proposals']==results[0]['proposals']
+
+
+def test_exhausted_document_recovery_rejects_wrong_source_owner(inv):
+    from greenhouse_owner_os.domain.errors import ValidationError, NotFoundError
+    svc,e,a,saved,_=save(inv,recognizer=FailedRecognition())
+    with pytest.raises((ValidationError,NotFoundError)):
+        svc.retry_preparation(e,uuid4(),UUID(saved['id']))

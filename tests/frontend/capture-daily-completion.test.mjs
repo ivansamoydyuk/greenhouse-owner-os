@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {PreparationRefreshWindow,preparationPending,depotEditorFields,mergeDepotEditor,preservesDepotQualityReview} from '../../prototype/owner-r3/capture-daily.js';
+import {PreparationRefreshWindow,preparationPending,depotEditorFields,mergeDepotEditor,preservesDepotQualityReview,depotReviewGates,approvedDepotDocumentCount} from '../../prototype/owner-r3/capture-daily.js';
 const source=fs.readFileSync('prototype/owner-r3/connected.js','utf8');
 const extract=(from,to)=>source.slice(source.indexOf(from),source.indexOf(to,source.indexOf(from)));
 const proposal=()=>({id:'proposal',version:1,source:{id:'source',text:'separate caption'},revision:{payload:{event_date:'2026-10-12',currency:'TRY',depot_id:'depot',lines:[{original_quality_name:'Grand',net_weight_kg:'100.000',unit_price:'50.00',stated_amount:'5000.00',confirmed_amount:'5000.00',source_line:'Grand 100 50 5000',count:93}],qualities:['HIGHEST'],unreadable_lines:[],batch_ids:[]}}});
@@ -47,7 +47,7 @@ test('read-only refresh is bounded and reset only by distinct view/session or ex
  let now=0;const w=new PreparationRefreshWindow({now:()=>now,maxReads:2,durationMs:100});const id={route:'sources',scope:'owner-1',generation:1};w.enter(id);
  assert.equal(w.claim(id),true);w.enter(id);assert.equal(w.claim(id),true);assert.equal(w.claim(id),false);assert.equal(w.matches({...id,scope:'owner-2'}),false);
  w.reset();w.enter(id);now=100;assert.equal(w.claim(id),false);w.enter({...id,route:'review'});assert.equal(w.claim({...id,route:'review'}),true);
- assert.equal(preparationPending({job:{state:'RUNNING'}}),true);for(const state of ['FAILED','SUCCEEDED','READY','POSTED'])assert.equal(preparationPending({job:{state}}),false);
+ assert.equal(preparationPending({job:{state:'RUNNING'}}),true);assert.equal(preparationPending({job:{state:'RUNNING'},manual_document_recovery_available:true}),false);for(const state of ['FAILED','SUCCEEDED','READY','POSTED'])assert.equal(preparationPending({job:{state}}),false);
 });
 test('poll integration rejects late reads and never rerenders active forms or dialogs',()=>{
  const code=extract('function schedulePreparationRefresh(', 'async function render(');
@@ -116,4 +116,72 @@ test('prefilled quality candidates remain unreviewed after unrelated editor save
  assert.match(edit,/quality_reviewed=preservesDepotQualityReview\(current.revision.payload,payload\)/);assert.doesNotMatch(edit,/quality_reviewed=payload.qualities.every/);
  const form=extract('} else if (name === "depot")', "} else if(name==='journey-links'");
  assert.match(form,/quality_reviewed=preservesDepotQualityReview\(proposal.revision.payload,payload\)/);assert.doesNotMatch(form,/quality_reviewed:qualities.every/);
+});
+
+test('supplier file saves before intent, with original receipt and no repeated document facts',async()=>{
+ const r=submitRunner({clearDraft:async()=>{}});
+ const draft={id:'invoice-original',captured_at:'2026-10-12T09:00:00+03:00',text:'separate caption',file:{filename:'invoice.pdf',mime_type:'application/pdf',file_base64:'bytes'}};
+ await r.submit({dataset:{form:'invoice-source'}},{...snapshot(draft,{id:'receipt'}),route:'invoice-new/receipt'});
+ assert.equal(r.requests.length,1);const body=r.requests[0].body;
+ assert.equal(body.capture_context,'supplier_invoice');assert.equal(body.invoice_receipt_id,'receipt');assert.equal(Object.hasOwn(body,'invoice_intent'),false);assert.equal(body.text,'separate caption');assert.equal(body.file_base64,'bytes');assert.equal(Object.hasOwn(body,'amount'),false);assert.equal(r.finishes[0][0],'invoice-source/receipt/source');
+ const form=extract('function invoiceNewForm(', 'function invoiceChoiceView(');assert.doesNotMatch(form,/select\(|name="intent"/);
+});
+
+test('operating invoice choice preserves every recognized fact and durably records owner intent',async()=>{
+ const calls=[],payload={amount:'14000.00',currency:'TRY',counterparty_id:'supplier',event_date:'2026-10-12',description:'Known invoice',invoice_intent:null};
+ const r=submitRunner({api:{entityGet:async path=>path.includes('/captures/')?{proposals:[{id:'payable',action_type:'PAYABLE'}]}:{id:'payable',version:3,state:'NEEDS_INPUT',revision:{payload}},entityPost:async(path,body,key)=>{calls.push({path,body,key});return{};},draft:async()=>{}}});
+ const current={proposal:{id:'match',version:2,source:{id:'source'},revision:{payload:{receipt_id:'receipt'}}},receipts:{items:[{id:'receipt',kind:'receipt',status:'posted'}]}};
+ await r.submit({dataset:{form:'invoice-choice'}},{...snapshot({id:'choice',receipt:'receipt',intent:'operating_expense'},current),route:'invoice-select/match'});
+ assert.equal(calls[0].path,'/owner/confirmations/payable/revise');assert.deepEqual(calls[0].body.payload,{...payload,invoice_intent:'operating_expense'});assert.equal(calls.some(c=>c.path.endsWith('/confirm')),false);
+ const view=extract('function invoiceWorkflowView(', 'function transferForm(');assert.match(view,/c.payable\?\.revision.payload.invoice_intent!==\'operating_expense\'/);assert.doesNotMatch(view,/!draft.invoice_intent/);
+});
+
+test('ambiguous money choice sends only source origin/version/intent and uses returned typed identity',async()=>{
+ for(const intent of ['operating_payable','paid_expense','debt_payment']){
+  const r=submitRunner();const current={id:'unknown',version:4,source:{id:'original'},revision:{payload:{money_candidates:{amount:'5000.00',description:'ремонт насоса'}}}};
+  await r.submit({dataset:{form:'money-intent'}},{...snapshot(null,current),route:'review/unknown',fields:{intent,amount:'untrusted replacement'}});
+  assert.equal(r.requests.length,1);assert.equal(r.requests[0].path,'/owner/captures/original/money-recovery');assert.deepEqual(r.requests[0].body,{origin_proposal_id:'unknown',expected_version:4,intent});assert.equal(r.finishes[0][0],'review/source');
+ }
+ const r=submitRunner();await assert.rejects(r.submit({dataset:{form:'money-intent'}},{...snapshot(null,{id:'p',source:{id:'s'}}),fields:{intent:'advance'}}),/Выберите/);assert.equal(r.requests.length,0);
+});
+
+test('ambiguous money review retains known facts and replaces choices with the existing target link',()=>{
+ const fn=extract('function moneyIntentReview(', 'function proposalDetail(');
+ const run=new Function('p',`const Header=()=>'',panel=x=>x,e=x=>String(x??''),money=(v,c)=>v+' '+c,facts=rows=>rows.map(x=>x.join(':')).join(';'),displayDate=x=>x,refName=x=>x,factOrigin=()=>'',select=()=>'<select name="intent">',form=(name,body)=>'<form data-form="'+name+'">'+body+'</form>',link=(label,to)=>label+' '+to,notice=x=>x;${fn};return moneyIntentReview(p);`);
+ const p={id:'p',state:'NEEDS_INPUT',source:{id:'s',text:'Серкан, ремонт насоса, 5 000 TRY.'},revision:{payload:{money_candidates:{amount:'5000.00',currency:'TRY',description:'ремонт насоса',counterparty_id:'Серкан',event_date:'2026-10-12'}}}};
+ const html=run(p);assert.match(html,/5000.00 TRY/);assert.match(html,/ремонт насоса/);assert.match(html,/Не установлен из источника/);assert.match(html,/data-form="money-intent"/);
+ const reserved=run({...p,recovery:{recovery_proposal_id:'typed-target'}});assert.match(reserved,/review\/typed-target/);assert.doesNotMatch(reserved,/data-form="money-intent"/);
+});
+
+
+test('compact depot gates remove only duplicated action prompts and preserve critical errors',()=>{
+ const p=proposal();p.revision.payload.quality_reviewed=false;p.revision.payload.arithmetic_reviewed=false;
+ p.revision.missing=['Подтвердите качества именно этого депо','Проверьте строки и сумму; Alacak не является оплатой','Неполные строки: unreadable','Новый критичный серверный запрет'];
+ const gates=depotReviewGates(p);assert.equal(gates.qualityAction,true);assert.equal(gates.arithmeticAction,true);assert.deepEqual(gates.missing,['Неполные строки: unreadable','Новый критичный серверный запрет']);assert.equal(p.revision.missing.length,4,'authority validation is not modified');
+ p.revision.payload.qualities=[null];assert.ok(depotReviewGates(p).missing.includes('Подтвердите качества именно этого депо'),'missing categories still demand input');
+});
+
+
+test('posted document count is read only from matching approved source basis, never substituted into domain line metrics',()=>{
+ const s={status:'posted',owner_source_id:'source',evidence:{source:'owner:r2-action',source_reference:'proposal'},quality_reviews:[{proposal_id:'proposal',version:4,reviewed_by:'owner',basis:{arithmetic:{document_count:93}}}],reconciliation:{depot_count:null,field_count:131},confirmed_count:0,average_weight_kg:null};
+ assert.equal(approvedDepotDocumentCount(s),93);assert.equal(s.reconciliation.depot_count,null);assert.equal(s.confirmed_count,0);assert.equal(s.average_weight_kg,null);
+ for(const change of [v=>v.status='draft',v=>v.owner_source_id=null,v=>v.quality_reviews[0].proposal_id='other',v=>v.quality_reviews[0].reviewed_by=null,v=>v.quality_reviews[0].basis.arithmetic.document_count=null,v=>v.quality_reviews.push({...v.quality_reviews[0],basis:{arithmetic:{document_count:94}}})]){
+  const changed=structuredClone(s);change(changed);assert.equal(approvedDepotDocumentCount(changed),null);
+ }
+ const code=extract('function depotDetail(', 'function journeyActions(');assert.match(code,/\["ADET по строкам", s.reconciliation.depot_count/);assert.doesNotMatch(code,/\["ADET документа", s.reconciliation.depot_count/);
+});
+
+test('generic undecided invoice queue card routes to same-source intent choice and has no confirmation shortcut',()=>{
+ const code=extract('function proposalDetail(', 'const labels =');
+ const run=new Function('p',`const Header=()=>'',panel=x=>x,compactMoneyReview=()=>'<p>Known invoice facts</p>',link=(label,to)=>label+' '+to;${code};return proposalDetail(p);`);
+ const html=run({action_type:'PAYABLE',invoice_match_id:'same-source-match',source:{id:'original'},revision:{payload:{invoice_intent:'undecided'}}});
+ assert.match(html,/Known invoice facts/);assert.match(html,/invoice-select\/same-source-match/);assert.doesNotMatch(html,/confirm-proposal|Подтвердить действие/);
+});
+
+
+test('manual exhausted-document recovery is offered only by server capability and reuses preparation identity',()=>{
+ const code=extract('function sourceDetail(', 'function factOrigin(');
+ const run=new Function('s',`const Header=()=>'',panel=x=>x,e=String,notice=x=>x,recognitionDetails=()=>'',preparationPending=()=>false,canRecoverSourceExpense=()=>false,stateTag=()=>'',statuses={},entityPath=x=>x,btn=(label,action)=>'<button data-action="'+action+'">'+label+'</button>',link=()=>'';${code};return sourceDetail(s);`);
+ const s={id:'original',state:'FAILED',job:{state:'FAILED',attempts:3},retryable:false,proposals:[]};
+ assert.doesNotMatch(run(s),/Ввести вручную/);assert.match(run({...s,manual_document_recovery_available:true}),/<button data-action="prepare:original">Ввести вручную/);assert.doesNotMatch(run({...s,manual_document_recovery_available:true}),/Повторить подготовку/);
 });

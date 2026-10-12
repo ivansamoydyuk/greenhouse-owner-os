@@ -99,7 +99,7 @@ def test_payment_adapter_exact_one_effect_and_changed_debt_stale(inv):
 
 def test_supplier_siblings_remain_independent(inv):
     source(inv,'Fatura KNO3 100 kg');ps=queue(inv);pay=next(p for p in ps if p['action_type']=='PAYABLE');match=next(p for p in ps if p['action_type']=='INVOICE_MATCH')
-    pay=revise(inv,pay,dict(amount='7000',counterparty_id=inv['cp'],event_date='2026-10-08',description='TEST invoice'))
+    pay=revise(inv,pay,dict(amount='7000',counterparty_id=inv['cp'],event_date='2026-10-08',description='TEST invoice',invoice_intent='operating_expense'))
     confirm(inv,pay);assert next(p for p in queue(inv) if p['id']==match['id'])['state']==match['state']
     with inv['preview'][0]() as db:assert db.scalar(text('SELECT count(*) FROM inventory.events WHERE entity_id=:e'),dict(e=inv['e']))==0
 

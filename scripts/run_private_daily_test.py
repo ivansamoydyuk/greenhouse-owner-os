@@ -37,7 +37,7 @@ seconds = (expiry - datetime.now(timezone.utc)).total_seconds()
 require(0 < seconds <= 7 * 86400, 'Private TEST preflight requirement failed')
 engine = create_engine(url)
 with engine.connect() as c:
-    require(c.scalar(text('SELECT version_num FROM alembic_version')) == '20261011_0032', 'Private TEST preflight requirement failed')
+    require(c.scalar(text('SELECT version_num FROM alembic_version')) == '20261012_0033', 'Private TEST preflight requirement failed')
     require(c.scalar(text("SELECT shobj_description(oid,'pg_database') FROM pg_database WHERE datname=current_database()")) == 'r3-connected-pilot:synthetic-only:v1', 'Private TEST preflight requirement failed')
     role = c.execute(text('SELECT rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls FROM pg_roles WHERE rolname=current_user')).one()
     require(not any(role), 'Private TEST preflight requirement failed')
@@ -46,7 +46,7 @@ with engine.connect() as c:
     require(len(rows) == 1 and rows[0][0] == expiry, 'Pre-provisioned fixed expiry required; launcher never resets or extends it')
 engine.dispose()
 os.environ['OWNER_PREVIEW_FEATURE_SHA'] = sha
-print(json.dumps({'mode': 'PRIVATE_DAILY_TEST', 'sha': sha, 'migration': '20261011_0032', 'expires_at': expiry.isoformat(), 'synthetic_only': True, 'preflight': 'PASS'}))
+print(json.dumps({'mode': 'PRIVATE_DAILY_TEST', 'sha': sha, 'migration': '20261012_0033', 'expires_at': expiry.isoformat(), 'synthetic_only': True, 'preflight': 'PASS'}))
 if not a.check:
     import uvicorn
     from greenhouse_owner_os.preview import build_preview

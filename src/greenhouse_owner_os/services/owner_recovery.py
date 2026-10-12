@@ -5,6 +5,7 @@ and relational lineage are separate from owner-confirmed current expense facts.
 """
 from decimal import Decimal
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 
@@ -46,19 +47,50 @@ class ExpenseRecoveryMixin:
     def _recovery_origin_guard(self, u, proposal):
         link = rows(u, 'SELECT recovery_proposal_id FROM core.owner_recovery_links WHERE origin_proposal_id=:p', p=proposal['id'])
         if link:
-            raise ConflictError('Исходное предложение связано с ручным расходом; откройте связанное действие ' + link[0]['recovery_proposal_id'])
+            raise ConflictError('Исходное предложение связано с ручным действием; откройте связанное действие ' + link[0]['recovery_proposal_id'])
 
     def retry_preparation(self, e, a, source_id):
         with self.factory() as u:
             u.session.execute(text('SET TRANSACTION ISOLATION LEVEL READ COMMITTED'))
             self.owner(u, e, a)
             original = u.session.get(InboxRow, source_id)
-            if not original or original.entity_id != e or original.source != 'owner:r2':
+            if not original or original.entity_id != e or original.source != 'owner:r2' or original.created_by != a:
                 raise NotFoundError('Источник не найден')
             self._source_lock(u, e, source_id)
             if self._source_reserved(u, source_id):
-                raise ConflictError('Источник уже связан с ручным расходом; подготовка не возобновляется')
-            return self._capture_view(u, original)
+                raise ConflictError('Источник уже связан с ручным действием; подготовка не возобновляется')
+            self._materialize_exhausted_document(u, e, a, original)
+            result = self._capture_view(u, original)
+            u.commit()
+            return result
+
+    def _materialize_exhausted_document(self, u, e, a, original):
+        """Explicit owner recovery after final crash; no fourth OCR attempt."""
+        if original.file_bytes is None or original.metadata_json.get('capture_context') not in ('depot_receipt', 'supplier_invoice'):
+            return
+        if rows(u, 'SELECT id FROM core.proposed_actions WHERE inbox_id=:s LIMIT 1', s=original.id):
+            return
+        jobs = rows(u, 'SELECT *,lease_until<clock_timestamp() AS expired FROM core.processing_jobs WHERE inbox_id=:s ORDER BY id FOR UPDATE', s=original.id)
+        if not jobs or any(j['attempts'] != 3 or not (j['state'] == 'FAILED' and j['lease_token'] is None and j['lease_until'] is None or j['state'] == 'RUNNING' and j['expired']) for j in jobs):
+            return
+        rows(u, "UPDATE core.processing_jobs SET state='FAILED',error_code='RETRY_EXHAUSTED',lease_token=NULL,lease_until=NULL WHERE inbox_id=:s RETURNING id", s=original.id)
+        from .owner_preparation import prepare_context_document
+        specs = prepare_context_document('', today=original.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(), refs={},
+            context=original.metadata_json['capture_context'], invoice_intent=original.metadata_json.get('invoice_intent'),
+            receipt_id=original.metadata_json.get('invoice_receipt_id'), binary=True, recognition_state='FAILED')
+        targets = []
+        for index, (kind, payload, provenance) in enumerate(specs):
+            pid = uuid4()
+            for fact in provenance.values():
+                fact['recovery_basis'] = 'owner_requested_after_terminal_preparation_exhaustion'
+            rows(u, """INSERT INTO core.proposed_actions(id,entity_id,inbox_id,slot,action_type,state,version,priority,created_by,first_unresolved_at)
+                VALUES(:id,:e,:s,:slot,:kind,'PREPARING',1,:priority,:a,:saved) RETURNING id""",
+                id=pid, e=e, s=original.id, slot=f'{kind}:{index}', kind=kind, priority=1 if kind=='DEPOT_RECEIPT' else 0, a=a, saved=original.created_at)
+            self._revision(u, self._proposal(u, e, pid), payload, provenance, a, 'PREPARE',
+                           warnings=['Подготовка исчерпана. Оригинал сохранён; вручную введите и проверьте данные.'])
+            targets.append(str(pid))
+        u.audit.append(actor_id=a, action='owner_document_manual_recovery', entity_type='owner_capture', entity_id=original.id,
+                       before=None, after={'proposal_ids': targets, 'basis': 'terminal_exhaustion', 'ocr_attempt_added': False})
 
     def recover_expense(self, e, a, source_id, key, body):
         def run(u):
@@ -81,7 +113,10 @@ class ExpenseRecoveryMixin:
             if links:
                 if links[0]['origin_version'] != body.expected_version:
                     raise ConflictError('Исходная версия не совпадает с сохранённым переходом')
-                return self._view(u, self._proposal(u, e, links[0]['recovery_proposal_id'], True))
+                target = self._proposal(u, e, links[0]['recovery_proposal_id'], True)
+                if target['action_type'] != 'DIRECT_EXPENSE':
+                    raise ConflictError('Для источника уже выбрано другое действие')
+                return self._view(u, target)
             jobs = rows(u, 'SELECT * FROM core.processing_jobs WHERE entity_id=:e AND inbox_id=:s ORDER BY id FOR UPDATE', e=e, s=source_id)
             if not jobs or any(j['state'] in ('QUEUED', 'RUNNING') or j['state'] == 'FAILED' and j['attempts'] < 3
                                or j['lease_token'] is not None or j['lease_until'] is not None for j in jobs):
@@ -123,6 +158,63 @@ class ExpenseRecoveryMixin:
             return self._view(u, self._proposal(u, e, pid))
         return self._write(e, a, key, 'owner_expense_recovery', dict(source_id=str(source_id), **body.model_dump(mode='json')), run)
 
+    def recover_money(self, e, a, source_id, key, body):
+        """Select one typed action for a bounded immutable nominal money note."""
+        from sqlalchemy import select
+        from greenhouse_owner_os.infrastructure.models import CounterpartyRow
+        from .owner_preparation import nominal_money_candidate
+        kinds = {'operating_payable': 'PAYABLE', 'paid_expense': 'DIRECT_EXPENSE', 'debt_payment': 'PAYMENT'}
+        kind = kinds[body.intent]
+
+        def run(u):
+            original = u.session.get(InboxRow, source_id)
+            if not original or original.entity_id != e or original.source != 'owner:r2' or original.created_by != a:
+                raise NotFoundError('Источник не найден')
+            selected = self._proposal(u, e, body.origin_proposal_id)
+            if selected['inbox_id'] != str(source_id) or selected['created_by'] != str(a):
+                raise NotFoundError('Предложение этого источника не найдено')
+            self._source_lock(u, e, source_id)
+            links = rows(u, 'SELECT * FROM core.owner_recovery_links WHERE origin_proposal_id=:p', p=body.origin_proposal_id)
+            if links:
+                link = links[0]
+                target = self._proposal(u, e, link['recovery_proposal_id'], True)
+                if link['origin_version'] != body.expected_version or target['action_type'] != kind:
+                    raise ConflictError('Для исходной версии уже выбрано другое действие')
+                return self._view(u, target)
+            jobs = rows(u, 'SELECT * FROM core.processing_jobs WHERE entity_id=:e AND inbox_id=:s ORDER BY id FOR UPDATE', e=e, s=source_id)
+            if not jobs or any(j['state'] in ('QUEUED', 'RUNNING') or j['state'] == 'FAILED' and j['attempts'] < 3
+                               or j['lease_token'] is not None or j['lease_until'] is not None for j in jobs):
+                raise ConflictError('Подготовка ещё активна или доступен повтор; оригинал сохранён')
+            origin = self._proposal(u, e, body.origin_proposal_id, True)
+            if origin['version'] != body.expected_version:
+                raise ConflictError('Карточка изменилась; обновите её')
+            if origin['action_type'] != 'UNRESOLVED' or origin['state'] not in ('NEEDS_INPUT', 'READY', 'DEFERRED', 'STALE'):
+                raise ConflictError('Этот источник не поддерживает выбор денежного действия')
+            # Candidate JSON, later note edits and sibling proposals do not grant
+            # financial authority. Recompute only the immutable complete text.
+            first = rows(u, 'SELECT payload FROM core.proposal_revisions WHERE proposal_id=:p AND version=1', p=origin['id'])
+            siblings = rows(u, 'SELECT id FROM core.proposed_actions WHERE inbox_id=:s', s=source_id)
+            if original.file_bytes is not None or original.metadata_json.get('capture_context') not in (None, 'quick_expense') or len(siblings) != 1 or not first or first[0]['payload'].get('note') != original.raw_text:
+                raise ConflictError('Выбор доступен только для исходной короткой денежной записи')
+            refs = {'counterparties': list(u.session.scalars(select(CounterpartyRow).where(CounterpartyRow.entity_id == e)))}
+            candidate = nominal_money_candidate(original.raw_text or '', today=original.received_at.astimezone(ZoneInfo('Europe/Istanbul')).date(), refs=refs)
+            if candidate is None:
+                raise ConflictError('В исходной записи нет однозначных фактов для этого выбора')
+            payload, provenance = candidate
+            if kind in ('DIRECT_EXPENSE', 'PAYMENT'):
+                payload['payment_purpose'] = 'expense' if kind == 'DIRECT_EXPENSE' else 'debt'
+                provenance['payment_purpose'] = {'category': 'OWNER INPUT', 'basis': 'explicit_money_recovery_intent'}
+            pid = uuid4()
+            rows(u, """INSERT INTO core.proposed_actions(id,entity_id,inbox_id,slot,action_type,state,version,priority,created_by,first_unresolved_at)
+                VALUES(:id,:e,:s,:slot,:kind,'PREPARING',1,0,:a,:saved) RETURNING id""",
+                id=pid, e=e, s=source_id, slot='manual:money:' + str(body.origin_proposal_id), kind=kind, a=a, saved=original.created_at)
+            self._revision(u, self._proposal(u, e, pid), payload, provenance, a, 'PREPARE', review_reason=body.reason or '')
+            rows(u, """INSERT INTO core.owner_recovery_links(entity_id,inbox_id,origin_proposal_id,origin_version,recovery_proposal_id,created_by)
+                VALUES(:e,:s,:origin,:version,:target,:a) RETURNING recovery_proposal_id""",
+                e=e, s=source_id, origin=body.origin_proposal_id, version=body.expected_version, target=pid, a=a)
+            return self._view(u, self._proposal(u, e, pid))
+        return self._write(e, a, key, 'owner_money_recovery', dict(source_id=str(source_id), **body.model_dump(mode='json')), run)
+
     def _retire_recovery_origin(self, u, target, actor):
         from .owner_capture import js
         links = rows(u, 'SELECT * FROM core.owner_recovery_links WHERE recovery_proposal_id=:p', p=target['id'])
@@ -139,12 +231,14 @@ class ExpenseRecoveryMixin:
             missing=js(old['missing']), basis=js(old['basis']), digest=digest, a=actor)
         rows(u, "UPDATE core.proposed_actions SET version=:v,state='REJECTED',updated_at=clock_timestamp() WHERE id=:p RETURNING id", p=origin['id'], v=version)
         self._audit(u, origin, actor, 'REJECT', version,
-                    dict(payload=old['payload'], preview_digest=digest, recovery_proposal_id=target['id'], reason='Confirmed source-linked DirectExpense recovery'))
+                    dict(payload=old['payload'], preview_digest=digest, recovery_proposal_id=target['id'], reason='Confirmed source-linked money recovery' if target['slot'].startswith('manual:money:') else 'Confirmed source-linked DirectExpense recovery'))
 
     def _recovery_view(self, u, p, revision):
         links = rows(u, 'SELECT * FROM core.owner_recovery_links WHERE origin_proposal_id=:p OR recovery_proposal_id=:p', p=p['id'])
         effects = rows(u, '''SELECT d.* FROM finance.direct_expenses d JOIN core.confirmation_effects c ON c.direct_expense_id=d.id
             WHERE c.proposal_id=:p''', p=p['id']) if p['action_type'] == 'DIRECT_EXPENSE' else []
+        if links:
+            links[0]['target_action_type'] = self._proposal(u, p['entity_id'], links[0]['recovery_proposal_id'])['action_type']
         result = dict(recovery=links[0] if links else None, current_effect=effects[0] if effects else None)
         if links and links[0]['origin_proposal_id']:
             link = links[0]
