@@ -444,9 +444,86 @@ try {
     await click(op,op.locator('[data-form=greenhouse-filters] button[type=submit]'),'Owner selects verified greenhouse and dates');
     await ownerReady(op,greenhouseBase+'/overview'+greenhouseTail);
     await layout(op,'greenhouse-overview');
+    // Additional read-only cockpit coverage: the existing fixture has work and
+    // money sources, but deliberately no harvest. Do not call this yield proof.
+    const cockpitValue=async(label,kind='greenhouse')=>{
+      const row=op.locator('.'+kind+'-fact').filter({has:op.getByText(label,{exact:true})});
+      assert.equal(await row.count(),1,'Unique rendered fact: '+label);
+      return row.locator(':scope > strong').innerText();
+    };
+    const assertCockpitFilters=async()=>{
+      const form=op.locator('[data-form=greenhouse-filters]');
+      for(const [name,value] of Object.entries({greenhouse_id:setup.greenhouse.id,date_from:setup.dates[0],date_to:setup.dates[1],currency:'TRY',allocation:'all'}))
+        assert.equal(await form.locator('[name='+name+']').inputValue(),value,'Retained cockpit filter '+name);
+    };
+    const tab=label=>op.getByRole('navigation',{name:'Разделы теплицы',exact:true}).getByRole('link',{name:label,exact:true});
+    const readonlyCockpitWrites=[];
+    const watchCockpitWrite=request=>{if(!['GET','HEAD'].includes(request.method())&&new URL(request.url()).pathname.startsWith('/v1/'))readonlyCockpitWrites.push({method:request.method(),path:new URL(request.url()).pathname});};
+    op.on('request',watchCockpitWrite);
+    try {
+      await assertCockpitFilters();
+      assert.equal(await cockpitValue('Ветки · полевые отчёты'),'Неизвестно');
+      assert.equal(await cockpitValue('Вес · подтверждённое депо'),'Неизвестно');
+      assert.equal(await cockpitValue('Учтённые затраты'),'700 TRY');
+      assert.equal(analytics.selected.harvest.branches.value,null);
+      assert.equal(analytics.selected.harvest.depot_kg.value,null);
+      assert.deepEqual(analytics.selected.harvest.events,[]);
+      assert.deepEqual(analytics.selected.harvest.field_events,[]);
+      assert.equal(analytics.selected.harvest.weighted_price_per_kg,null);
+      const comparison=analytics.selected.comparison;
+      assert.ok(['NO_PRIOR_SOURCES','UNAVAILABLE'].includes(comparison.status));
+      assert.equal(comparison.previous??null,null);
+      const comparisonText=comparison.status==='NO_PRIOR_SOURCES'?'Сопоставимого прошлого сезона нет: подтверждённых источников недостаточно.':'Сравнение с прошлым сезоном недоступно для этого периода.';
+      await op.getByText(comparisonText,{exact:true}).waitFor({state:'visible'});
+
+      await click(op,tab('Урожай'),'Owner opens greenhouse Harvest tab with retained filters');
+      await ownerReady(op,greenhouseBase+'/harvest'+greenhouseTail);await assertCockpitFilters();
+      await op.getByRole('heading',{name:'Месяцы выбранного периода',exact:true}).waitFor();
+      assert.equal(await cockpitValue('Средневзвешенная цена'),'Неизвестно');
+      await op.getByText('В выбранном месяце и охвате источников нет.',{exact:true}).waitFor({state:'visible'});
+      assert.equal(await op.locator('a[href^="#depot/"],a[href^="#report/"]').count(),0);
+      const qualityCard=op.locator('.greenhouse-card').filter({has:op.getByRole('heading',{name:'Качество депо',exact:true})});
+      // Empty source buckets are mathematical sums, not evidence of zero yield.
+      assert.equal(analytics.selected.harvest.quality_rows.length,4);
+      for(const quality of analytics.selected.harvest.quality_rows){assert.equal(quality.share_percent,null);assert.equal(quality.weighted_price_per_kg,null);assert.deepEqual(quality.line_ids,[]);}
+      assert.equal(await qualityCard.getByText('Доля неизвестна · Неизвестно',{exact:true}).count(),4);
+      assert.ok(!(await qualityCard.innerText()).includes('%'),'Empty quality has no invented percentages');
+      const month=setup.dates[0].slice(0,7),monthTail=greenhouseTail.replace('/all/all/kg','/all/'+month+'/kg');
+      const monthData=analytics.selected.harvest.months.find(value=>value.month===month);
+      assert.ok(monthData);assert.equal(monthData.state,'NO_DATA');assert.equal(monthData.depot_kg,null);assert.equal(monthData.source_count,0);
+      await click(op,op.locator('a.harvest-month[href="#'+greenhouseBase+'/harvest'+monthTail+'"]'),'Owner inspects a source-empty harvest month');
+      await ownerReady(op,greenhouseBase+'/harvest'+monthTail);await assertCockpitFilters();
+      assert.equal(await cockpitValue('Выбранный месяц · '+month),'Неизвестно');
+      await op.getByText('Нет источников',{exact:true}).waitFor({state:'visible'});
+      await layout(op,'greenhouse-harvest-empty-sources');
+      await click(op,op.getByRole('link',{name:'Весь выбранный период',exact:true}),'Owner restores full selected harvest period');
+      await ownerReady(op,greenhouseBase+'/harvest'+greenhouseTail);await assertCockpitFilters();
+
+      await click(op,tab('Финансы'),'Owner opens greenhouse Finance tab with retained filters');
+      const financeRoute=greenhouseBase+'/finance'+greenhouseTail;
+      await ownerReady(op,financeRoute);await assertCockpitFilters();
+      for(const [label,value] of Object.entries({'Прямые затраты':'700 TRY','GENERAL · аналитическая доля':'0 TRY','Все учтённые затраты':'700 TRY','Учтённые затраты на кг':'Неизвестно','Проверенная площадь':'2 дёнюм','Затраты на дёнюм':'350 TRY/дёнюм'}))assert.equal(await cockpitValue(label),value);
+      await op.getByText('Оплаты показывают движение денег и не добавляют затраты второй раз. Банковские остатки относятся ко всему хозяйству.',{exact:true}).waitFor({state:'visible'});
+      const financeEvents=op.locator('.greenhouse-card .money-event');
+      assert.equal(await financeEvents.count(),2,'Only two actual-day accruals are economic costs');
+      assert.ok(analytics.selected.finance.economic_events.every(event=>event.classification==='OPERATING_COST'&&event.source.kind==='obligation'));
+      assert.equal(await op.locator('a[href^="#payment/"]').count(),0,'Separate payment is not another greenhouse cost event');
+      await layout(op,'greenhouse-finance-known-cost');
+      const documentRoute='money-document/'+result.obligation_ids[0]+'/'+encodeURIComponent(financeRoute);
+      await click(op,financeEvents.locator('a[href="#'+documentRoute+'"]'),'Owner opens the existing first actual-day finance source');
+      await ownerReady(op,documentRoute);
+      for(const [label,value] of Object.entries({'Первоначальная сумма':'400 TRY','Погашено':'200 TRY','Текущий остаток':'200 TRY'}))assert.equal(await cockpitValue(label,'money'),value);
+      await click(op,op.getByRole('link',{name:'Назад к финансам',exact:true}),'Owner returns from financial source to the same greenhouse Finance filters');
+      await ownerReady(op,financeRoute);await assertCockpitFilters();
+      assert.equal(await cockpitValue('Все учтённые затраты'),'700 TRY');
+      result.cockpit_tabs={harvest:{coverage:'EMPTY_SOURCE_UI_ONLY_NOT_NUMERIC_YIELD_PROOF',weight:null,price:null,quality_shares_known:false,comparison_status:comparison.status},finance:{cost:'700.00',source_document:{original:'400.00',paid:'200.00',remaining:'200.00'},return_filters_preserved:true}};
+      check('Greenhouse Harvest honest empty states and Finance known costs/source return retain filters',{numeric_harvest_proof:false,added_layouts:['greenhouse-harvest-empty-sources','greenhouse-finance-known-cost']});
+    } finally {op.off('request',watchCockpitWrite);}
+    assert.deepEqual(readonlyCockpitWrites,[],'Read-only cockpit tab/source inspection must not create authoritative writes');
     await click(op,op.locator('a[href="#'+greenhouseBase+'/work'+greenhouseTail+'"]').first(),'Owner opens greenhouse work and financial facts');
     await ownerReady(op,greenhouseBase+'/work'+greenhouseTail);
     for(const label of ['Сообщено полных человеко-дней','Принято владельцем, человеко-дней','Начислено в периоде','Выплачено в периоде','Текущий долг связанных документов']) await op.getByText(label,{exact:true}).waitFor();
+    for(const [label,value] of Object.entries({'Начислено в периоде':'700 TRY','Выплачено в периоде':'200 TRY','Текущий долг связанных документов':'500 TRY'}))assert.equal(await cockpitValue(label),value);
     await layout(op,'greenhouse-work-and-debt');
     await primaryActionProof(op,'cockpit-source-drilldown',op.locator('a[href^="#day-actual-detail/'+result.actual_ids[0]+'/"]').first(),{intent:'open_source_actual_from_greenhouse'});
     await click(op,op.locator('a[href^="#day-actual-detail/'+result.actual_ids[0]+'/"]').first(),'Owner drills down from greenhouse to original actual');
