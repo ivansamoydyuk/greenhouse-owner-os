@@ -134,3 +134,20 @@ test('actual source history labels task and finance recovery neutrally while ret
  assert.equal(html.match(/Открыть связанную проверку/g).length,2);assert.doesNotMatch(html,/Открыть связанный расход/);
  assert.match(html,/data-source-proposal="task-target"/);assert.match(html,/data-source-proposal="expense-target"/);assert.match(html,/data-source-proposal="ordinary"/);assert.match(html,/Исходная запись/);assert.match(html,/captures\/source\/original/);
 });
+
+
+test('ambiguous queue card shows retained nested known date and greenhouse with original provenance',()=>{
+ const p=ambiguous();p.revision.payload.task_candidates.planned_date='2026-10-12';p.revision.payload.task_candidates.relative_time_context='сегодня';p.revision.payload.task_candidates.category='irrigation';
+ p.revision.provenance.task_candidates.fields.planned_date={category:'SOURCE FACT'};p.revision.provenance.task_candidates.fields.greenhouse_id={category:'INFERENCE'};
+ const before=structuredClone(p),html=proposalCard(p,data);
+ assert.match(html,/12 окт\. 2026/);assert.match(html,/Восточная/);assert.match(html,/Полив/);assert.match(html,/В источнике: сегодня/);
+ assert.match(html,/Дата: Из источника/);assert.match(html,/Теплица: Предположение подготовки/);
+ assert.doesNotMatch(html,/Дата не выбрана|id="r2-confirm"|data-effect="PERSONAL_TASK"/);assert.match(html,/Для себя или работнику\?/);assert.match(html,/data-effect="UNRESOLVED"/);assert.deepEqual(p,before);
+});
+
+test('ambiguous queue card keeps relative or unknown date honest without a current-day fallback',()=>{
+ const p=ambiguous();p.revision.payload.task_candidates.relative_time_context='следующая неделя';
+ const relative=proposalCard(p,data);assert.match(relative,/следующая неделя/);assert.match(relative,/точный день не выбран/);assert.doesNotMatch(relative,/2026|Дата не выбрана/);
+ p.revision.payload.task_candidates.relative_time_context=null;p.revision.payload.task_candidates.greenhouse_id=null;
+ const unknown=proposalCard(p,data);assert.match(unknown,/Дата не выбрана/);assert.doesNotMatch(unknown.match(/<p class="queue-card-context">([^<]*)<\/p>/)[1],/Восточная|2026/);assert.match(unknown,/Для себя или работнику\?/);
+});

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
 import {intendedTask, sourceTasks, taskSnapshots} from '../e2e/task-review-fixture.mjs';
 
 const task = (id, instruction, source='source', kind='PERSONAL_TASK') => ({id, inbox_id: source, action_type: kind,
@@ -121,4 +122,19 @@ for(const measured of [false,true]) test(`real-control helper preserves explicit
   assert.ok(mock.events.find(e=>e[0]==='select'&&e[1]==='personal'));
   assert.deepEqual(mock.events.at(-1),['visible','ordinary-confirm']);
   assert.equal(mock.events.filter(e=>e[0]==='metric'&&e[1]==='clarification').length,measured?1:0);
+});
+
+
+test('modern review selects its full immutable multi-clause source, not a first-sentence prefix', () => {
+  const sourceText='Сегодня полить İmamlı. TEST UI · проверить давление после полива.';
+  const origin=candidate('whole',sourceText), foreign=candidate('foreign',sourceText);foreign.inbox_id='another-source';
+  const proposals=[task('unrelated','Unknown','source','UNRESOLVED'),foreign,origin];
+  const before=structuredClone(proposals);
+  assert.equal(helpers.intendedTaskCandidate(proposals,'source','Сегодня полить İmamlı.'),undefined,'No substring fallback');
+  const source=readFileSync(new URL('../e2e/owner-modern-ui.mjs',import.meta.url),'utf8');
+  const expression=source.match(/const fixtureOrigin = ([^;]+);/)[1];
+  const select=new Function('intendedTaskCandidate','proposals','capture','sourceText',`return ${expression};`);
+  assert.equal(select(helpers.intendedTaskCandidate,proposals,{id:'source'},sourceText).id,'whole');
+  assert.equal(select(helpers.intendedTaskCandidate,[...proposals].reverse(),{id:'source'},sourceText).revision.payload.task_candidates.original_instruction,sourceText);
+  assert.deepEqual(proposals,before,'Selection preserves every original and sibling');
 });

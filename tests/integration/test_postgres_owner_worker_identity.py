@@ -17,14 +17,15 @@ def test_worker_identity_requires_explicit_registered_evidence_in_both_capture_m
     names = [('TEST Muhammed', 'TEST محمد'), ('Team Hasan', None), ('Асыф Газипаша', None), ('Асыф Алания', None), ('Умар', 'Umar')]
     workers = {name: service.worker(UUID(inv['e']), actor, str(uuid4()), WorkerInput(display_name=name, native_name=native, language='fa', source='test:identity')) for name, native in names}
     cases = [
-        ('TEST · Проверить давление', None, 'PERSONAL_TASK'),
-        ('Team завтра проверить давление', None, 'WORKER_TASK'),
+        ('TEST · Проверить давление', None, 'UNRESOLVED'),
+        ('Team завтра проверить давление', None, 'UNRESOLVED'),
         ('Асыф завтра проверить давление', None, 'WORKER_TASK'),
         ('Асыф и Умар завтра проверить давление', None, 'WORKER_TASK'),
         ('TEST и Умар завтра проверить давление', None, 'WORKER_TASK'),
         ('TEST Muhammed завтра проверить давление', workers['TEST Muhammed']['id'], 'WORKER_TASK'),
         ('TEST محمد завтра проверить давление', workers['TEST Muhammed']['id'], 'WORKER_TASK'),
         ('Асыф Газипаша завтра проверить давление', workers['Асыф Газипаша']['id'], 'WORKER_TASK'),
+        ('Завтра Асыф Газипаша починит плёнку в Özvadi.', workers['Асыф Газипаша']['id'], 'WORKER_TASK'),
         ('Умар завтра проверить давление', workers['Умар']['id'], 'WORKER_TASK'),
     ]
     capture_service = OwnerCaptureService(factory)
@@ -36,9 +37,20 @@ def test_worker_identity_requires_explicit_registered_evidence_in_both_capture_m
             assert len(proposals) == 1
             assert proposals[0]['action_type'] == expected_kind, raw
             payload = proposals[0]['revision']['payload']
-            assert payload.get('worker_id') == expected_worker
-            assert payload.get('language') == ('fa' if expected_worker else None)
-            assert payload['original_instruction'] == raw
+            if expected_kind == 'UNRESOLVED':
+                assert proposals[0]['state'] == 'NEEDS_INPUT'
+                expected_missing = ['Для себя или работнику?']
+                if mode == 'voice_transcript':
+                    expected_missing.append('Возможный повтор источника: проверьте оригинал')
+                assert proposals[0]['revision']['missing'] == expected_missing
+                assert proposals[0]['revision']['provenance']['task_candidates']['basis'] == 'task_audience_requires_owner_choice'
+                task = payload['task_candidates']
+            else:
+                task = payload
+            assert task.get('worker_id') == expected_worker
+            assert task.get('language') == ('fa' if expected_worker else None)
+            assert task['original_instruction'] == raw
+            assert task['title'] == raw
             assert capture_service.original(UUID(inv['e']), actor, UUID(saved['id']))[0].decode() == raw
             by_mode.append((proposals[0]['action_type'], payload))
         assert by_mode[0] == by_mode[1]

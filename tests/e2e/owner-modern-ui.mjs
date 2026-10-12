@@ -253,7 +253,17 @@ try {
   // must move focus into the new content. No edit is saved or confirmed here.
   await page.setViewportSize({width: 390, height: 844});
   await navigateOwner(page, 'review');
-  const fixtureOrigin = intendedTaskCandidate(proposals,capture.id,'Сегодня полить İmamlı.');assert.ok(fixtureOrigin);
+  const fixtureOrigin = intendedTaskCandidate(proposals,capture.id,sourceText);assert.ok(fixtureOrigin);
+  assert.equal(fixtureOrigin.revision.payload.task_candidates.original_instruction,sourceText,'Select the full immutable source instruction, never only its first clause');
+  const knownTask=fixtureOrigin.revision.payload.task_candidates;
+  assert.ok(knownTask.planned_date&&knownTask.greenhouse_id,'This exact source has a known date and greenhouse');
+  const knownPlace=fixtureOrigin.revision.basis['core.work_areas:'+knownTask.greenhouse_id]||before.finance.work_areas.find(area=>area.id===knownTask.greenhouse_id);
+  assert.ok(knownPlace?.original_name||knownPlace?.name,'Known greenhouse must resolve from the reviewed basis or current reference');
+  const expectedDate=await page.evaluate(value=>new Intl.DateTimeFormat('ru-RU',{timeZone:'UTC',day:'numeric',month:'short',year:'numeric'}).format(new Date(value+'T12:00:00Z')),knownTask.planned_date);
+  const knownContext=await sheet().locator(`[data-proposal="${fixtureOrigin.id}"] .queue-card-context`).innerText();
+  assert.ok(knownContext.includes(expectedDate),'Visible queue context retains the known calendar date');
+  assert.ok(knownContext.includes(knownPlace.original_name||knownPlace.name),'Visible queue context retains the known greenhouse');
+  assert.doesNotMatch(knownContext,/Дата не выбрана/);
   let fixtureProposal = fixtureOrigin.id;
   await sheet().locator(`[data-proposal="${fixtureProposal}"] [data-r2-open]`).click();
   const selectedTask = await chooseTaskAudience(page,checkedApi,owner,fixtureOrigin,'personal');

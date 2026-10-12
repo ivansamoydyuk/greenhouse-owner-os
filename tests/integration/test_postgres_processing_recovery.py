@@ -250,8 +250,19 @@ def test_actual_handler_kill_restart_recovers_once(inv, processes, checkpoint, r
     assert actual['jobs'][0]['lease_token'] is None and actual['jobs'][0]['lease_until'] is None
     assert len(actual['runs']) == retained_runs + 1
     assert len(actual['proposals']) == len(actual['revisions']) == len(actual['actions']) == 1
-    assert actual['proposals'][0]['action_type'] == 'PERSONAL_TASK'
-    assert actual['proposals'][0]['state'] == 'READY'
+    # Restart preserves the same useful, non-authoritative preparation. The
+    # untouched old bare phrase does not establish a personal/worker audience.
+    assert actual['proposals'][0]['action_type'] == 'UNRESOLVED'
+    assert actual['proposals'][0]['state'] == 'NEEDS_INPUT'
+    assert actual['proposals'][0]['version'] == actual['revisions'][0]['version'] == 1
+    revision = actual['revisions'][0]
+    assert revision['missing'] == ['Для себя или работнику?']
+    task = revision['payload']['task_candidates']
+    assert task['title'] == task['original_instruction'] == before['raw_text'] == 'Сегодня полить İmamlı.'
+    assert task['planned_date'] == '2026-10-08' and task['greenhouse_id'] == inv['g']
+    assert task['worker_id'] is None and task.get('language') is None
+    assert revision['provenance']['task_candidates']['basis'] == 'task_audience_requires_owner_choice'
+    assert revision['provenance']['task_candidates']['fields']['original_instruction']['source_text'] == before['raw_text']
     assert actual['revisions'][0]['extraction_run_id'] == actual['runs'][-1]['id']
     assert actual['original'] == before
     assert_preparation_only(actual)

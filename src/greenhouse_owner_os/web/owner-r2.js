@@ -183,11 +183,11 @@ export function proposalSummary(p,data={},withOpen=true){
 // A scan-friendly queue card never authorizes an effect. Its primary action fetches
 // a fresh, complete preview; only the separate review screen can confirm it.
 export function proposalCard(p,data={}){
-  const f=p.revision.payload,kind=p.action_type,basis=p.revision.basis||{},finance=data.owner?.finance||{};
+  const kind=p.action_type,task=taskAudiencePayload(p),f=task||p.revision.payload,basis=p.revision.basis||{},finance=data.owner?.finance||{};
   const name=(table,id,list=[],fallback='Не указано')=>{const v=basis[`${table}:${id}`]||list.find(x=>x.id===id);return v?.original_name||v?.name||v?.display_name||v?.label||(id?'Не найдено · '+id:fallback);};
   const party=id=>name('core.counterparties',id,finance.references||[]),area=id=>name('core.work_areas',id,finance.work_areas||[]);
   const lines=f.lines||[],context=[];
-  let title=conciseProposalText(f.task_candidates?.original_instruction||(kind==='WORKER_TASK'?f.original_instruction:null)||f.title||f.description||titles[kind]||'Событие'),value=f.amount!=null?exactMoney(f.amount,f.currency):'';
+  let title=conciseProposalText((kind==='UNRESOLVED'&&task?f.original_instruction:null)||(kind==='WORKER_TASK'?f.original_instruction:null)||f.title||f.description||titles[kind]||'Событие'),value=f.amount!=null?exactMoney(f.amount,f.currency):'';
   if(f.counterparty_id)context.push(party(f.counterparty_id));
   if(kind==='DEPOT_RECEIPT'){
     title=party(f.depot_id);value=completeDepotLines(f)?exactMoney(receiptEffectTotal(lines),f.currency):'UNKNOWN · итог чека';
@@ -199,7 +199,7 @@ export function proposalCard(p,data={}){
   if(f.greenhouse_id)context.push(area(f.greenhouse_id));
   if(f.worker_id)context.push(name('workers.people',f.worker_id,data.tasks?.workers||[]));
   if(kind==='PAYABLE'&&!f.attributions?.length)context.push('GENERAL · без указанной теплицы');
-  if(['PERSONAL_TASK','WORKER_TASK'].includes(kind)){if(f.category)context.push(categoryNames[f.category]||f.category);context.push(taskWhenLabel(f,'Дата не выбрана'));if(f.planned_date&&f.relative_time_context)context.push('В источнике: '+f.relative_time_context);}
+  if(task){if(f.category)context.push(categoryNames[f.category]||f.category);context.push(taskWhenLabel(f,'Дата не выбрана'));if(f.planned_date&&f.relative_time_context)context.push('В источнике: '+f.relative_time_context);}
   else context.push(displayDate(f.event_date||f.planned_date,'Дата не выбрана'));
   const warnings=[...(p.revision.missing||[])];if(kind==='WORKER_TASK'&&workerTranslationIssue(f))warnings.unshift(workerTranslationIssue(f));
   if(kind.startsWith('STOCK_')&&lines.some(l=>l.unit_cost==null))warnings.unshift('Стоимость UNKNOWN · неизвестна, не 0');
@@ -207,7 +207,7 @@ export function proposalCard(p,data={}){
   if(kind==='DEPOT_RECEIPT'&&!completeDepotLines(f))warnings.unshift(lines.length?'Итог UNKNOWN: есть непрочитанные строки, требуется уточнение':'Сумма UNKNOWN: строки чека не прочитаны');
   const label=p.source?.filename|| (p.source?.text?'Текстовый источник':'Источник сохранён');
   const primaryLabel=kind==='UNRESOLVED'?'Уточнить':'Подтвердить';
-  return `<article class="card queue-card ${p.reminder_eligible?'overdue':''}" data-proposal="${e(p.id)}"><div class="queue-card-head"><small>${e(titles[kind]||kind)} · ${e(statuses[p.state]||p.state)}</small>${p.reminder_eligible?'<span class="badge">Старше 36 часов</span>':''}</div><h2>${e(title)}</h2>${value?`<p class="queue-card-value">${e(value)}</p>`:''}<p class="queue-card-context">${[...new Set(context)].map(e).join(' · ')}</p><p class="queue-card-effect" data-effect="${e(kind)}">${e(effects[kind]||'Нужна ручная проверка')}</p>${warnings.length?`<p class="queue-card-warning">${warnings.slice(0,2).map(e).join(' · ')}${warnings.length>2?` · Ещё ${warnings.length-2} уточнения в проверке`:''}</p>`:''}<div class="queue-card-actions"><button type="button" class="primary" data-r2-open="${e(p.id)}" aria-label="${primaryLabel}: проверить ${e(title)}">${primaryLabel}</button><button type="button" class="secondary" data-r2-edit="${e(p.id)}">Исправить</button><button type="button" class="secondary" data-r2-later="${e(p.id)}">Позже</button></div><details><summary>Источник и подробности</summary><p class="note">${e(label)}. Перед подтверждением откроется полная актуальная проверка.</p><button type="button" data-r2-evidence="${e(p.id)}">Оригинал, детали и отклонение</button></details></article>`;
+  return `<article class="card queue-card ${p.reminder_eligible?'overdue':''}" data-proposal="${e(p.id)}"><div class="queue-card-head"><small>${e(titles[kind]||kind)} · ${e(statuses[p.state]||p.state)}</small>${p.reminder_eligible?'<span class="badge">Старше 36 часов</span>':''}</div><h2>${e(title)}</h2>${value?`<p class="queue-card-value">${e(value)}</p>`:''}<p class="queue-card-context">${[...new Set(context)].map(e).join(' · ')}</p><p class="queue-card-effect" data-effect="${e(kind)}">${e(effects[kind]||'Нужна ручная проверка')}</p>${warnings.length?`<p class="queue-card-warning">${warnings.slice(0,2).map(e).join(' · ')}${warnings.length>2?` · Ещё ${warnings.length-2} уточнения в проверке`:''}</p>`:''}<div class="queue-card-actions"><button type="button" class="primary" data-r2-open="${e(p.id)}" aria-label="${primaryLabel}: проверить ${e(title)}">${primaryLabel}</button><button type="button" class="secondary" data-r2-edit="${e(p.id)}">Исправить</button><button type="button" class="secondary" data-r2-later="${e(p.id)}">Позже</button></div><details><summary>Источник и подробности</summary><p class="note">${e(label)}. Перед подтверждением откроется полная актуальная проверка.</p>${kind==='UNRESOLVED'&&task?taskPreparationDetails(p):''}<button type="button" data-r2-evidence="${e(p.id)}">Оригинал, детали и отклонение</button></details></article>`;
 }
 
 export function ownerR2({api,openSheet,reload,getData,getEntity,notice,advanced,navigate,getOwnerId=()=>getData()?.owner?.owner_id}){
