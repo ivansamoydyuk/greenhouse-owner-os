@@ -878,8 +878,8 @@ try {
       "100.00",
     );
     await click(page, "Проверить оплату");
-    await page.unroute("**/v1/payments");
     await waitHash(page, "payment/");
+    await page.unroute("**/v1/payments");
     let paymentId = page.url().split("#payment/")[1];
     const obligation = (
       await read(context, root + "/owner/home")
@@ -913,14 +913,17 @@ try {
     diagnostic.checkpoint('payment-reload-start');
     await page.reload();
     diagnostic.checkpoint('payment-reload-return');
-    await page.unroute("**/v1/payments/" + paymentId + "/post?*");
-    diagnostic.checkpoint('payment-unroute-return');
     await page
       .getByText(
         "Сервер подтвердил платёж. Повтор не создаёт вторую проводку.",
         { exact: true },
       )
       .waitFor();
+    // Retain interception until the concurrent cold reads and payment render
+    // complete; page.reload() alone does not establish application readiness.
+    await waitRenderedRoute(page,"payment/"+paymentId);
+    await page.unroute("**/v1/payments/" + paymentId + "/post?*");
+    diagnostic.checkpoint('payment-unroute-return');
     // A stalled read after reload must reach a usable, fail-closed recovery
     // boundary. This is separate from (and retains) the lost-post assertion above.
     const paymentHash = page.url().split('#')[1];
@@ -1177,9 +1180,13 @@ try {
     const warmFailure = page.waitForResponse(
       (r) => r.url().endsWith("/inventory") && r.status() === 503,
     );
+    const beforeWarmRefresh=await page.locator('#main').elementHandle();
     await click(page, "Повторить загрузку разделов");
     await warmFailure;
     assert.ok(outageReads >= 2);
+    // The old warning remains visible while other section reads finish.
+    await page.waitForFunction(main=>!main.isConnected,beforeWarmRefresh);
+    await waitRenderedRoute(page,"home");await beforeWarmRefresh.dispose();
     await page.getByText(/Часть разделов не загрузилась/).waitFor();
     await snap(page, engine + "-390-home-partial");
     await page.unroute("**/inventory");
