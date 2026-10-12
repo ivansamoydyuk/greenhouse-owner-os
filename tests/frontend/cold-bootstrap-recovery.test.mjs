@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {PreparationRefreshWindow,preparationPending} from '../../prototype/owner-r3/capture-daily.js';
 import {ColdBootstrapAttempt} from '../../prototype/owner-r3/cold-bootstrap.js';
 import {ConnectedAPI, BrowserStore} from '../../prototype/owner-r3/connected-adapter.js';
 import {EncryptedRecordStore, PilotCipher} from '../../src/greenhouse_owner_os/web/pilot-storage.js';
@@ -87,7 +88,7 @@ async function harness(hold = null, retainedRows = null) {
   const ctx = {
     api, bootstrapAttempt:null, bootstrapRecovery:null, config:null, data:{}, failures:{}, ready:false,
     app:{dataset:{},innerHTML:'',style:{}}, sheetRoot:{innerHTML:''}, route:'payment/committed', epoch:0, readTimer:null,
-    current:null, draft:null, estimateReview:null, harvestScroll:new Map(), authCalls:0,
+    current:null, draft:null, estimateReview:null, preparationRefresh:new PreparationRefreshWindow(), preparationPending, harvestScroll:new Map(), authCalls:0,
     ColdBootstrapAttempt:class extends ColdBootstrapAttempt { constructor(options) { super({...options, schedule:(fn,ms) => { const id=++timerId; timers.set(id,{fn,ms}); return id; }, cancel:id => timers.delete(id)}); } },
     clearTimeout() {}, Header, e, btn, panel:body => `<section>${body}</section>`, setRadial() {}, CaptureBar:() => '', Navigation:() => '',
     fertilizerWrites:{flush:async () => { if(hold?.startsWith('render-flush')) { await wait(); if(hold==='render-flush-error')throw Error('late flush error'); } }}, paymentDetail:payment => `<p>${payment.state}</p>`, errorBox:error => `<p>${error.message}</p>`,
@@ -97,7 +98,7 @@ async function harness(hold = null, retainedRows = null) {
   };
   vm.runInNewContext(section('function shell(', 'function setRadial(') +
     section('function showBootstrapRecovery()', 'function unavailable(') +
-    section('async function render()', 'function values(') +
+    section('function schedulePreparationRefresh()', 'function values(') +
     section('window.addEventListener("hashchange"', 'window.addEventListener("keydown"') +
     section('async function verifyVisibleParticipant()', "window.addEventListener('pagehide'"), ctx);
   const clickStart = source.indexOf('document.addEventListener("click", (event) => {');

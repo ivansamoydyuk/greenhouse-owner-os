@@ -1,0 +1,1302 @@
+{
+  "title": "Capture Daily Completion frozen delta benchmark",
+  "version": "cdc-delta-v1",
+  "frozen_at": "2026-10-12T06:07:20Z",
+  "status": "PROPOSED ENGINEERING FIXTURE CONTRACT, NOT A NEW CANONICAL DECISION",
+  "implementation_status": "No implementation changes made by this worker; baseline and after not yet executed.",
+  "scope": "Existing Connected short text, depot OCR -> Harvest, supplier invoice OCR -> Purchases, and unchanged source/recovery invariants.",
+  "fixture_context": {
+    "captured_at": "2026-10-12T09:00:00+03:00",
+    "timezone": "Europe/Istanbul",
+    "currency_context": "TRY candidate only",
+    "entities": "one labelled synthetic entity plus separate denial-control entity",
+    "participants": "existing isolated TEST owner and worker identities; no real credentials",
+    "reference_policy": "seed exact known references explicitly; no fuzzy identity. Each case isolated unless steps specify predecessor state.",
+    "harvest_context": "Optional field report has 131 bunches; depot original ADET 93. No automatic match; no assumed equality.",
+    "render_recipe": "Create lossless PNG at width 1600, white background, black DejaVu Sans text 34px, generous fixed tabular columns; render the exact frozen document fields with Turkish separators. PNG baseline has no caption unless specified. PDF preserves same text and page grouping. Asset recipes/labels must be fixed and asset hashes recorded before first extraction and before parser changes.",
+    "asset_status": "Assets not rendered by this read-only extraction. Matrix input facts are frozen; rendering is fixture preparation and must not adapt to parser output.",
+    "asset_readability_gate": "Before first extraction, independently inspect H01/H03/H04/P01/P02 readability and H05 numeric masking. Record the result and asset hashes. Any required recipe change is a documented fixture revision before running baseline; never change it to fit parser output."
+  },
+  "scoring": {
+    "correctness": "Per case, compare every asserted source fact, candidate/context label, negation/speaker/paid-state and typed line count. Report field-level exact/missing/wrong and wrong-ready state. A semantically wrong route or wrong paid status fails regardless of total amount accuracy.",
+    "usefulness": "Separately measure how many known source facts were correctly prefilled; count missing known fields, owner correction entries, repeated source facts, extra navigation and unresolved intended supported paths. A safe blank proposal is not a useful preparation pass.",
+    "safety": "Every prohibited automatic/domain effect and identity/authority guard is checked through actual API/PostgreSQL and original hashes. Any unintended effect or authority breach is a failure, irrespective of recognition percentage.",
+    "degraded": "H04 is degraded but independently readable: safe unresolved may pass safety and fail recognition/usefulness. H05 expects unreadable: correct safe state passes its negative-control behavior only and earns no positive recognition credit. Do not combine these into an unqualified overall PASS.",
+    "readable_denominator": "Report actual successes and attempted counts separately by short text/depot/invoice. No invented percentage or changing denominator. A new 25-case delta suite does not replace the existing canonical 30-document actual-OCR corpus with its prelabelled readable/degraded cohorts.",
+    "baseline_after": "Run exact same frozen sources/labels/context against baseline 9a981766f217fe33364f32b601bfc2a4468b4f59 and final candidate. Keep failures and raw outputs. If any fixture change is required, version it and rerun baseline; never silently fix expected labels after output.",
+    "ocr_evidence": "Real Poppler/Tesseract invocation and engine versions/raw text/page spans required; adapter mock is not recognition evidence. Printed synthetic documents are not physical camera accuracy.",
+    "timing": "No wall-clock improvement claim without measured repeated timings. Physical iPhone timings remain separate; DOM click counts do not prove physical taps."
+  },
+  "interaction_rubric": {
+    "measurement_start": "Authenticated Home ready. Record capture-open/input-save separately from review/effect.",
+    "measurement_end": "Source durably saved; separately first correct prepared review; separately one intended effect confirmed and visible in the existing destination.",
+    "record_each_case": [
+      "capture trusted clicks",
+      "review trusted clicks",
+      "destination/drilldown trusted clicks",
+      "keyboard/text entries",
+      "mandatory newly supplied facts absent from source",
+      "known source facts re-entered",
+      "explicit review/confirmation gestures",
+      "optional enrichment inputs",
+      "elapsed time if actually observed",
+      "validation/dead-end/reload interruptions",
+      "number of prepared source facts shown correctly"
+    ],
+    "mandatory_fact_rule": "Count a business datum, not just a field: account choice absent from source counts one new fact; selecting an explicit source account already correctly prefilled counts review only. Required quality review and explicit debt allocation are confirmations, not a repeated numeric entry.",
+    "repeated_fact_rule": "Amount/party/date/line quantity already present in source retyped or manually reselected because preparation lost it counts repeated fact. Editing a wrong prefill counts correction plus repeated source fact. Explicit resolution of a genuine contradiction is not repeated entry unless the same unchanged fact is requested twice.",
+    "comparison_rule": "Do not remove necessary authority/account/allocation/discrepancy reviews to lower click count. Report setup/reference creation/native picker interactions separately rather than hiding them. Known source should never need to be pasted a second time.",
+    "measurement_template": {
+      "baseline": {
+        "sha": "9a981766f217fe33364f32b601bfc2a4468b4f59",
+        "engine": null,
+        "capture_clicks": null,
+        "review_clicks": null,
+        "new_required_facts": null,
+        "repeated_known_facts": null,
+        "correction_entries": null,
+        "outcome": null,
+        "evidence": null
+      },
+      "after": {
+        "sha": null,
+        "engine": null,
+        "capture_clicks": null,
+        "review_clicks": null,
+        "new_required_facts": null,
+        "repeated_known_facts": null,
+        "correction_entries": null,
+        "outcome": null,
+        "evidence": null
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "T01",
+      "path": "short_text",
+      "input": "Заплатил 650 TRY наличными за топливо.",
+      "expected_facts_and_prefill": {
+        "intent": "actual anonymous paid operating expense",
+        "amount": "650.00",
+        "currency": "TRY",
+        "purpose": "топливо",
+        "counterparty": null,
+        "payment_account_candidate": "verified Cash TR from explicit наличными",
+        "date_candidate": "2026-10-12 with CAPTURE_CONTEXT provenance; source has no explicit event date"
+      },
+      "permitted_required_owner_inputs": [
+        "Review displayed amount, purpose, account and visible date candidate; one effect confirmation."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No payable, supplier advance or dummy vendor."
+      ],
+      "criterion": "readable_supported",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "T02",
+      "path": "short_text",
+      "input": "Должен Серкану 5 000 TRY за ремонт насоса.",
+      "expected_facts_and_prefill": {
+        "intent": "unpaid operational payable",
+        "party_candidate": "exact seeded Серкан",
+        "amount": "5000.00",
+        "currency": "TRY",
+        "purpose": "ремонт насоса",
+        "greenhouse": null,
+        "category": null,
+        "due_date": null,
+        "date_candidate": "2026-10-12 with CAPTURE_CONTEXT provenance"
+      },
+      "permitted_required_owner_inputs": [
+        "Resolve exact party only if ambiguous; review date/effect; one payable confirmation."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No cash/payment/advance; do not require category, greenhouse or due date."
+      ],
+      "criterion": "readable_supported",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "T03",
+      "path": "short_text",
+      "input": "Заплатил Серкану 2 000 TRY в счёт долга за ремонт.",
+      "expected_facts_and_prefill": {
+        "intent": "outgoing settlement of existing debt",
+        "party_candidate": "exact seeded Серкан",
+        "amount": "2000.00",
+        "currency": "TRY",
+        "purpose": "settle repair debt",
+        "debt_candidate": "seeded sole posted payable 5000 TRY",
+        "account": null,
+        "remaining_after_reviewed_allocation": "3000.00"
+      },
+      "permitted_required_owner_inputs": [
+        "Explicit cash/bank selection and reviewed allocation to existing payable; confirm displayed payment."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No new expense/payable, guessed account, FIFO allocation or advance."
+      ],
+      "criterion": "readable_supported",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "T04",
+      "path": "short_text",
+      "input": "Серкан, ремонт насоса, 5 000 TRY.",
+      "expected_facts_and_prefill": {
+        "party_candidate": "exact seeded Серкан",
+        "purpose": "ремонт насоса",
+        "amount": "5000.00",
+        "currency": "TRY",
+        "paid_status": "UNKNOWN",
+        "intent": "ambiguous expense/debt/payment; preserve all known facts"
+      },
+      "permitted_required_owner_inputs": [
+        "One compact paid/unpaid/existing-debt intent clarification; later only critical fields appropriate to choice."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No guessed actual payment or debt, no finance effect until intent resolved, no requirement to repeat amount/party/purpose."
+      ],
+      "criterion": "supported_ambiguity",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "T05",
+      "path": "short_text",
+      "input": "За ремонт насоса должен Серкану 5 000 TRY, ещё не платил.",
+      "expected_facts_and_prefill": {
+        "intent": "unpaid operational payable",
+        "amount": "5000.00",
+        "currency": "TRY",
+        "party_candidate": "exact seeded Серкан",
+        "payment_fact": "explicitly negated",
+        "purpose": "ремонт насоса"
+      },
+      "permitted_required_owner_inputs": [
+        "Review payable and date candidate; confirm once."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No payment candidate represented as occurred; word платил under negation is not paid status."
+      ],
+      "criterion": "readable_supported",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "T06",
+      "path": "short_text",
+      "input": "Завтра нужно заплатить Серкану 5 000 TRY за ремонт.",
+      "expected_facts_and_prefill": {
+        "intent": "future plan; no occurred payment",
+        "amount": "5000.00",
+        "currency": "TRY",
+        "party_candidate": "exact seeded Серкан",
+        "future_date_context": "2026-10-13 from explicit завтра and captured_at",
+        "actual_event_date": null
+      },
+      "permitted_required_owner_inputs": [
+        "Clarify or retain future proposal; actual payment requires a later explicit fact and critical review."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No actual payment/expense/payable merely from future plan; no automatic task creation."
+      ],
+      "criterion": "dangerous_contrast",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "T07",
+      "path": "short_text",
+      "input": "Серкан написал: «Я заплатил 5 000 TRY за ремонт».",
+      "expected_facts_and_prefill": {
+        "speaker": "Серкан, a third party",
+        "amount": "5000.00",
+        "currency": "TRY",
+        "owner_payment_fact": false,
+        "original_quote": "retained verbatim"
+      },
+      "permitted_required_owner_inputs": [
+        "Resolve whose business action, if any, is intended before a money proposal can be ready."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No owner outgoing payment or owner expense inferred from first person inside quotation."
+      ],
+      "criterion": "dangerous_contrast",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "T08",
+      "path": "short_text",
+      "input": "Заплатил 25 USD за топливо.",
+      "expected_facts_and_prefill": {
+        "intent": "actual anonymous paid operating expense",
+        "amount": "25.00",
+        "currency": "USD",
+        "purpose": "топливо",
+        "account": null
+      },
+      "permitted_required_owner_inputs": [
+        "Select verified USD account; review visible date; confirm once."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No TRY replacement, implicit FX, incompatible Cash TR selection or mixed-currency sum."
+      ],
+      "criterion": "readable_supported",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "H01",
+      "path": "depot_ocr",
+      "input": {
+        "document": {
+          "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+          "date": "12.10.2026",
+          "document_number": "SYN-H-001",
+          "lines": [
+            {
+              "label": "Grand",
+              "kg": "100.000",
+              "unit_price": "50.00",
+              "amount": "5000.00"
+            },
+            {
+              "label": "Birinci",
+              "kg": "200.000",
+              "unit_price": "40.00",
+              "amount": "8000.00"
+            },
+            {
+              "label": "İkinci",
+              "kg": "50.000",
+              "unit_price": "20.00",
+              "amount": "1000.00"
+            }
+          ],
+          "currency": "TRY",
+          "total_kg": "350.000",
+          "total_amount": "14000.00",
+          "adet": "93",
+          "alacak": "14000.00"
+        },
+        "asset": "readable PNG",
+        "caption": null
+      },
+      "expected_facts_and_prefill": {
+        "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+        "date": "12.10.2026",
+        "document_number": "SYN-H-001",
+        "lines": [
+          {
+            "label": "Grand",
+            "kg": "100.000",
+            "unit_price": "50.00",
+            "amount": "5000.00"
+          },
+          {
+            "label": "Birinci",
+            "kg": "200.000",
+            "unit_price": "40.00",
+            "amount": "8000.00"
+          },
+          {
+            "label": "İkinci",
+            "kg": "50.000",
+            "unit_price": "20.00",
+            "amount": "1000.00"
+          }
+        ],
+        "currency": "TRY",
+        "total_kg": "350.000",
+        "total_amount": "14000.00",
+        "adet": "93",
+        "alacak": "14000.00",
+        "quality_candidates": [
+          "HIGHEST",
+          "FIRST",
+          "SECOND"
+        ],
+        "quality_authority": "applicable exact depot mapping or per-receipt owner review",
+        "payment_fact": false,
+        "field_report_count": "131 if explicitly linked; remains distinct from document ADET 93"
+      },
+      "permitted_required_owner_inputs": [
+        "Review quality candidates if no applicable verified mapping; select explicit source linkage only if wanted; one sale+receivable confirmation."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No cash from Alacak, no guessed count/geography, no global quality alias, no rewritten worker count, no duplicate sale/receivable.",
+        "No source caption masquerading as OCR; owner source original download must preserve exact bytes."
+      ],
+      "criterion": "readable_supported",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "H02",
+      "path": "depot_ocr",
+      "input": {
+        "document": {
+          "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+          "date": "12.10.2026",
+          "document_number": "SYN-H-001",
+          "lines": [
+            {
+              "label": "Grand",
+              "kg": "100.000",
+              "unit_price": "50.00",
+              "amount": "5000.00"
+            },
+            {
+              "label": "Birinci",
+              "kg": "200.000",
+              "unit_price": "40.00",
+              "amount": "8000.00"
+            },
+            {
+              "label": "İkinci",
+              "kg": "50.000",
+              "unit_price": "20.00",
+              "amount": "1000.00"
+            }
+          ],
+          "currency": "TRY",
+          "total_kg": "350.000",
+          "total_amount": "14000.00",
+          "adet": "93",
+          "alacak": "14000.00"
+        },
+        "asset": "two-page PDF; first line page 1, remaining lines and total page 2; one document number",
+        "caption": null
+      },
+      "expected_facts_and_prefill": {
+        "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+        "date": "12.10.2026",
+        "document_number": "SYN-H-001",
+        "lines": [
+          {
+            "label": "Grand",
+            "kg": "100.000",
+            "unit_price": "50.00",
+            "amount": "5000.00"
+          },
+          {
+            "label": "Birinci",
+            "kg": "200.000",
+            "unit_price": "40.00",
+            "amount": "8000.00"
+          },
+          {
+            "label": "İkinci",
+            "kg": "50.000",
+            "unit_price": "20.00",
+            "amount": "1000.00"
+          }
+        ],
+        "currency": "TRY",
+        "total_kg": "350.000",
+        "total_amount": "14000.00",
+        "adet": "93",
+        "alacak": "14000.00",
+        "quality_candidates": [
+          "HIGHEST",
+          "FIRST",
+          "SECOND"
+        ],
+        "quality_authority": "applicable exact depot mapping or per-receipt owner review",
+        "payment_fact": false,
+        "field_report_count": "131 if explicitly linked; remains distinct from document ADET 93"
+      },
+      "permitted_required_owner_inputs": [
+        "Same as H01; no repeated manual line entry."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No cash from Alacak, no guessed count/geography, no global quality alias, no rewritten worker count, no duplicate sale/receivable.",
+        "No source caption masquerading as OCR; owner source original download must preserve exact bytes.",
+        "No per-page settlement, duplicate header line or doubled total."
+      ],
+      "criterion": "readable_supported",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "H03",
+      "path": "depot_ocr",
+      "input": {
+        "document": {
+          "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+          "date": "12.10.2026",
+          "document_number": "SYN-H-001",
+          "lines": [
+            {
+              "label": "Grand",
+              "kg": "100.000",
+              "unit_price": "50.00",
+              "amount": "5000.00"
+            },
+            {
+              "label": "Birinci",
+              "kg": "200.000",
+              "unit_price": "40.00",
+              "amount": "8000.00"
+            },
+            {
+              "label": "İkinci",
+              "kg": "50.000",
+              "unit_price": "20.00",
+              "amount": "1000.00"
+            }
+          ],
+          "currency": "TRY",
+          "total_kg": "350.000",
+          "total_amount": "14000.00",
+          "adet": "93",
+          "alacak": "14000.00"
+        },
+        "asset": "H01 rendered PNG rotated exactly 90 degrees clockwise"
+      },
+      "expected_facts_and_prefill": {
+        "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+        "date": "12.10.2026",
+        "document_number": "SYN-H-001",
+        "lines": [
+          {
+            "label": "Grand",
+            "kg": "100.000",
+            "unit_price": "50.00",
+            "amount": "5000.00"
+          },
+          {
+            "label": "Birinci",
+            "kg": "200.000",
+            "unit_price": "40.00",
+            "amount": "8000.00"
+          },
+          {
+            "label": "İkinci",
+            "kg": "50.000",
+            "unit_price": "20.00",
+            "amount": "1000.00"
+          }
+        ],
+        "currency": "TRY",
+        "total_kg": "350.000",
+        "total_amount": "14000.00",
+        "adet": "93",
+        "alacak": "14000.00",
+        "quality_candidates": [
+          "HIGHEST",
+          "FIRST",
+          "SECOND"
+        ],
+        "quality_authority": "applicable exact depot mapping or per-receipt owner review",
+        "payment_fact": false,
+        "field_report_count": "131 if explicitly linked; remains distinct from document ADET 93"
+      },
+      "permitted_required_owner_inputs": [
+        "Same as H01."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No cash from Alacak, no guessed count/geography, no global quality alias, no rewritten worker count, no duplicate sale/receivable.",
+        "No source caption masquerading as OCR; owner source original download must preserve exact bytes."
+      ],
+      "criterion": "readable_supported",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "H04",
+      "path": "depot_ocr",
+      "input": {
+        "document": {
+          "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+          "date": "12.10.2026",
+          "document_number": "SYN-H-001",
+          "lines": [
+            {
+              "label": "Grand",
+              "kg": "100.000",
+              "unit_price": "50.00",
+              "amount": "5000.00"
+            },
+            {
+              "label": "Birinci",
+              "kg": "200.000",
+              "unit_price": "40.00",
+              "amount": "8000.00"
+            },
+            {
+              "label": "İkinci",
+              "kg": "50.000",
+              "unit_price": "20.00",
+              "amount": "1000.00"
+            }
+          ],
+          "currency": "TRY",
+          "total_kg": "350.000",
+          "total_amount": "14000.00",
+          "adet": "93",
+          "alacak": "14000.00"
+        },
+        "asset": "H01 rendered PNG, grayscale and Gaussian blur radius 2.0 px; still independently readable"
+      },
+      "expected_facts_and_prefill": {
+        "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+        "date": "12.10.2026",
+        "document_number": "SYN-H-001",
+        "lines": [
+          {
+            "label": "Grand",
+            "kg": "100.000",
+            "unit_price": "50.00",
+            "amount": "5000.00"
+          },
+          {
+            "label": "Birinci",
+            "kg": "200.000",
+            "unit_price": "40.00",
+            "amount": "8000.00"
+          },
+          {
+            "label": "İkinci",
+            "kg": "50.000",
+            "unit_price": "20.00",
+            "amount": "1000.00"
+          }
+        ],
+        "currency": "TRY",
+        "total_kg": "350.000",
+        "total_amount": "14000.00",
+        "adet": "93",
+        "alacak": "14000.00",
+        "quality_candidates": [
+          "HIGHEST",
+          "FIRST",
+          "SECOND"
+        ],
+        "quality_authority": "applicable exact depot mapping or per-receipt owner review",
+        "payment_fact": false,
+        "field_report_count": "131 if explicitly linked; remains distinct from document ADET 93"
+      },
+      "permitted_required_owner_inputs": [
+        "Same as H01 if actual extraction is correct; otherwise explicit warning/manual correction."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No cash from Alacak, no guessed count/geography, no global quality alias, no rewritten worker count, no duplicate sale/receivable.",
+        "No source caption masquerading as OCR; owner source original download must preserve exact bytes."
+      ],
+      "criterion": "degraded_readable",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "H05",
+      "path": "depot_ocr",
+      "input": {
+        "document": {
+          "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+          "date": "12.10.2026",
+          "document_number": "SYN-H-001",
+          "lines": [
+            {
+              "label": "Grand",
+              "kg": "100.000",
+              "unit_price": "50.00",
+              "amount": "5000.00"
+            },
+            {
+              "label": "Birinci",
+              "kg": "200.000",
+              "unit_price": "40.00",
+              "amount": "8000.00"
+            },
+            {
+              "label": "İkinci",
+              "kg": "50.000",
+              "unit_price": "20.00",
+              "amount": "1000.00"
+            }
+          ],
+          "currency": "TRY",
+          "total_kg": "350.000",
+          "total_amount": "14000.00",
+          "adet": "93",
+          "alacak": "14000.00"
+        },
+        "asset": "H01 with every numeric line region fully masked before encoding; exact original retained"
+      },
+      "expected_facts_and_prefill": {
+        "document_title": "may be readable",
+        "critical_numeric_facts": "UNREADABLE / UNKNOWN",
+        "state": "NEEDS_INPUT or FAILED, never READY",
+        "raw_output_and_warning": "retained"
+      },
+      "permitted_required_owner_inputs": [
+        "Request clearer original or honest manual transcription."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No cash from Alacak, no guessed count/geography, no global quality alias, no rewritten worker count, no duplicate sale/receivable.",
+        "No source caption masquerading as OCR; owner source original download must preserve exact bytes.",
+        "No recovery of masked values from fixture truth, title, caption, prior tests or defaults; no claimed OCR success."
+      ],
+      "criterion": "degraded_unreadable",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "H06",
+      "path": "depot_ocr",
+      "input": {
+        "document": {
+          "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+          "date": "12.10.2026",
+          "document_number": "SYN-H-001",
+          "lines": [
+            {
+              "label": "Grand",
+              "kg": "100.000",
+              "unit_price": "50.00",
+              "amount": "5000.00"
+            },
+            {
+              "label": "Birinci",
+              "kg": "200.000",
+              "unit_price": "40.00",
+              "amount": "8000.00"
+            },
+            {
+              "label": "İkinci",
+              "kg": "50.000",
+              "unit_price": "20.00",
+              "amount": "1000.00"
+            }
+          ],
+          "currency": "TRY",
+          "total_kg": "350.000",
+          "total_amount": "13900.00",
+          "adet": "93",
+          "alacak": "13900.00"
+        },
+        "asset": "readable PNG"
+      },
+      "expected_facts_and_prefill": {
+        "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+        "date": "12.10.2026",
+        "document_number": "SYN-H-001",
+        "lines": [
+          {
+            "label": "Grand",
+            "kg": "100.000",
+            "unit_price": "50.00",
+            "amount": "5000.00"
+          },
+          {
+            "label": "Birinci",
+            "kg": "200.000",
+            "unit_price": "40.00",
+            "amount": "8000.00"
+          },
+          {
+            "label": "İkinci",
+            "kg": "50.000",
+            "unit_price": "20.00",
+            "amount": "1000.00"
+          }
+        ],
+        "currency": "TRY",
+        "total_kg": "350.000",
+        "total_amount": "14000.00",
+        "adet": "93",
+        "alacak": "14000.00",
+        "quality_candidates": [
+          "HIGHEST",
+          "FIRST",
+          "SECOND"
+        ],
+        "quality_authority": "applicable exact depot mapping or per-receipt owner review",
+        "payment_fact": false,
+        "field_report_count": "131 if explicitly linked; remains distinct from document ADET 93",
+        "stated_total": "13900.00",
+        "calculated_total": "14000.00",
+        "discrepancy": "100.00",
+        "state": "requires supported explicit amount decision"
+      },
+      "permitted_required_owner_inputs": [
+        "Explicit discrepancy/amount decision using existing Harvest rules; review quality; confirm."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No cash from Alacak, no guessed count/geography, no global quality alias, no rewritten worker count, no duplicate sale/receivable.",
+        "No source caption masquerading as OCR; owner source original download must preserve exact bytes.",
+        "No automatic repair to 14000 or 13900, no erased stated total."
+      ],
+      "criterion": "supported_ambiguity",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "H07",
+      "path": "depot_ocr",
+      "input": {
+        "document": {
+          "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+          "date": "12.10.2026",
+          "document_number": "SYN-H-001",
+          "lines": [
+            {
+              "label": "Grand",
+              "kg": "100.000",
+              "unit_price": "50.00",
+              "amount": "5000.00"
+            },
+            {
+              "label": "Birinci",
+              "kg": "200.000",
+              "unit_price": "40.00",
+              "amount": "8000.00"
+            },
+            {
+              "label": "İkinci",
+              "kg": "50.000",
+              "unit_price": "20.00",
+              "amount": "1000.00"
+            }
+          ],
+          "currency": "TRY",
+          "total_kg": "350.000",
+          "total_amount": "14000.00",
+          "adet": "93",
+          "alacak": "14000.00"
+        },
+        "asset": "readable PNG",
+        "owner_caption": "Это за вчера, уже оплачено 15 000 TRY."
+      },
+      "expected_facts_and_prefill": {
+        "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+        "date": "12.10.2026",
+        "document_number": "SYN-H-001",
+        "lines": [
+          {
+            "label": "Grand",
+            "kg": "100.000",
+            "unit_price": "50.00",
+            "amount": "5000.00"
+          },
+          {
+            "label": "Birinci",
+            "kg": "200.000",
+            "unit_price": "40.00",
+            "amount": "8000.00"
+          },
+          {
+            "label": "İkinci",
+            "kg": "50.000",
+            "unit_price": "20.00",
+            "amount": "1000.00"
+          }
+        ],
+        "currency": "TRY",
+        "total_kg": "350.000",
+        "total_amount": "14000.00",
+        "adet": "93",
+        "alacak": "14000.00",
+        "quality_candidates": [
+          "HIGHEST",
+          "FIRST",
+          "SECOND"
+        ],
+        "quality_authority": "applicable exact depot mapping or per-receipt owner review",
+        "payment_fact": false,
+        "field_report_count": "131 if explicitly linked; remains distinct from document ADET 93",
+        "caption_date_candidate": "2026-10-11",
+        "caption_paid_claim": "15000.00 TRY",
+        "document_date": "2026-10-12",
+        "conflicts": [
+          "date",
+          "caption payment amount versus document amount"
+        ],
+        "state": "NEEDS_INPUT; document and caption provenance separate"
+      },
+      "permitted_required_owner_inputs": [
+        "Compact source/caption conflict resolution; any actual money effect separately reviewed with account."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No cash from Alacak, no guessed count/geography, no global quality alias, no rewritten worker count, no duplicate sale/receivable.",
+        "No source caption masquerading as OCR; owner source original download must preserve exact bytes.",
+        "No overwrite of document values by caption, no cash auto-created from caption, no false coherent READY snapshot."
+      ],
+      "criterion": "supported_ambiguity",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "H08",
+      "path": "depot_ocr",
+      "input": {
+        "document": {
+          "title": "GÖRGÜN MUZ SARARTMA TESİSİ",
+          "date": "12.10.2026",
+          "document_number": "SYN-H-008",
+          "lines": [
+            {
+              "label": "Yerli",
+              "kg": "100.000",
+              "unit_price": "40.00",
+              "amount": "4000.00"
+            }
+          ],
+          "currency": "TRY",
+          "total_kg": "100.000",
+          "total_amount": "4000.00",
+          "adet": null,
+          "alacak": "4000.00"
+        },
+        "asset": "readable PNG; fixture has no applicable Yerli mapping"
+      },
+      "expected_facts_and_prefill": {
+        "depot": "Görgün",
+        "original_quality": "Yerli",
+        "kg": "100.000",
+        "unit_price": "40.00",
+        "amount": "4000.00",
+        "currency": "TRY",
+        "quality": "UNRESOLVED"
+      },
+      "permitted_required_owner_inputs": [
+        "Explicit per-receipt quality review; optional remembered mapping only with its separate explicit choice."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No cash from Alacak, no guessed count/geography, no global quality alias, no rewritten worker count, no duplicate sale/receivable.",
+        "No source caption masquerading as OCR; owner source original download must preserve exact bytes.",
+        "No FIRST/SECOND guessed from word Yerli or price; do not rewrite any historical mappings."
+      ],
+      "criterion": "supported_ambiguity",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "P01",
+      "path": "supplier_invoice_ocr",
+      "input": {
+        "document": {
+          "title": "FATURA",
+          "supplier": "SYN Gübre Tedarik",
+          "number": "SYN-P-001",
+          "date": "12.10.2026",
+          "lines": [
+            {
+              "product": "KNO3",
+              "quantity": "100.000",
+              "unit": "kg",
+              "unit_price": "5.00",
+              "amount": "500.00"
+            }
+          ],
+          "currency": "TRY",
+          "total": "500.00"
+        },
+        "asset": "readable PNG; no physical receipt or known payable seeded"
+      },
+      "expected_facts_and_prefill": {
+        "title": "FATURA",
+        "supplier": "SYN Gübre Tedarik",
+        "number": "SYN-P-001",
+        "date": "12.10.2026",
+        "lines": [
+          {
+            "product": "KNO3",
+            "quantity": "100.000",
+            "unit": "kg",
+            "unit_price": "5.00",
+            "amount": "500.00"
+          }
+        ],
+        "currency": "TRY",
+        "total": "500.00",
+        "physical_arrival": "NOT ESTABLISHED",
+        "payment": "NOT ESTABLISHED",
+        "economic_basis": "UNKNOWN unless supplied independently",
+        "route": "existing invoice/Purchases review"
+      },
+      "permitted_required_owner_inputs": [
+        "Explicit supported payable/economic intent or link existing payable; separate arrival/payment only with independent facts and confirmation."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "Invoice is not physical arrival/payment; no new stock movement, inferred cash, retroactive repricing or invented classification.",
+        "No duplicate payable for a source already linked to a posted payable."
+      ],
+      "criterion": "readable_supported",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "P02",
+      "path": "supplier_invoice_ocr",
+      "input": {
+        "document": {
+          "title": "FATURA",
+          "supplier": "SYN Gübre Tedarik",
+          "number": "SYN-P-001",
+          "date": "12.10.2026",
+          "lines": [
+            {
+              "product": "KNO3",
+              "quantity": "100.000",
+              "unit": "kg",
+              "unit_price": "5.00",
+              "amount": "500.00"
+            }
+          ],
+          "currency": "TRY",
+          "total": "500.00"
+        },
+        "asset": "readable PDF",
+        "context": "seed one prior posted 100 kg physical receipt, same verified supplier/product; cost UNKNOWN; no payable"
+      },
+      "expected_facts_and_prefill": {
+        "title": "FATURA",
+        "supplier": "SYN Gübre Tedarik",
+        "number": "SYN-P-001",
+        "date": "12.10.2026",
+        "lines": [
+          {
+            "product": "KNO3",
+            "quantity": "100.000",
+            "unit": "kg",
+            "unit_price": "5.00",
+            "amount": "500.00"
+          }
+        ],
+        "currency": "TRY",
+        "total": "500.00",
+        "receipt_match": "candidate existing 100 kg receipt; explicit link required",
+        "stock_after_link": "100.000 kg, unchanged",
+        "cost_after_link": "UNKNOWN_UNCHANGED",
+        "payable_after_explicit_operating_confirmation": "500.00 TRY"
+      },
+      "permitted_required_owner_inputs": [
+        "Explicit operating-expense/payable intent; individual payable confirmation and existing link confirmation as supported by current contracts."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "Invoice is not physical arrival/payment; no new stock movement, inferred cash, retroactive repricing or invented classification.",
+        "No duplicate payable for a source already linked to a posted payable.",
+        "No second 100 kg, no silent receipt match based solely on quantity/date, no stock cost change from invoice price."
+      ],
+      "criterion": "readable_supported",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "P03",
+      "path": "supplier_invoice_ocr",
+      "input": {
+        "document": {
+          "title": "FATURA",
+          "supplier": "SYN Gübre Tedarik",
+          "number": "SYN-P-001",
+          "date": "12.10.2026",
+          "lines": [
+            {
+              "product": "KNO3",
+              "quantity": "100.000",
+              "unit": "kg",
+              "unit_price": "5.00",
+              "amount": "500.00"
+            }
+          ],
+          "currency": "TRY",
+          "total": "500.00",
+          "payment_stamp": "ÖDENMİŞTİR"
+        },
+        "asset": "readable PNG"
+      },
+      "expected_facts_and_prefill": {
+        "title": "FATURA",
+        "supplier": "SYN Gübre Tedarik",
+        "number": "SYN-P-001",
+        "date": "12.10.2026",
+        "lines": [
+          {
+            "product": "KNO3",
+            "quantity": "100.000",
+            "unit": "kg",
+            "unit_price": "5.00",
+            "amount": "500.00"
+          }
+        ],
+        "currency": "TRY",
+        "total": "500.00",
+        "document_paid_text": "ÖDENMİŞTİR retained as source context",
+        "actual_owner_cash": "not established",
+        "payment_account": null
+      },
+      "permitted_required_owner_inputs": [
+        "Review payment fact/purpose/account separately if owner intends an actual payment."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "Invoice is not physical arrival/payment; no new stock movement, inferred cash, retroactive repricing or invented classification.",
+        "No duplicate payable for a source already linked to a posted payable.",
+        "No cash event from document stamp alone; no direct expense replacing invoice without explicit intent."
+      ],
+      "criterion": "dangerous_contrast",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "P04",
+      "path": "supplier_invoice_ocr",
+      "input": {
+        "document": {
+          "title": "FATURA",
+          "supplier": "SYN Gübre Tedarik",
+          "number": "SYN-P-001",
+          "date": "12.10.2026",
+          "lines": [
+            {
+              "product": "KNO3",
+              "quantity": "4",
+              "unit": "torba",
+              "unit_price": "125.00",
+              "amount": "500.00"
+            }
+          ],
+          "currency": "TRY",
+          "total": "500.00"
+        },
+        "asset": "readable PNG; no verified bag conversion"
+      },
+      "expected_facts_and_prefill": {
+        "supplier": "SYN Gübre Tedarik",
+        "product": "KNO3",
+        "quantity": "4",
+        "original_unit": "torba",
+        "total": "500.00",
+        "currency": "TRY",
+        "kg_quantity": "UNKNOWN",
+        "physical_arrival": "NOT ESTABLISHED"
+      },
+      "permitted_required_owner_inputs": [
+        "Verified conversion only if a separately authorized physical quantity effect is requested; invoice review can preserve four bags."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "Invoice is not physical arrival/payment; no new stock movement, inferred cash, retroactive repricing or invented classification.",
+        "No duplicate payable for a source already linked to a posted payable.",
+        "Do not assume 25 kg bags or invent 100 kg stock."
+      ],
+      "criterion": "supported_ambiguity",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "P05",
+      "path": "supplier_invoice_ocr",
+      "input": {
+        "document": {
+          "title": "FATURA",
+          "supplier": "SYN Another Supplier",
+          "number": "SYN-P-001",
+          "date": "12.10.2026",
+          "lines": [
+            {
+              "product": "KNO3",
+              "quantity": "100.000",
+              "unit": "kg",
+              "unit_price": "5.00",
+              "amount": "500.00"
+            }
+          ],
+          "currency": "TRY",
+          "total": "500.00"
+        },
+        "asset": "readable PDF",
+        "context": "candidate prior receipt belongs to SYN Gübre Tedarik"
+      },
+      "expected_facts_and_prefill": {
+        "invoice_supplier": "SYN Another Supplier",
+        "receipt_supplier": "SYN Gübre Tedarik",
+        "link_state": "known supplier mismatch; invalid link"
+      },
+      "permitted_required_owner_inputs": [
+        "Resolve with a genuinely correct existing receipt/evidence; do not relabel history."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "Invoice is not physical arrival/payment; no new stock movement, inferred cash, retroactive repricing or invented classification.",
+        "No duplicate payable for a source already linked to a posted payable.",
+        "No cross-supplier or cross-entity link, no mutated original supplier to force match."
+      ],
+      "criterion": "dangerous_contrast",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "R01",
+      "path": "source_identity",
+      "input": {
+        "source": "H01 exact bytes",
+        "steps": [
+          "Save same client UUID twice with lost first response",
+          "Repeat preparation and confirm with same request",
+          "Race confirm with a distinct request key"
+        ]
+      },
+      "expected_facts_and_prefill": {
+        "sources": 1,
+        "stable_job_action_lineage": true,
+        "authoritative_effects": "at most one sale and its owned receivable after approved confirm",
+        "stored_result_replay": "exact original"
+      },
+      "permitted_required_owner_inputs": [
+        "At most original required confirmation; no new fact entry on recovery."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No cash from Alacak, no guessed count/geography, no global quality alias, no rewritten worker count, no duplicate sale/receivable.",
+        "No source caption masquerading as OCR; owner source original download must preserve exact bytes.",
+        "No second source/event/effect from network retry or new request key."
+      ],
+      "criterion": "reliability",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "R02",
+      "path": "source_identity",
+      "input": {
+        "source": "H01 exact bytes",
+        "steps": [
+          "Save under two distinct client UUIDs/locators",
+          "Review duplicate relationship"
+        ]
+      },
+      "expected_facts_and_prefill": {
+        "sources": 2,
+        "original_hash_equal": true,
+        "duplicate_relation": "visible",
+        "authoritative_receipt_roots": "at most one for same document under existing binary duplicate protections"
+      },
+      "permitted_required_owner_inputs": [
+        "Explicit duplicate review; reuse authoritative existing receipt rather than silently post another."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No cash from Alacak, no guessed count/geography, no global quality alias, no rewritten worker count, no duplicate sale/receivable.",
+        "No source caption masquerading as OCR; owner source original download must preserve exact bytes.",
+        "Do not collapse the two input events into one source; do not treat distinct locators as permission for duplicate sale."
+      ],
+      "criterion": "reliability",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "R03",
+      "path": "source_identity",
+      "input": {
+        "source": "T02",
+        "steps": [
+          "Save original client UUID",
+          "Resend same UUID with amount changed to 6000"
+        ]
+      },
+      "expected_facts_and_prefill": {
+        "sources": 1,
+        "original_amount": "5000.00",
+        "changed_input": "conflict; old bytes/text retained"
+      },
+      "permitted_required_owner_inputs": [
+        "Explicit supported revision/new event only, never mutate original."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "No overwrite of original or automatic second debt."
+      ],
+      "criterion": "reliability",
+      "baseline": null,
+      "after": null
+    },
+    {
+      "id": "R04",
+      "path": "durability_and_participant_isolation",
+      "input": {
+        "source": "P02",
+        "steps": [
+          "Hold OCR worker after source+job commit, terminate/recover lease",
+          "Persist unsent draft; logout/login same participant",
+          "Switch to another participant during late source/preview response",
+          "Simulate IndexedDB write failure",
+          "Lose approved command response then read exact scoped receipt/replay"
+        ]
+      },
+      "expected_facts_and_prefill": {
+        "source_before_ocr": "ON SERVER only after durable matching acknowledgement",
+        "draft_storage": "ciphertext; same-participant recovery only",
+        "job": "same source/attempt chain, honest bounded retry",
+        "storage_failure": "unsaved, not ON DEVICE",
+        "cross_participant_visibility": 0,
+        "extra_effects": 0
+      },
+      "permitted_required_owner_inputs": [
+        "Original effect confirmation only; no silent authoritative confirm after reconnect."
+      ],
+      "forbidden_effects": [
+        "Before individual owner confirmation: zero ledger postings, stock movements, posted settlements or domain business effects.",
+        "Never overwrite source or silently change paid/unpaid status.",
+        "Invoice is not physical arrival/payment; no new stock movement, inferred cash, retroactive repricing or invented classification.",
+        "No duplicate payable for a source already linked to a posted payable.",
+        "No plaintext fallback, wrong-participant decrypt/sync, late response cross-contamination or false saved badge."
+      ],
+      "criterion": "reliability",
+      "baseline": null,
+      "after": null
+    }
+  ]
+}

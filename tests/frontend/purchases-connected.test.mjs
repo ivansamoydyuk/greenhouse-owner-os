@@ -36,7 +36,7 @@ test('transfer history shows paired movements and unknown cost without an expens
  const html=stockEventView({...event,kind:'transfer',movements:[{seq:1,product_name:'KNO3',quantity:'-20',base_unit:'kg',location_name:'A',uncosted_quantity:'-20',known_cost:'0',currency:null,event_date:'2026-10-10'},{seq:2,product_name:'KNO3',quantity:'20',base_unit:'kg',location_name:'B',uncosted_quantity:'20',known_cost:'0',currency:null,event_date:'2026-10-10'}]});assert.match(html,/-20 kg/);assert.match(html,/20 kg/);assert.match(html,/Без известной стоимости/);assert.match(html,/Перемещение/);
 });
 test('invoice UI uses immutable source context and separate versioned confirmations',()=>{
- const s=fs.readFileSync('prototype/owner-r3/connected.js','utf8');assert.match(s,/capture_context:'supplier_invoice',invoice_intent:draft.intent,invoice_receipt_id:current.id/);assert.match(s,/invoice-confirm-payable/);assert.match(s,/invoice-confirm-link/);assert.match(s,/preview_digest:proposal.revision.preview_digest/);assert.match(s,/confirmed_effect\?\.effect\?\.id/);assert.match(s,/Источник не связан с этим приходом/);assert.match(s,/draft.choose==='yes'/);
+ const s=fs.readFileSync('prototype/owner-r3/connected.js','utf8');assert.match(s,/capture_context:'supplier_invoice',invoice_receipt_id:current.id/);assert.match(s,/invoice-confirm-payable/);assert.match(s,/invoice-confirm-link/);assert.match(s,/preview_digest:proposal.revision.preview_digest/);assert.match(s,/confirmed_effect\?\.effect\?\.id/);assert.match(s,/Источник не связан с этим приходом/);assert.match(s,/draft.choose==='yes'/);
 });
 
 test('current explicit invoice target cannot be hidden by an older source context',()=>{

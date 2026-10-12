@@ -24,3 +24,78 @@ Physical receipt changes only permitted Inventory quantity after owner confirmat
 The new browser checks compare the same three owner cases on the immutable delivered baseline and this candidate. A separate guarded diagnostic adds an explicitly synthetic TEST İmamlı reference to baseline TEST data without changing baseline application files. No real greenhouse data or topology is imported.
 
 Canonical ADR/Data Dictionary writeback, if needed, is a separate factual technical clarification reviewed by the coordinating owner-facing task; this document does not claim a new accepted product policy.
+
+## Capture Daily Completion extension (2026-10-12)
+
+This section describes the bounded implementation based on merged PR #27,
+`9a981766f217fe33364f32b601bfc2a4468b4f59`; the earlier base/status above is
+historical. Exact execution evidence and release status belong to the delivery
+record and applicable CI, not an assumed PASS in this contract.
+
+### Existing recognition and immutable layers
+
+Explicit depot and supplier-document contexts now use the same local
+Poppler/Tesseract recognizer as generic file capture. Source bytes and the owner's
+separate caption are saved before recognition. Context identifies the intended
+editor; it is not evidence of payment, amount, supplier, quality or field linkage.
+OCR page/line evidence and engine version remain derivatives of the immutable
+original. Unchanged facts retain their extraction provenance when the owner
+reviews another fact. An older edited revision displays the extraction bound to
+its history rather than a newer unaccepted retry. Legacy manual-context captions
+are labelled not recognized, never retroactively treated as OCR.
+
+A failed recognition keeps the existing context slots and bounded preparation
+job lifecycle. Successful retry can enrich only untouched automatic slots under
+source/lease fences. Any owner action prevents automatic replacement of that
+slot's interpretation. Manual correction stays linked to the same source and
+proposal family. Document warnings, contradictory captions and unreadable rows
+require explicit original review; omission or null cannot remove a recorded
+review requirement. Quality acknowledgement is specific to the selected depot
+and reviewed label/category pairs.
+
+Document-level ADET may be retained in the proposal and approved review snapshot.
+It is not allocated to quality lines and does not make unknown authoritative
+line counts known. Field branches, document ADET and depot kilograms remain
+independent. The Harvest source-linked evidence record deliberately references
+Inbox originals instead of duplicating their binary payload.
+
+### Deferred invoice intent
+
+A supplier source associated with an existing physical receipt can be saved
+without selecting its accounting treatment first. Preparation retains known
+facts. A newly prepared payable remains blocked while its invoice intent is
+undecided; removing the field does not erase that requirement. Selecting an
+already recorded debt explicitly rejects an unposted new-payable proposal on
+the server before linking the existing obligation. A posted sibling cannot be
+hidden or rejected by this choice. Invoice linkage never repeats the physical
+receipt, creates payment or silently reprices inventory.
+
+### Bounded ambiguous-money recovery and migration 0033
+
+A narrow nominal money source can retain amount, party and purpose without
+inventing paid status. The owner explicitly chooses an operating payable, paid
+expense or payment against an existing debt. The server recomputes eligibility
+and known candidates from the immutable source, not editable request candidates.
+Plan, negation, third-party statements and unsupported ambiguity do not become
+actual transactions through this path. The resulting typed proposal still needs
+its existing critical facts and individual owner confirmation.
+
+`POST /entities/{entity_id}/owner/captures/{item_id}/money-recovery` accepts only
+an origin proposal, expected version, explicit supported intent and optional
+reason. It creates no accounting effect. Stable source/origin identity and the
+existing recovery-family uniqueness, locking, audit and finality gates prevent
+competing intent choices from creating independently postable siblings. Existing
+source-linked DirectExpense recovery remains supported; null-origin general
+money recovery is not introduced.
+
+Migration `20261012_0033` is necessary because existing proposal action types are
+immutable and the installed 0025 recovery guard only permits DirectExpense.
+It extends only the accepted typed recovery slots/targets in the existing
+forward-only guard functions, failing closed on unexpected prior definitions.
+It creates no parallel ledger or business aggregate and rewrites no applied
+migration, original or historical instruction. Clean installation and populated
+0032-to-0033 upgrade, including old confirmed replay, are release gates.
+
+This is a technical extension of accepted owner authority and recovery, not a
+new valuation, cost-classification or period policy. D01–D06 remain open;
+physical iPhone acceptance and production deployment are separate decisions.

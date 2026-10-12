@@ -22,7 +22,7 @@ class CaptureSource(StrictModel):
     @model_validator(mode='after')
     def meaningful(self):
         if self.capture_context=='supplier_invoice':
-            if self.invoice_intent is None or self.invoice_receipt_id is None:raise ValueError('Invoice intent and physical receipt context are required')
+            if self.invoice_receipt_id is None:raise ValueError('Physical receipt context is required')
         elif self.invoice_intent is not None or self.invoice_receipt_id is not None:raise ValueError('Invoice fields require supplier_invoice context')
         if self.captured_at.tzinfo is None: raise ValueError('Capture timestamp must include timezone')
         if not ((self.text and self.text.strip()) or self.file_base64): raise ValueError('Meaningful source required')
@@ -45,6 +45,8 @@ class ProposalAttribution(StrictModel):
         return v
 
 class MoneyProposal(StrictModel):
+    document_reviewed: bool | None = Field(default=None,strict=True,exclude_if=lambda v:v is None)
+    invoice_intent: Literal['undecided','operating_expense'] | None = Field(default=None,exclude_if=lambda v:v is None)
     amount: str | None = None
     currency: Literal['TRY','USD','EUR','UAH'] | None = 'TRY'
     event_date: date | None = None
@@ -85,6 +87,9 @@ class TaskProposal(StrictModel):
     relative_time_context: str | None = Field(default=None, min_length=1, max_length=250, exclude_if=lambda v:v is None)
 
 class DepotProposal(StrictModel):
+    document_reviewed: bool | None = Field(default=None,strict=True,exclude_if=lambda v:v is None)
+    # A document total is not a count allocation across quality lines.
+    document_count: int | None = Field(default=None,gt=0,le=2147483647,strict=True,exclude_if=lambda v:v is None)
     due_date: date | None = Field(default=None,exclude_if=lambda v:v is None)
     document_number: str | None = Field(default=None,max_length=250,exclude_if=lambda v:v is None)
     depot_id: UUID | None = None
@@ -121,6 +126,7 @@ class InvoiceMatchProposal(StrictModel):
 
 class UnknownProposal(StrictModel):
     note: str | None = Field(default=None,max_length=2000)
+    money_candidates: MoneyProposal | None = Field(default=None,exclude_if=lambda v:v is None)
 
 DTO = {'PAYABLE':MoneyProposal,'PAYMENT':MoneyProposal,'DIRECT_EXPENSE':MoneyProposal,
        'STOCK_RECEIPT':StockProposal,'STOCK_APPLICATION':StockProposal,'PERSONAL_TASK':TaskProposal,
@@ -146,6 +152,10 @@ class ExpenseRecoveryAction(StrictModel):
         if (self.origin_proposal_id is None) != (self.expected_version is None):
             raise ValueError('Selected origin and its version must be supplied together')
         return self
+
+class MoneyRecoveryAction(ReviewAction):
+    origin_proposal_id: UUID
+    intent: Literal['operating_payable','paid_expense','debt_payment']
 
 class TaskStateAction(StrictModel):
     expected_version: int = Field(gt=0)

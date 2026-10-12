@@ -3609,6 +3609,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /entities/{entity_id}/owner/captures/{item_id}/money-recovery:
+    post:
+      summary: Recover Source Money Intent
+      operationId: recover_money_v1_entities__entity_id__owner_captures__item_id__money_recovery_post
+      parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entity Id
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoneyRecoveryAction'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /entities/{entity_id}/owner/confirmations:
     get:
       summary: Queue
@@ -8264,6 +8307,35 @@ components:
       additionalProperties: false
       type: object
       title: ExpenseRecoveryAction
+    MoneyRecoveryAction:
+      additionalProperties: false
+      properties:
+        expected_version:
+          exclusiveMinimum: 0
+          title: Expected Version
+          type: integer
+        reason:
+          default: ''
+          maxLength: 2000
+          title: Reason
+          type: string
+        origin_proposal_id:
+          format: uuid
+          title: Origin Proposal Id
+          type: string
+        intent:
+          enum:
+          - operating_payable
+          - paid_expense
+          - debt_payment
+          title: Intent
+          type: string
+      required:
+      - expected_version
+      - origin_proposal_id
+      - intent
+      title: MoneyRecoveryAction
+      type: object
     OwnerFormSource:
       properties:
         schema_version:

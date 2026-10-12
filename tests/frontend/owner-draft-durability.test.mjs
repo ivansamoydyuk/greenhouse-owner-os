@@ -18,7 +18,7 @@ test('actual owner input and unload handlers retain pending multiline fields, co
   raw.put=async row=>{const index=seen.length;seen.push(row);started[index].resolve();await gates[index].promise;rows.set(row.key,row);};
   const states=[],errors=[],writes=new FertilizerDraftWrites(api,(_,state)=>states.push(state));
   const handlers={},form={dataset:{form:'depot'}},fields={line_1_quality:'İkinci',line_1_quality_category:'SECOND'};
-  const context={draft,route,fertilizerWrites:writes,clearFieldValidation(){},values:()=>({...fields}),showError:error=>errors.push(error),
+  const context={draft,route,ownerEditSequence:0,fertilizerWrites:writes,clearFieldValidation(){},values:()=>({...fields}),showError:error=>errors.push(error),
     document:{addEventListener:(name,handler)=>handlers[name]=handler},window:{addEventListener:(name,handler)=>handlers[name]=handler}};
   const source=readFileSync(new URL('../../prototype/owner-r3/connected.js',import.meta.url),'utf8');
   vm.runInNewContext(source.slice(source.indexOf('document.addEventListener("input"'),source.indexOf('document.addEventListener("change"')),context);
@@ -26,7 +26,7 @@ test('actual owner input and unload handlers retain pending multiline fields, co
   const input=name=>handlers.input({target:{name,type:'text',closest:()=>form}});
   input('line_1_quality');await started[0].promise;
   for(const [name,value] of [['line_1_kg','300'],['line_1_price','50'],['line_1_count','33'],['stated_total','45000']]){fields[name]=value;input(name);}
-  assert.equal(states.at(-1),'saving');let prevented=false;const event={preventDefault:()=>prevented=true};handlers.beforeunload(event);
+  assert.equal(context.ownerEditSequence,5);assert.equal(states.at(-1),'saving');let prevented=false;const event={preventDefault:()=>prevented=true};handlers.beforeunload(event);
   assert.equal(prevented,true);assert.equal(event.returnValue,'');assert.equal(draft.line_1_kg,'300');assert.equal((await api.readDraft(route)).line_1_kg,undefined);
   gates[0].resolve();await started[1].promise;
   assert.equal(states.includes('saved'),false);assert.equal(seen.length,2);assert.ok(!JSON.stringify(seen).includes('PRIVATE ORIGINAL'));

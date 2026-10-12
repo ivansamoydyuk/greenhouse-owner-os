@@ -41,8 +41,24 @@ with sf() as db:
   first=next(v for v in originals if str(v['id'])==x['source_id'])
   assert hashlib.sha256(first['file_bytes']).hexdigest()==x['invoice_sha256']
   assert first['metadata']['invoice_receipt_id']==x['receipt_id']
+  assert first['metadata']['invoice_intent'] is None and first['raw_text']==x['source_text']
+  second=next(v for v in originals if str(v['id'])==x['existing_source_id'])
+  assert second['metadata']['invoice_intent'] is None and second['raw_text']==x['existing_source_text'] and second['file_bytes'] is None
+  assert second['metadata']['invoice_receipt_id']==x['receipt_id']
+  first_revision=rows('SELECT r.* FROM core.proposal_revisions r JOIN core.proposed_actions p ON p.id=r.proposal_id AND p.version=r.version WHERE p.entity_id=:e AND p.id=:payable_proposal_id')
+  assert len(first_revision)==1 and first_revision[0]['payload']['invoice_intent']=='operating_expense'
   proposals=rows('SELECT * FROM core.proposed_actions WHERE entity_id=:e AND inbox_id=:existing_source_id')
-  assert len(proposals)==1 and proposals[0]['action_type']=='INVOICE_MATCH' and proposals[0]['state']=='CONFIRMED_NONPOSTING'
+  assert len(proposals)==2 and {p['action_type'] for p in proposals}=={'PAYABLE','INVOICE_MATCH'}
+  rejected=next(p for p in proposals if p['action_type']=='PAYABLE');matched=next(p for p in proposals if p['action_type']=='INVOICE_MATCH')
+  assert str(rejected['id'])==x['rejected_payable_proposal_id'] and rejected['state']=='REJECTED'
+  assert str(matched['id'])==x['existing_match_proposal_id'] and matched['state']=='CONFIRMED_NONPOSTING'
+  assert x['existing_payable_rejection_durable'] is True
+  assert not rows('SELECT * FROM core.confirmation_effects WHERE entity_id=:e AND proposal_id=:rejected_payable_proposal_id')
+  rejected_actions=rows('SELECT * FROM core.proposal_actions WHERE entity_id=:e AND proposal_id=:rejected_payable_proposal_id')
+  assert len([v for v in rejected_actions if v['action']=='REJECT'])==1 and not any(v['action']=='CONFIRM' for v in rejected_actions)
+  second_effects=rows('SELECT * FROM core.confirmation_effects WHERE entity_id=:e AND proposal_id IN (:rejected_payable_proposal_id,:existing_match_proposal_id)')
+  assert len(second_effects)==1 and second_effects[0]['proposal_id']==matched['id']
+  assert second_effects[0]['obligation_id'] is None and second_effects[0]['payment_id'] is None
   obligations=rows('SELECT * FROM finance.obligations WHERE entity_id=:e AND counterparty_id=:supplier_id')
   assert len(obligations)==1 and str(obligations[0]['id'])==x['obligation_id'] and obligations[0]['original_amount']==Decimal('500')
   posting_id=obligations[0]['posting_id']
@@ -56,7 +72,7 @@ with sf() as db:
   assert rows('SELECT * FROM finance.money_account_balances WHERE entity_id=:e AND money_account_id=:account_id')[0]['balance']==Decimal('-200')
   effects=rows('SELECT * FROM core.confirmation_effects WHERE entity_id=:e AND proposal_id IN (:payable_proposal_id,:match_proposal_id)')
   assert len(effects)==2
-  proof['cases'].append(dict(engine=x['engine'],receipt_id=x['receipt_id'],physical_moves=3,physical_total='100',source_position='80',destination_position='20',invoice_links=2,payables=1,remaining_payable='300',payments=1,cash='-200',cost='UNKNOWN',original_hashes_verified=True))
+  proof['cases'].append(dict(engine=x['engine'],receipt_id=x['receipt_id'],physical_moves=3,physical_total='100',source_position='80',destination_position='20',invoice_links=2,payables=1,remaining_payable='300',payments=1,cash='-200',cost='UNKNOWN',original_hashes_verified=True,existing_payable_sibling_rejected=True))
  proof['finance_reconciliation']=reconcile(db,include_classification=True,snapshot_established=True,entity_id=e)
  assert proof['finance_reconciliation']['ok'],proof['finance_reconciliation']
  db.rollback()
