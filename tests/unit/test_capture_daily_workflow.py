@@ -35,6 +35,21 @@ def test_baseline_only_copies_measurement_files():
     assert 'cp src/' not in selection
 
 
+def test_owned_diagnostics_are_guarded_before_private_artifact_upload():
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    steps = workflow['jobs']['corpus-browser-sql']['steps']
+    names = [step.get('name', step.get('uses')) for step in steps]
+    diagnostic = names.index('Preserve owned bootstrap diagnostics')
+    guard = names.index('Guard private evidence')
+    upload = names.index('actions/upload-artifact@v4')
+    assert diagnostic < guard < upload
+    assert steps[diagnostic]['if'] == 'always()'
+    assert '$RUNNER_TEMP/r3-connected-server.log' in steps[diagnostic]['run']
+    assert 'docker logs "$R3_PILOT_CONTAINER"' in steps[diagnostic]['run']
+    assert 'steps.guard.outcome' in steps[upload]['if']
+    assert 'success' in steps[upload]['if']
+
+
 def test_capture_final_gates_cover_feature_and_merged_default():
     for path in (WORKFLOW, Path('.github/workflows/postgresql-verification.yml'), Path('.github/workflows/r3-connected-pilot.yml')):
         workflow = yaml.safe_load(path.read_text())

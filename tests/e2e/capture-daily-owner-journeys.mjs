@@ -11,6 +11,7 @@ import {chromium,webkit} from 'playwright';
 import {ownerLogin,workerLogin,pilotCredentials,pilotMode,expiredCookie,redactPilot,resetFixtureRateLimits} from './helpers/pilot-auth.mjs';
 import {readOwnerDrafts} from './helpers/owner-draft-observer.mjs';
 import {installClickAudit} from './friction-metrics.mjs';
+import {observeBrowserDiagnostics,safePath} from './helpers/browser-diagnostics.mjs';
 const mode=process.env.CAPTURE_DAILY_MODE||'candidate',base=process.env.PREVIEW_URL||'http://127.0.0.1:4173',out=process.env.E2E_ARTIFACTS||'artifacts/capture-daily-owner';
 assert.ok(['baseline','candidate'].includes(mode));assert.equal(pilotMode,true);assert.ok(['localhost','127.0.0.1'].includes(new URL(base).hostname));
 const sha=process.env.OWNER_PREVIEW_FEATURE_SHA;assert.match(sha||'',/^[0-9a-f]{40}$/);
@@ -20,6 +21,72 @@ const credentials=await pilotCredentials();await fs.mkdir(out,{recursive:true});
 const result={sha,mode,status:'RUNNING',scope:'short_text_and_supplier_invoice_plus_capture_recovery',benchmark_sha256:digest(rawCorpus),records:[],screenshots:[],layouts:[],errors:[],metric_definitions:{trusted_clicks:'Executed Playwright clicks with a trusted DOM event, excluding authentication/setup. Native selects, file selections and fills are separate; these are not physical-device tap counts.',repeated_known_facts:'Changed business controls that re-enter source facts, including correction of a wrong prefill.',new_required_facts:'Changed controls supplying new owner decisions absent from source, such as economic intent or explicit receipt linkage.',review_acknowledgements:'Authority and original-quality checks, not repeated numeric entry.',baseline_barrier:'A witnessed unsupported or manual path; never a positive preparation claim.'}};
 const write=()=>fs.writeFile(path.join(out,'capture-daily-owner-browser.json'),JSON.stringify(result,null,2)+'\n');
 const eqDecimal=(a,b)=>{const exact=v=>{assert.match(String(v),/^\d+(?:\.\d{1,6})?$/);const [i,f='']=String(v).split('.');return BigInt(i)*1000000n+BigInt((f+'000000').slice(0,6));};assert.equal(exact(a),exact(b));};
+// Metadata-only observations: no headers, bodies, cookies, query/hash values,
+// storage contents, source text, exception text or authentication key material.
+async function installCaptureDiagnostics(page){
+ const observer=await observeBrowserDiagnostics(page),started=Date.now(),limit=400;
+ const history=[],requestNavigations=new Map(),documents=new Map();let dropped=0,navigationId=0,requestId=0,documentId=0;
+ const append=row=>{history.push(row);if(history.length>limit){history.shift();dropped++;}};
+ const phases=new Set(['config-read','draft-key-read','configure','configured','refresh-data','harvest-navigation-read','finance-navigation-read','generation-mismatch','render','render-returned','error','recovery']);
+ page.on('framenavigated',frame=>{if(frame===page.mainFrame())append({event:'navigation',navigation_id:++navigationId,atMs:Date.now()-started,path:safePath(frame.url())});});
+ // The reused observer registers its request listener first. Both counters see
+ // exactly the same page requests, including requests whose body never ends.
+ page.on('request',request=>{
+  const documentRequest=request.isNavigationRequest()&&request.frame()===page.mainFrame();
+  requestNavigations.set(++requestId,{navigation_id:navigationId+(documentRequest?1:0),document_request:documentRequest});
+  if(requestNavigations.size>limit)requestNavigations.delete(requestNavigations.keys().next().value);
+ });
+ await page.exposeBinding('__captureBootstrapMetadata',(source,value)=>{
+  if(source.frame!==page.mainFrame()||!value||!Number.isFinite(value.document_stamp)||!Number.isFinite(value.atMs))return;
+  if(!documents.has(value.document_stamp)){documents.set(value.document_stamp,++documentId);if(documents.size>100)documents.delete(documents.keys().next().value);}
+  const row={event:value.event==='document'?'document':'bootstrap',document_id:documents.get(value.document_stamp),navigation_id:navigationId,atMs:Date.now()-started,documentAtMs:value.atMs};
+  if(phases.has(value.phase))row.phase=value.phase;
+  if(phases.has(value.previous_phase))row.previous_phase=value.previous_phase;
+  if(Number.isSafeInteger(value.generation)&&value.generation>=0)row.generation=value.generation;
+  if(row.event==='document'||row.phase||row.previous_phase)append(row);
+ });
+ await page.addInitScript(allowed=>{
+  const phases=new Set(allowed),events=[];let dropped=0,seenApp=null;
+  const record=value=>{
+   const row={...value,document_stamp:performance.timeOrigin,atMs:performance.now()};
+   events.push(row);if(events.length>100){events.shift();dropped++;}
+   // Observation must never block page initialization or application promises.
+   Promise.resolve(window.__captureBootstrapMetadata(row)).catch(()=>{});
+  };
+  window.__captureBootstrapHistory=()=>({dropped,entries:events.map(x=>({...x}))});
+  record({event:'document'});
+  new MutationObserver(mutations=>{
+   for(let i=0;i<mutations.length;i++){
+    const mutation=mutations[i];if(mutation.type!=='attributes'||mutation.target.id!=='app'||mutation.attributeName!=='data-bootstrap-stage')continue;
+    // Attribute reads alone see only the last value in one microtask. The next
+    // mutation's oldValue retains each intermediate phase, including pre-timeout.
+    const next=mutations.slice(i+1).find(m=>m.target===mutation.target&&m.attributeName===mutation.attributeName);
+    const phase=next?next.oldValue:mutation.target.getAttribute('data-bootstrap-stage');
+    const row={event:'bootstrap',generation:Number(mutation.target.getAttribute('data-bootstrap-generation'))};
+    if(phases.has(phase))row.phase=phase;if(phases.has(mutation.oldValue))row.previous_phase=mutation.oldValue;
+    if(row.phase||row.previous_phase)record(row);
+   }
+   const app=document.querySelector('#app');if(app&&app!==seenApp){seenApp=app;const phase=app.getAttribute('data-bootstrap-stage');if(phases.has(phase))record({event:'bootstrap',phase,generation:Number(app.getAttribute('data-bootstrap-generation'))});}
+  }).observe(document,{subtree:true,childList:true,attributes:true,attributeOldValue:true,attributeFilter:['data-bootstrap-stage']});
+ },[...phases]);
+ return {async capture(){
+  const captured=await observer.capture();
+  const current=await page.evaluate(()=>window.__captureBootstrapHistory?.()).catch(()=>null);
+  // The final document's bounded buffer covers a binding notification still in
+  // flight. Sanitize it again; never serialize arbitrary page-supplied fields.
+  const currentEntries=[];for(const value of current?.entries||[]){
+   const row={event:value.event==='document'?'document':'bootstrap'};
+   if(Number.isFinite(value.atMs))row.atMs=value.atMs;
+   if(phases.has(value.phase))row.phase=value.phase;if(phases.has(value.previous_phase))row.previous_phase=value.previous_phase;
+   if(Number.isSafeInteger(value.generation)&&value.generation>=0)row.generation=value.generation;
+   currentEntries.push(row);
+  }
+  return {version:1,...captured,network:{...captured.network,entries:captured.network.entries.map(row=>({...row,...(requestNavigations.get(row.id)||{})}))},navigation_and_bootstrap:{dropped,entries:history.map(x=>({...x}))},current_document_bootstrap:{dropped:Number.isSafeInteger(current?.dropped)?current.dropped:0,entries:currentEntries.slice(-100)}};
+ }};
+}
+async function boundedDiagnosticCapture(observer){
+ let timer;try{return await Promise.race([observer.capture(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Optional diagnostic deadline')),2000);})]);}finally{clearTimeout(timer);}
+}
 const engines=[['chromium',chromium],['webkit',webkit]].filter(([name])=>!process.env.CAPTURE_DAILY_ENGINE||process.env.CAPTURE_DAILY_ENGINE===name);
 assert.equal(engines.length,1,'T03 requires an isolated engine TEST database');assert.equal(engines[0][0],setup.engine);
 for(const [engine,browserType] of engines){
@@ -29,6 +96,7 @@ for(const [engine,browserType] of engines){
   const c={id,status:'RUNNING',stage:'owner_login',operations:[],barriers:[]};record.cases.push(c);await write();
   const context=await browser.newContext({viewport:{width:390,height:844},acceptDownloads:true}),page=await context.newPage();let phase='capture',ordinal=0;
   page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(25000);await installClickAudit(page);
+  const diagnostic=await installCaptureDiagnostics(page).catch(()=>null);c.diagnostics_available=Boolean(diagnostic);
   page.on('pageerror',error=>result.errors.push({engine,case_id:id,message:redactPilot(error.message)}));
   const stage=async value=>{c.stage=value;record.stage=id+':'+value;await write();};
   const ready=prefix=>page.waitForFunction(p=>{const r=location.hash.slice(1)||'home';return r.startsWith(p)&&document.querySelector('#main')?.dataset.renderedRoute===r;},prefix,{timeout:25000});
@@ -63,7 +131,9 @@ for(const [engine,browserType] of engines){
    await work({c,page,context,config,root,ready,read,stage,click,field,input,layouts,observe,prepare,openPrepared,edit,actualFile,original,lostConfirmation,viewportProof,setPhase:p=>phase=p});
    if(c.status==='RUNNING')c.status=mode==='baseline'?'BASELINE_RECORDED':'PASS';c.stage='complete';
   }catch(error){c.status='FAIL';c.failure={stage:c.stage,message:redactPilot(error.message),stack:redactPilot(error.stack||'')};if(!page.isClosed()&&!page.url().includes('/pilot/'))await page.screenshot({path:path.join(out,`${engine}-${id}-failure.png`),fullPage:true,timeout:10000}).catch(()=>{});}
-  finally{const ops=c.operations.filter(o=>o.phase!=='setup');c.metrics={trusted_clicks:ops.filter(o=>o.events).length,capture_clicks:ops.filter(o=>o.events&&o.phase==='capture').length,review_clicks:ops.filter(o=>o.events&&o.phase==='review').length,destination_clicks:ops.filter(o=>o.events&&o.phase==='destination').length,repeated_known_facts:ops.filter(o=>o.kind==='field_edit'&&o.origin==='source_fact').length,new_required_facts:ops.filter(o=>o.kind==='field_edit'&&o.origin==='new_required_fact').length,review_acknowledgements:ops.filter(o=>o.kind==='review_acknowledgement').length,native_selects:ops.filter(o=>o.operation==='selectOption').length,text_fills:ops.filter(o=>o.operation==='fill').length,initial_capture_entries:ops.filter(o=>o.kind==='initial_capture_input').length,file_selections:ops.filter(o=>o.kind==='file_selection').length};await context.close().catch(()=>{});await write();}
+  finally{const ops=c.operations.filter(o=>o.phase!=='setup');c.metrics={trusted_clicks:ops.filter(o=>o.events).length,capture_clicks:ops.filter(o=>o.events&&o.phase==='capture').length,review_clicks:ops.filter(o=>o.events&&o.phase==='review').length,destination_clicks:ops.filter(o=>o.events&&o.phase==='destination').length,repeated_known_facts:ops.filter(o=>o.kind==='field_edit'&&o.origin==='source_fact').length,new_required_facts:ops.filter(o=>o.kind==='field_edit'&&o.origin==='new_required_fact').length,review_acknowledgements:ops.filter(o=>o.kind==='review_acknowledgement').length,native_selects:ops.filter(o=>o.operation==='selectOption').length,text_fills:ops.filter(o=>o.operation==='fill').length,initial_capture_entries:ops.filter(o=>o.kind==='initial_capture_input').length,file_selections:ops.filter(o=>o.kind==='file_selection').length};// Preserve the primary manifest and original failure before optional observations.
+   await write();if(diagnostic){try{const captured=await boundedDiagnosticCapture(diagnostic);const filename=`${engine}-${id}-diagnostics.json`;await fs.writeFile(path.join(out,filename),JSON.stringify({sha,mode,engine,case_id:id,status:c.status,stage:c.stage,...captured},null,2)+'\n');c.diagnostic_artifact=filename;}catch{c.diagnostic_capture_failed=true;}}
+   await context.close().catch(()=>{});await write();}
   return c;
  };
  const paid=await run('T01',async h=>{

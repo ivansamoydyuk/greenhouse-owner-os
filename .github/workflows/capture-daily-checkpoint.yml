@@ -1,7 +1,7 @@
 name: Capture daily real OCR checkpoint
 on:
   push:
-    branches: [14-capture-daily-completion, 01-architecture-database]
+    branches: [14-capture-daily-completion, 15-capture-recovery-diagnostics, 01-architecture-database]
   workflow_dispatch:
 permissions:
   contents: read
@@ -84,6 +84,12 @@ jobs:
           python scripts/capture_daily_owner_sql_evidence.py --before "$E2E_ARTIFACTS/capture-daily-owner-before.json"
           node tests/e2e/capture-daily-owner-journeys.mjs
           python scripts/capture_daily_owner_sql_evidence.py --verify "$E2E_ARTIFACTS/capture-daily-owner-browser.json" --baseline "$E2E_ARTIFACTS/capture-daily-owner-before.json" --output "$E2E_ARTIFACTS/capture-daily-owner-sql.json"
+      - name: Preserve owned bootstrap diagnostics
+        if: always()
+        run: |
+          mkdir -p "$E2E_ARTIFACTS/runtime"
+          if [ -f "$RUNNER_TEMP/r3-connected-server.log" ]; then cp "$RUNNER_TEMP/r3-connected-server.log" "$E2E_ARTIFACTS/runtime/server.log"; fi
+          if [ -n "${R3_PILOT_CONTAINER:-}" ]; then docker logs "$R3_PILOT_CONTAINER" > "$E2E_ARTIFACTS/runtime/postgres.log" 2>&1 || true; fi
       - name: Guard private evidence
         id: guard
         if: always()
