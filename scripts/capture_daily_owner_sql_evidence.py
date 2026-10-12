@@ -32,6 +32,8 @@ sha=os.environ['OWNER_PREVIEW_FEATURE_SHA'];sf=make_session_factory(url)
 corpus_path=Path('tests/fixtures/capture_daily_benchmark.json');corpus=json.loads(corpus_path.read_text())
 case=lambda key:next(c for c in corpus['cases'] if c['id']==key)
 TABLES=('finance.obligations','finance.payments','finance.direct_expenses','finance.postings','finance.advances','finance.owner_fundings','finance.advance_applications','finance.direct_settlements','finance.own_account_transfers','inventory.events','inventory.movements','inventory.stock','inventory.products','harvest.worker_reports','harvest.depot_settlements','core.invoice_receipt_links','core.confirmation_effects')
+# Inventory movements are append-only rows keyed by seq, not a UUID id.
+ROW_KEYS={'core.confirmation_effects':'proposal_id','inventory.movements':'seq'}
 UNCHANGED=('finance.advances','finance.owner_fundings','finance.advance_applications','finance.direct_settlements','finance.own_account_transfers','inventory.products','harvest.worker_reports','harvest.depot_settlements')
 def normalized(obj):return json.loads(json.dumps(obj,sort_keys=True,default=str))
 def write(filename,value):
@@ -206,7 +208,7 @@ try:
    movements=rows(db,'SELECT * FROM inventory.movements WHERE entity_id=:e AND event_id=:id',e=e,id=event['id']);assert len(movements)==1
    movement=movements[0];assert movement['quantity']==movement['uncosted_quantity']==Decimal('100') and movement['known_cost']==0
    assert movement['product_id']==UUID(setup['product_id']) and movement['location_id']==UUID(setup['location_id'])
-   owned['inventory.events'].add(str(event['id']));owned['inventory.movements'].add(str(movement['id']))
+   owned['inventory.events'].add(str(event['id']));owned['inventory.movements'].add(str(movement[ROW_KEYS['inventory.movements']]))
    match=one('SELECT * FROM core.proposed_actions WHERE entity_id=:e AND id=:id',id=UUID(late['match_proposal_id']))
    assert match['action_type']=='INVOICE_MATCH' and match['state']=='CONFIRMED_NONPOSTING' and match['inbox_id']==original['id']
    linked=one('SELECT * FROM core.invoice_receipt_links WHERE entity_id=:e AND receipt_id=:r',r=event['id'])
@@ -237,8 +239,9 @@ try:
   assert current_sources-set(before['source_ids'])==expected_sources, 'Unexpected source root or duplicate source from retry/security fault'
   for table in UNCHANGED:assert after['tables'][table]==before['tables'][table],f'Unrelated table changed: {table}'
   for table,expected_ids in owned.items():
-   key='proposal_id' if table=='core.confirmation_effects' else 'id'
-   old={v[key]:v for v in before['tables'][table]};new={v[key]:v for v in after['tables'][table]}
+   key=ROW_KEYS.get(table,'id')
+   old={str(v[key]):v for v in before['tables'][table]};new={str(v[key]):v for v in after['tables'][table]}
+   assert len(old)==len(before['tables'][table]) and len(new)==len(after['tables'][table]),f'Nonunique row identity: {table}'
    assert all(new.get(k)==v for k,v in old.items()),f'Prior rows changed: {table}'
    assert set(new)-set(old)==expected_ids,f'Unexpected added effects: {table}'
   old_entries=before['tables']['finance.posting_entries'];new_entries=after['tables']['finance.posting_entries'];assert all(v in new_entries for v in old_entries)

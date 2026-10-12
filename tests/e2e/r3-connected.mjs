@@ -60,6 +60,7 @@ const result = {
   draftRecovery: [],
   bootstrapRecovery: [],
   captionChecks: [],
+  depotReviews: [],
   applicationFailures: [],
 };
 const read = async (ctx, url) => {
@@ -89,6 +90,32 @@ async function nav(page, hash) {
 }
 async function click(page, text) {
   await page.getByRole("button", { name: text, exact: true }).click();
+}
+async function reviewProposalFact(page, proposal, label, field) {
+  const [response] = await Promise.all([
+    page.waitForResponse((response) => {
+      const request = response.request();
+      if (request.method() !== "POST" ||
+          new URL(response.url()).pathname !== `/v1/entities/${proposal.entity_id}/owner/confirmations/${proposal.id}/revise`) return false;
+      const body = request.postDataJSON();
+      return body.expected_version === proposal.version && body.payload?.[field] === true;
+    }),
+    click(page, label),
+  ]);
+  assert.equal(response.status(), 200, await response.text());
+  const revised = await response.json();
+  assert.equal(revised.id, proposal.id);
+  assert.equal(revised.version, proposal.version + 1);
+  assert.equal(revised.revision.payload[field], true);
+  // A disappearing button also matches the intermediate loading shell. Wait
+  // for this committed revision before inspecting the next review requirement.
+  await page.waitForFunction(({id, version}) => {
+    const route = `review/${id}`;
+    return location.hash === `#${route}` &&
+      document.querySelector('#main')?.dataset.renderedRoute === route &&
+      document.querySelector('.page-header .muted')?.textContent === `Версия ${version} · CONNECTED TEST`;
+  }, {id: revised.id, version: revised.version});
+  return revised;
 }
 async function fill(page, name, value) {
   const input = page.locator(`[name="${name}"]`);
@@ -767,16 +794,16 @@ try {
     await layout(page,'depot-review-320');await snap(page,engine+'-320-depot-mismatch');
     await page.setViewportSize({width:390,height:844});
     assert.equal(depotProposal.revision.payload.quality_reviewed,false,'Typed categories still need explicit owner review');
-    await click(page,'Качества этого депо проверены');
-    await page.locator('[data-action=review-depot-quality]').waitFor({state:'hidden'});
-    const originalReview=page.locator('[data-action=review-document]');
-    if(await originalReview.count()) {
-      await originalReview.click();
-      await originalReview.waitFor({state:'hidden'});
+    depotProposal=await reviewProposalFact(page,depotProposal,'Качества этого депо проверены','quality_reviewed');
+    if(depotProposal.revision.payload.document_reviewed === false) {
+      assert.equal(await page.locator('[data-action=confirm-proposal]').isDisabled(),true);
+      depotProposal=await reviewProposalFact(page,depotProposal,'Оригинал и комментарий проверены','document_reviewed');
     }
-    await click(page,'Арифметика и расхождения проверены');
+    assert.equal(depotProposal.revision.payload.document_reviewed,true,'Original and separate caption must be reviewed before confirmation');
+    depotProposal=await reviewProposalFact(page,depotProposal,'Арифметика и расхождения проверены','arithmetic_reviewed');
     await page.getByText('Арифметика проверена владельцем',{exact:true}).waitFor();
     assert.equal(await page.locator('[data-action=confirm-proposal]').isDisabled(),false);
+    result.depotReviews.push({engine,proposal_id:depotProposal.id,version:depotProposal.version,quality_reviewed:depotProposal.revision.payload.quality_reviewed,document_reviewed:depotProposal.revision.payload.document_reviewed,arithmetic_reviewed:depotProposal.revision.payload.arithmetic_reviewed});
     await click(page,'Подтвердить действие в TEST');
     await waitHash(page,'depot/');
     const settlementId=page.url().split('#depot/')[1];
