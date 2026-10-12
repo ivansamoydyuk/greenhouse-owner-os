@@ -20,7 +20,7 @@ jobs:
       PREVIEW_BIND: 127.0.0.1
       PREVIEW_PORT: '4173'
       PREVIEW_URL: http://127.0.0.1:4173
-      DAY_WORKERS_PHASE: request
+      DAY_WORKERS_PHASE: full
     steps:
       - uses: actions/checkout@v4
         with:

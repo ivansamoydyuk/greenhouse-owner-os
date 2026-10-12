@@ -27,7 +27,7 @@ assert.equal(setup.engine, engine); assert.equal(setup.phase, phase);
 const credentials = await pilotCredentials();
 const root = '/v1/entities/' + setup.entity_id, dayRoot = root + '/day-workers';
 const result = {sha:setup.sha, engine, phase, entity_id:setup.entity_id, status:'RUNNING',
-  errors:[], checks:[], layouts:[], screenshots:[], operations:[], retained_routes:[], stage_files:{}, actual_ids:[],
+  errors:[], checks:[], layouts:[], screenshots:[], operations:[], retained_routes:[], stage_files:{}, actual_ids:[], primary_actions:[],
   coverage:phase === 'request' ? 'Focused request/decision/actual checkpoint only' : 'Focused complete vertical flow; not full regression'};
 let browser, active;
 const contexts = [], diagnostics = [];
@@ -138,6 +138,68 @@ async function layout(page,name) {
   }
   await page.setViewportSize({width:390,height:844});
 }
+// BEGIN_PRIMARY_ACTION_PROOF_HELPERS
+// Viewport evidence only. The scenario's existing trusted click remains the
+// only activation; this helper does not click, force, dispatch, or submit.
+const primaryProofScreens = new Set();
+function primaryActionIssues(evidence) {
+  const issues=[],r=evidence.rect,v=evidence.viewport,edgeTolerance=0.5;
+  if(!evidence.visible)issues.push('Target is not visible');
+  if(r.width<44||r.height<44)issues.push('Target is smaller than 44 x 44 CSS pixels');
+  if(r.left<v.left-edgeTolerance||r.top<v.top-edgeTolerance||r.right>v.right+edgeTolerance||r.bottom>v.bottom+edgeTolerance)issues.push('Target is not contained in the visible viewport');
+  if(evidence.hits.length!==5||evidence.hits.some(hit=>!hit.target_or_descendant))issues.push('Center or inset-quarter point is occluded');
+  if(!evidence.enabled||evidence.pending||evidence.inert)issues.push('Target is disabled, pending, or inert; not proven tappable');
+  return issues;
+}
+async function primaryActionProof(page,name,locator,{intent,exercise='existing_trusted_click_follows'}={}) {
+  if(phase!=='full'||primaryProofScreens.has(name))return;
+  assert.match(name,/^[a-z0-9-]+$/,'Stable primary proof filename required');
+  await locator.waitFor({state:'attached'});
+  assert.equal(await locator.count(),1,'Primary proof must identify one control: '+name);
+  primaryProofScreens.add(name);
+  const originalViewport=page.viewportSize(),issues=[];
+  try {
+    for(const width of [320,390,768,1280]) {
+      await page.setViewportSize({width,height:844});
+      // Ordinary centered scrolling only; never alter styles or force a click.
+      await locator.evaluate(node=>node.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}));
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      const visible=await locator.isVisible(),enabled=await locator.isEnabled();
+      const observed=await locator.evaluate(node=>{
+        const r=node.getBoundingClientRect(),visual=window.visualViewport;
+        const left=visual?.offsetLeft??0,top=visual?.offsetTop??0;
+        const viewport={left,top,right:left+(visual?.width??innerWidth),bottom:top+(visual?.height??innerHeight),layout_width:innerWidth,layout_height:innerHeight};
+        const points=[['center',0.5,0.5],['inset-top-left',0.25,0.25],['inset-top-right',0.75,0.25],['inset-bottom-left',0.25,0.75],['inset-bottom-right',0.75,0.75]];
+        const hits=points.map(([point,x,y])=>{
+          const px=r.left+r.width*x,py=r.top+r.height*y,hit=document.elementFromPoint(px,py);
+          return {point,x:px,y:py,target_or_descendant:!!hit&&(hit===node||node.contains(hit)),hit:hit?{tag:hit.tagName,id:hit.id||null,role:hit.getAttribute('role')}:null};
+        });
+        return {rect:{left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height},viewport,
+          scroll:{x:scrollX,y:scrollY},hits,tag:node.tagName,
+          pending:!!node.closest('[aria-busy="true"],[data-state="pending"],[data-state="sending"]'),
+          inert:!!node.closest('[inert]'),aria_disabled:node.getAttribute('aria-disabled'),native_disabled:node.matches(':disabled'),
+          invalid_required_controls:node.closest('form')?.querySelectorAll('[required]:invalid').length??0};
+      });
+      const evidence={screen:name,intent,exercise,requested_width:width,visible,enabled,...observed};
+      evidence.issues=primaryActionIssues(evidence);
+      evidence.state=!enabled||observed.pending||observed.inert?'DISABLED_OR_PENDING':evidence.issues.length?'GEOMETRY_OR_OCCLUSION_FAILURE':'READY_TARGET';
+      evidence.tappable=evidence.issues.length===0;
+      evidence.screenshot=engine+'-'+width+'-primary-'+name+'.png';
+      result.primary_actions.push(evidence);
+      // Capture the current viewport after positioning, even when a gate fails.
+      await page.screenshot({path:path.join(out,evidence.screenshot),fullPage:false,mask:[page.locator('#username,#password,#secret,#worker-key,#worker-test-key')]});
+      result.screenshots.push(evidence.screenshot);
+      if(evidence.issues.length)issues.push({width,issues:evidence.issues});
+    }
+  } finally {
+    if(originalViewport)await page.setViewportSize(originalViewport);
+    await locator.evaluate(node=>node.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}));
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  }
+  assert.deepEqual(issues,[],'Primary target visibility/touch/occlusion proof failed: '+name);
+  check('Primary action viewport proof',{screen:name,widths:[320,390,768,1280],intent,exercise,minimum_css_pixels:44,hit_points:5});
+}
+// END_PRIMARY_ACTION_PROOF_HELPERS
 async function newContext() {
   const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage(); contexts.push(context);
   page.setDefaultTimeout(20000); page.on('pageerror',e=>result.errors.push(redactPilot(e.message)));
@@ -173,6 +235,7 @@ try {
   const primary=await requestForm.locator('input:visible,textarea:visible,select:visible').evaluateAll(nodes=>nodes.map(n=>n.name).filter(n=>n!=='greenhouse_id'));
   assert.deepEqual(primary.sort(),['days','people','work'],'Only the three required business fields are visible');
   await layout(wp,'worker-request');
+  await primaryActionProof(wp,'worker-new-request',requestForm.locator('button[type=submit]'),{intent:'submit_original_worker_request'});
   const created=await (phase==='full'?submitWithLostReply:submit)(wp,'#worker-day-form','/day-workers/requests','Worker sends original request');
   const requestId=created.id; assert.ok(requestId);
   let state=await readWorker(wc),request=state.requests.find(r=>r.id===requestId); assert.ok(request);
@@ -206,6 +269,7 @@ try {
   await layout(op,'owner-request');
   await click(op,op.locator('a[href="#day-decision/'+requestId+'/APPROVE"]'),'Owner reviews approval'); await ownerReady(op,'day-decision/'+requestId+'/APPROVE');
   await field(op,'reason','TEST owner approves plan only');
+  await primaryActionProof(op,'owner-decision',op.locator('[data-form=day-decision] button[type=submit]'),{intent:'save_owner_plan_decision'});
   await submit(op,'[data-form=day-decision]','/requests/'+requestId+'/decisions','Owner saves explicit plan decision');
   await ownerReady(op,'day-request/'+requestId);
   request=(await readOwner(oc)).requests.find(r=>r.id===requestId); assert.equal(request.state,'APPROVED'); assert.equal(request.decisions.length,1); assert.equal(request.planned_people_days,10);
@@ -244,7 +308,7 @@ try {
     await field(wp,'work',setup.work+' день '+(index+1),actualForm); await field(wp,'full_day','true',actualForm);
     await field(wp,'allocation_mode','same',actualForm);
     await field(wp,'note','TEST actual '+people+' includes team lead',actualForm);
-    if(index===0) await layout(wp,'worker-actual');
+    if(index===0){await layout(wp,'worker-actual');await primaryActionProof(wp,'worker-actual',actualForm.locator('button[type=submit]'),{intent:'submit_one_actual_work_day'});}
     const reopen=async()=>{
       await wp.reload(); await wp.locator('#worker-day-open').waitFor();
       await click(wp,wp.locator('#worker-day-open'),'Reopen DayWorkers after lost actual response');
@@ -299,6 +363,21 @@ try {
       assert.equal(new URL(op.url()).hash,'#home'); assert.equal(await op.locator('#main').getAttribute('data-rendered-route'),'home');
       check('Older DayWorkers read cannot overwrite newer owner navigation');
     } finally {releaseRead(); terminalObserver?.dispose(); await cleanupRead();}
+    // Inspect the separate operational confirmation control without posting
+    // another fact. Accrual below retains its existing authoritative workflow.
+    const confirmationActualId=result.actual_ids[0];
+    const confirmationBefore=(await readOwner(oc)).actuals.find(a=>a.id===confirmationActualId).confirmation?.id??null;
+    await ownerNav(op,'day-actual-detail/'+confirmationActualId);
+    await click(op,op.locator('a[href="#day-confirmation/'+confirmationActualId+'"]'),'Owner opens separate fact confirmation for viewport-only inspection');
+    await ownerReady(op,'day-confirmation/'+confirmationActualId);
+    const factReview=op.locator('[data-form=day-confirmation]');
+    await click(op,factReview.locator('[name=confirmed]'),'Owner checks local fact review without submitting');
+    await primaryActionProof(op,'owner-fact-confirmation',factReview.locator('button[type=submit]'),{intent:'confirm_fact_without_accrual',exercise:'view_and_local_review_only_not_submitted'});
+    await click(op,op.locator('[data-action=back]'),'Owner returns without submitting fact confirmation');
+    await ownerReady(op,'day-actual-detail/'+confirmationActualId);
+    const confirmationAfter=(await readOwner(oc)).actuals.find(a=>a.id===confirmationActualId).confirmation?.id??null;
+    assert.equal(confirmationAfter,confirmationBefore,'Viewport-only fact review must not create a server confirmation');
+    check('Separate fact-confirmation target inspected without submission',{actual_id:confirmationActualId,submitted:false});
     result.obligation_ids=[];
     for(const actualId of result.actual_ids) {
       await ownerNav(op,'day-actual-detail/'+actualId);
@@ -309,6 +388,7 @@ try {
       for(const [name,value] of Object.entries({counterparty_id:setup.counterparty_id,daily_rate:setup.rate,rate_basis:'TEST verified 100 TRY per person per full day on 2026-10-11 and 2026-10-12',currency:'TRY',expense_account_id:setup.expense_account_id})) await field(op,name,value,form);
       await click(op,form.locator('[name=confirmed]'),'Owner explicitly confirms rate creditor and full-day facts');
       await layout(op,'owner-accrual-'+result.obligation_ids.length);
+      await primaryActionProof(op,'owner-accrual',form.locator('button[type=submit]'),{intent:'create_explicit_actual_day_payable'});
       await (result.obligation_ids.length===0?submitWithLostReply:submit)(op,'[data-form=day-accrual]','/actuals/'+actualId+'/accruals','Owner creates actual-day payable');
       await ownerReady(op,'day-actual-detail/'+actualId);
       const actual=(await readOwner(oc)).actuals.find(a=>a.id===actualId); assert.ok(actual.accrual?.obligation_id); result.obligation_ids.push(actual.accrual.obligation_id);
@@ -321,6 +401,7 @@ try {
     await op.waitForFunction(()=>location.hash.startsWith('#payment/')&&document.querySelector('#main')?.dataset.renderedRoute===location.hash.slice(1));
     result.payment_id=new URL(op.url()).hash.slice('#payment/'.length);
     await layout(op,'owner-separate-partial-payment');
+    await primaryActionProof(op,'owner-separate-payment',op.getByRole('button',{name:'Подтвердить оплату в TEST',exact:true}),{intent:'post_separate_partial_payment'});
     let paymentCommitted=false;
     const paymentEvidence={label:'lost-payment-commit-response'}; result.retained_routes.push(paymentEvidence);
     const paymentPattern='**/v1/payments/'+result.payment_id+'/post?*';
@@ -363,8 +444,10 @@ try {
     await ownerReady(op,greenhouseBase+'/work'+greenhouseTail);
     for(const label of ['Сообщено полных человеко-дней','Принято владельцем, человеко-дней','Начислено в периоде','Выплачено в периоде','Текущий долг связанных документов']) await op.getByText(label,{exact:true}).waitFor();
     await layout(op,'greenhouse-work-and-debt');
+    await primaryActionProof(op,'cockpit-source-drilldown',op.locator('a[href^="#day-actual-detail/'+result.actual_ids[0]+'/"]').first(),{intent:'open_source_actual_from_greenhouse'});
     await click(op,op.locator('a[href^="#day-actual-detail/'+result.actual_ids[0]+'/"]').first(),'Owner drills down from greenhouse to original actual');
     await op.waitForFunction(id=>location.hash.startsWith('#day-actual-detail/'+id)&&document.querySelector('#main')?.dataset.renderedRoute===location.hash.slice(1),result.actual_ids[0]);
+    await primaryActionProof(op,'cockpit-source-back',op.getByRole('link',{name:'Назад к работам',exact:true}),{intent:'return_to_same_greenhouse_filters'});
     await click(op,op.getByRole('link',{name:'Назад к работам',exact:true}),'Owner returns to same greenhouse selection');
     await ownerReady(op,greenhouseBase+'/work'+greenhouseTail);
     check('Greenhouse period selection, source drilldown and return preserve context');

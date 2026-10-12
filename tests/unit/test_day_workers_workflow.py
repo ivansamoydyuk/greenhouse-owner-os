@@ -14,7 +14,7 @@ def test_day_workers_browser_checkpoint_is_real_scoped_and_guarded():
     assert job['env']['PILOT_LOCAL_TEST'] == '1'
     assert job['env']['PREVIEW_BIND'] == '127.0.0.1'
     assert job['env']['PREVIEW_URL'] == 'http://127.0.0.1:4173'
-    assert job['env']['DAY_WORKERS_PHASE'] in ('request', 'full')
+    assert job['env']['DAY_WORKERS_PHASE'] == 'full'
     assert 'test "$(git rev-parse HEAD)"' in raw
     assert 'test -z "$(git status --porcelain)"' in raw
     assert 'for engine in chromium webkit' in raw

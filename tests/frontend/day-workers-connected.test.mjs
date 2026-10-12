@@ -64,3 +64,14 @@ test('pre-existing multiline work draft is not silently flattened by suggestion 
  for(const html of [worker,owner]){assert.match(html,/<textarea name="work"/);assert.ok(html.includes(work));}
  assert.equal(daySource('day_request',draft,{people:'5',days:'2',work}).fields.work,work);
 });
+
+test('DayWorkers source and request Back retain filters with scoped48px touch targets',async()=>{
+ const back='greenhouses/'+gid+'/work/2026-10-11/2026-10-12/TRY/all/all/kg';
+ for(const html of [dayRequestView(request,back),dayActualView(actual,back)]){
+  assert.ok(html.includes('href="#'+back+'" class="section-link day-back" >Назад к работам</a>'));
+ }
+ const css=await fs.readFile(new URL('../../prototype/owner-r3/connected.css',import.meta.url),'utf8');
+ const scoped=css.match(/\.connected \.day-back \{([^}]+)\}/)?.[1];assert.ok(scoped);
+ for(const rule of ['display: inline-flex','min-width: 48px','min-height: 48px','max-width: 100%'])assert.ok(scoped.includes(rule));
+ assert.doesNotMatch(scoped,/position\s*:|z-index/);
+});
