@@ -55,7 +55,7 @@ const field = async(page, name, value, scope = page) => {
   assert.equal(await locator.inputValue(),String(value));
   result.operations.push({kind:tag==='SELECT'?'select':'fill',name,value:String(value)});
 };
-const ownerNav = async(page, route) => {await page.goto(base+'/r3/connected.html#'+route); await ownerReady(page,route);};
+const ownerNav = async(page, route) => {const target=base+'/r3/connected.html#'+route; if(page.url()===target) await page.reload(); else await page.goto(target); await ownerReady(page,route);};
 const submit = async(page, formSelector, suffix, label) => {
   const reply=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname.endsWith(suffix));
   await click(page,page.locator(formSelector).locator('button[type=submit]'),label);
@@ -265,7 +265,19 @@ try {
     for(const key of ['accrual','counterparty_id','daily_rate','amount','obligation_id']) assert.ok(!(key in actual),'Worker financial disclosure: '+key);
   }
   check('Daily facts total actual 7 and worker payload omits finance');
-  active=op; await ownerNav(op,'day-request/'+requestId); await layout(op,'owner-actual-summary');
+  active=op; await ownerNav(op,'day-request/'+requestId);
+  const summaryValue=async label=>{const value=op.getByText(label,{exact:true}).locator('..').locator('dd'); await value.waitFor({state:'visible'}); return value.innerText();};
+  assert.equal(await summaryValue('Одобрено в плане, человеко-дней'),'10');
+  assert.equal(await summaryValue('Известно фактически, человеко-дней'),'7');
+  assert.equal(await op.locator('a[href^="#day-actual-detail/"]').count(),2);
+  for(const [index,people] of ['4','3'].entries()) {
+    const actualLink=op.locator('a[href="#day-actual-detail/'+result.actual_ids[index]+'"] strong');
+    await actualLink.waitFor({state:'visible'});
+    assert.equal(await actualLink.innerText(),setup.dates[index]+' · '+people+' человек');
+  }
+  result.owner_rendered_summary={planned_people_days:10,actual_people_days:7,dated_people:[4,3]};
+  check('Owner sees fresh plan 10 and both dated actuals totaling 7 after reopening');
+  await layout(op,'owner-actual-summary');
 
   if(phase==='full') {
     // Deliver a genuine older read after the owner chose a newer destination.
