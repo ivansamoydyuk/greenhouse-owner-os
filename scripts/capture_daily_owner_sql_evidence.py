@@ -74,7 +74,8 @@ if a.prepare:
   ledger=post('/v1/entities/'+str(e)+'/reference-bootstrap',dict(currency='TRY'),'references')
   expense=next(r['id'] for r in ledger['references'] if r.get('system_code')=='GENERAL_EXPENSE')
   debt=post('/v1/obligations',dict(entity_id=str(e),counterparty_id=refs['serkan_id'],direction='payable',original_amount='5000.00',currency='TRY',event_date='2026-10-10',offset_ledger_account_id=expense,description='TEST T03 '+engine+' existing repair payable'),'existing-repair')
-  debt=post('/v1/obligations/'+debt['id']+'/post?expected_version=1',None,'post-existing-repair')
+  # Private owner writes require explicit JSON even when the endpoint has no body fields.
+  debt=post('/v1/obligations/'+debt['id']+'/post?expected_version=1',{},'post-existing-repair')
   assert debt['status']=='posted'
   refs['t03_obligation_id']=debt['id']
  with sf() as db:

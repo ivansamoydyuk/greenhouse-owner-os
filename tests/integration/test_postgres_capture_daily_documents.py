@@ -1,16 +1,19 @@
 """Real contextual OCR and same-source fallback/retry/owner-authority gates."""
 import base64
+import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import text
-from greenhouse_owner_os.domain.owner_capture import CaptureSource
+from greenhouse_owner_os.domain.errors import ConflictError
+from greenhouse_owner_os.domain.owner_capture import CaptureSource, ConfirmAction
 from greenhouse_owner_os.repositories.sqlalchemy import SqlAlchemyUnitOfWork
 from greenhouse_owner_os.services.owner_capture import OwnerCaptureService
 from tests.integration.test_postgres_readiness import preview, send
 from tests.integration.test_postgres_inventory import inv
 from tests.integration.test_postgres_owner_capture import confirm
-from tests.capture_daily_corpus import document
+from tests.capture_daily_corpus import document, case
 
 
 def service(i,recognizer=None):
@@ -186,3 +189,119 @@ def test_exhausted_document_recovery_rejects_wrong_source_owner(inv):
     svc,e,a,saved,_=save(inv,recognizer=FailedRecognition())
     with pytest.raises((ValidationError,NotFoundError)):
         svc.retry_preparation(e,uuid4(),UUID(saved['id']))
+
+
+def test_r02_equal_h01_bytes_keep_two_sources_but_cannot_confirm_two_binary_sales(inv):
+    """A new capture identity is accepted; it is not a second sale authority."""
+    depot(inv)
+    svc,e,a,first,first_body=save(inv,case='H01')
+    _,_,_,second,second_body=save(inv,case='H01')
+    content,_=document('H01');fingerprint=hashlib.sha256(content).hexdigest()
+    assert first_body.client_capture_id!=second_body.client_capture_id
+    assert first['id']!=second['id']
+    first_view=svc.source(e,a,UUID(first['id']))
+    second_view=svc.source(e,a,UUID(second['id']))
+    assert first_view['duplicate_of_id'] is None
+    assert second_view['duplicate_of_id']==first['id']
+    assert first_view['job']['id']!=second_view['job']['id']
+    assert first_view['job']['state']==second_view['job']['state']=='SUCCEEDED'
+    p1=proposal(svc,e,a,first);p2=proposal(svc,e,a,second)
+    assert p1['id']!=p2['id'] and p1['source']['id']==first['id'] and p2['source']['id']==second['id']
+    assert p1['action_type']==p2['action_type']=='DEPOT_RECEIPT'
+    assert len(p1['revision']['payload']['lines'])==len(p2['revision']['payload']['lines'])==3
+    assert any('повтор источника' in reason for reason in p2['revision']['missing'])
+
+    def originals():
+        with inv['preview'][0]() as db:
+            return [dict(row) for row in db.execute(text('SELECT * FROM core.inbox_items WHERE entity_id=:e ORDER BY id'),dict(e=e)).mappings()]
+    retained=originals();assert len(retained)==2
+    by_id={str(row['id']):row for row in retained}
+    for saved,body in ((first,first_body),(second,second_body)):
+        row=by_id[saved['id']]
+        assert row['locator']==str(body.client_capture_id)
+        assert row['file_bytes']==content and row['fingerprint']==fingerprint
+        assert row['raw_text'] is None and row['metadata']['capture_context']=='depot_receipt'
+        assert svc.original(e,a,UUID(saved['id']))[0]==content
+    assert by_id[second['id']]['duplicate_of_id']==UUID(first['id'])
+    with inv['preview'][0]() as db:
+        for table in ('core.confirmation_effects','harvest.depot_settlements','finance.obligations','finance.postings','finance.payments','inventory.movements'):
+            assert db.scalar(text('SELECT count(*) FROM '+table+' WHERE entity_id=:e'),dict(e=e))==0
+
+    p1=edit(inv,p1,dict(p1['revision']['payload'],quality_reviewed=True,arithmetic_reviewed=True,document_reviewed=True))
+    # Frozen R01: the exact H01 proposal is confirmed concurrently with
+    # distinct request keys, followed by both same-key and fresh-key replay.
+    confirmation=ConfirmAction(expected_version=p1['version'],preview_digest=p1['revision']['preview_digest'],confirmed=True)
+    with ThreadPoolExecutor(2) as pool:
+        responses=list(pool.map(lambda key:svc.confirm(e,a,UUID(p1['id']),key,confirmation),('r02-first-sale','r01-racing-sale')))
+    assert responses[0]==responses[1]
+    accepted=responses[0]
+    assert accepted['effect']['total_amount']=='14000.00' and accepted['effect']['payment_id'] is None
+    assert confirm(inv,p1,key='r02-first-sale')==accepted
+    assert confirm(inv,p1,key='r02-first-sale-replay')==accepted
+    for separate_event_reviewed in (False,True):
+        # The existing override is for separate TEXT events; it cannot make
+        # another sale from the same binary original, even after owner review.
+        p2=edit(inv,p2,dict(p2['revision']['payload'],quality_reviewed=True,arithmetic_reviewed=True,
+                           document_reviewed=True,separate_event_reviewed=separate_event_reviewed))
+        assert p2['state']=='NEEDS_INPUT'
+        assert any('Этот оригинал уже принят' in reason for reason in p2['revision']['missing'])
+        assert p2['revision']['basis']['confirmed_source_receipts'][0]['id']==p1['id']
+        confirm(inv,p2,key='r02-duplicate-'+str(separate_event_reviewed),expected=422)
+    with inv['preview'][0]() as db:
+        assert db.scalar(text('SELECT count(*) FROM core.proposed_actions WHERE entity_id=:e'),dict(e=e))==2
+        assert db.scalar(text('SELECT count(*) FROM core.confirmation_effects WHERE entity_id=:e'),dict(e=e))==1
+        assert db.scalar(text('SELECT count(*) FROM core.confirmation_effects WHERE proposal_id=:p'),dict(p=p2['id']))==0
+        assert db.scalar(text('SELECT count(*) FROM harvest.depot_settlements WHERE entity_id=:e'),dict(e=e))==1
+        obligations=db.execute(text('SELECT o.direction,o.status,o.original_amount,b.remaining_amount FROM finance.obligations o JOIN finance.obligation_balances b ON b.obligation_id=o.id WHERE o.entity_id=:e'),dict(e=e)).mappings().all()
+        assert len(obligations)==1 and obligations[0]['direction']=='receivable' and obligations[0]['status']=='posted'
+        assert str(obligations[0]['original_amount'])==str(obligations[0]['remaining_amount'])=='14000.00'
+        assert db.scalar(text('SELECT count(*) FROM finance.postings WHERE entity_id=:e'),dict(e=e))==1
+        for table in ('finance.payments','finance.direct_expenses','finance.advances','inventory.events','inventory.movements'):
+            assert db.scalar(text('SELECT count(*) FROM '+table+' WHERE entity_id=:e'),dict(e=e))==0
+    assert originals()==retained
+    assert svc.source(e,a,UUID(second['id']))['duplicate_of_id']==first['id']
+    assert inv['preview'][3].reconcile(entity_id=e)['ok']
+
+
+def test_r03_frozen_t02_changed_amount_same_client_uuid_conflicts_without_new_debt(inv):
+    party=send(inv['c'],f"/entities/{inv['e']}/counterparties",dict(name='Серкан',role='supplier',source='TEST frozen T02 reference'))['id']
+    original=case('T02')['input']
+    assert original=='Должен Серкану 5 000 TRY за ремонт насоса.'
+    svc,e,a=service(inv)
+    body=CaptureSource(client_capture_id=uuid4(),captured_at=datetime(2026,10,12,6,tzinfo=timezone.utc),
+                       capture_context='quick_expense',text=original)
+    saved=svc.capture(e,a,'r03-original',body)
+    svc.process(UUID(saved['id']))
+    p=proposal(svc,e,a,saved)
+    assert p['action_type']=='PAYABLE' and p['state']=='READY'
+    assert p['revision']['payload']['amount']=='5000' and p['revision']['payload']['counterparty_id']==party
+    changed=body.model_copy(update={'text':original.replace('5 000','6 000')})
+    assert changed.text=='Должен Серкану 6 000 TRY за ремонт насоса.'
+    assert changed.client_capture_id==body.client_capture_id
+    with inv['preview'][0]() as db:
+        retained=dict(db.execute(text('SELECT * FROM core.inbox_items WHERE id=:s'),dict(s=saved['id'])).mappings().one())
+    assert svc.capture(e,a,'r03-unchanged-retry',body)['id']==saved['id']
+    for key in ('r03-original','r03-changed-fresh-key'):
+        with pytest.raises(ConflictError):svc.capture(e,a,key,changed)
+    assert svc.original(e,a,UUID(saved['id']))[0]==original.encode()
+    assert proposal(svc,e,a,saved)['revision']==p['revision']
+    with inv['preview'][0]() as db:
+        assert db.scalar(text('SELECT count(*) FROM core.inbox_items WHERE entity_id=:e'),dict(e=e))==1
+        assert db.scalar(text('SELECT count(*) FROM core.proposed_actions WHERE entity_id=:e'),dict(e=e))==1
+        assert db.scalar(text('SELECT count(*) FROM finance.obligations WHERE entity_id=:e'),dict(e=e))==0
+        assert db.scalar(text('SELECT count(*) FROM core.confirmation_effects WHERE entity_id=:e'),dict(e=e))==0
+    accepted=confirm(inv,p,key='r03-explicit-original-confirm')
+    assert accepted['effect']['original_amount']=='5000.00'
+    assert confirm(inv,p,key='r03-confirm-replay')==accepted
+    with pytest.raises(ConflictError):svc.capture(e,a,'r03-changed-after-confirm',changed)
+    with inv['preview'][0]() as db:
+        current=dict(db.execute(text('SELECT * FROM core.inbox_items WHERE id=:s'),dict(s=saved['id'])).mappings().one())
+        assert current==retained and current['raw_text']==original
+        assert current['fingerprint']==hashlib.sha256(original.encode()).hexdigest()
+        obligations=db.execute(text('SELECT direction,original_amount FROM finance.obligations WHERE entity_id=:e'),dict(e=e)).mappings().all()
+        assert len(obligations)==1 and obligations[0]['direction']=='payable' and str(obligations[0]['original_amount'])=='5000.00'
+        assert db.scalar(text('SELECT count(*) FROM core.confirmation_effects WHERE entity_id=:e'),dict(e=e))==1
+        assert db.scalar(text('SELECT count(*) FROM finance.postings WHERE entity_id=:e'),dict(e=e))==1
+        for table in ('finance.payments','finance.direct_expenses','finance.advances'):
+            assert db.scalar(text('SELECT count(*) FROM '+table+' WHERE entity_id=:e'),dict(e=e))==0
+    assert inv['preview'][3].reconcile(entity_id=e)['ok']
