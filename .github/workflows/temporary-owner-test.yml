@@ -1,0 +1,45 @@
+name: Temporary owner synthetic TEST
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact reviewed default-branch commit (40 lowercase hex characters)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: temporary-owner-synthetic-test
+  cancel-in-progress: false
+jobs:
+  temporary-owner:
+    if: github.repository == 'ivansamoydyuk/greenhouse-owner-os' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/01-architecture-database' && github.actor == 'ivansamoydyuk' && github.triggering_actor == 'ivansamoydyuk' && github.run_attempt == 1 && inputs.expected_sha == github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      APP_ENV: test
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, independently verified
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5, independently verified
+        with:
+          python-version: '3.13.15'
+      - name: Install TEST runtime before secret is available
+        run: |
+          pip install -e '.[dev]'
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
+      - name: Run bounded owner-only synthetic session
+        env:
+          TEST_PREVIEW_OWNER_PASSWORD: ${{ secrets.TEST_PREVIEW_OWNER_PASSWORD }}
+        run: python scripts/temporary_owner_preview.py
+      - name: Remove only this run's labelled ephemeral database
+        if: always()
+        run: |
+          set -euo pipefail
+          name="owner-temporary-${GITHUB_RUN_ID}-1"
+          label=$(docker inspect --format '{{index .Config.Labels "greenhouse.temporary-owner"}}' "$name" 2>/dev/null || true)
+          if [ "$label" = "$GITHUB_RUN_ID" ]; then docker rm --force --volumes "$name" >/dev/null; fi

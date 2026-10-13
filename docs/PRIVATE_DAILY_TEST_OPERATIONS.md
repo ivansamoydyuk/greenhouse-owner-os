@@ -44,3 +44,40 @@ revocation or deletion of published materials.
 Historical preview recipes may exist in other refs and old runs. A default-branch
 patch does not neutralize their reruns. Verify repository-wide Actions controls
 and historical run containment separately before declaring that boundary closed.
+
+## Separate, manually authorized public-repository owner TEST
+
+`temporary-owner-test.yml` is a new, explicitly bounded exception for an owner
+review session. The historical private-repository workflow guards and the
+persistent daily launcher are unchanged. This is not production deployment,
+persistent hosting, real-data import, or activation of worker/external channels.
+
+The owner manually stores a **unique synthetic-only** 20–200 character password
+as the repository Actions secret `TEST_PREVIEW_OWNER_PASSWORD`. It must not be
+reused anywhere else. The operator never retrieves its value. Repository secrets
+are accessible to authorized workflow writers: this flow assumes the owner's
+confirmed owner/Codex-only writer model. It does not claim protected-environment,
+branch-protection, or independent writer isolation.
+
+From the reviewed default-branch workflow, the owner chooses **Run workflow** and
+enters the exact reviewed default-branch SHA as `expected_sha`. Both initiating
+and triggering actor must be `ivansamoydyuk`, the repository and ref are fixed,
+and only attempt 1 is allowed. A failed/expired run is not rerun: a new explicitly
+authorized dispatch is required. No password is a workflow input or CLI argument.
+
+The runner uses verified immutable Actions pins, a digest-pinned official
+PostgreSQL 17.11 image, and an official Cloudflare binary verified against its
+release SHA256 before execution. Its database binds only to loopback. The existing
+synthetic profile and individual PilotAuth owner account are used; no worker
+credentials or legacy shared-key access are created. OCR tools remain installed.
+Cloudflare supplies an ephemeral HTTPS URL; the application listener remains
+loopback, and application authentication protects data and assets.
+
+After local and external unauthenticated-denial checks pass, the summary contains
+only the URL, username `owner`, build SHA, and fixed expiry. The owner signs in
+using their secret. No artifacts, screenshots, credential files, session headers,
+response bodies, or runtime logs are published. The session expires 35 minutes
+after application initialization; persisted authorization rejects expiry even
+before process teardown. Cancellation, failure, and expiry stop the owned tunnel,
+application, and labelled database; the hosted runner provides final teardown on
+hard cancellation. State is disposable and is not preserved for another session.
