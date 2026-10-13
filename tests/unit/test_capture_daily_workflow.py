@@ -72,3 +72,14 @@ def test_capture_final_gates_cover_feature_and_merged_default():
     text = WORKFLOW.read_text()
     assert 'node tests/e2e/capture-daily-owner-journeys.mjs' in text
     assert 'capture_daily_owner_sql_evidence.py --verify' in text
+
+
+def test_relogin_setup_finishes_rendering_before_explicit_navigation():
+    source = Path('tests/e2e/capture-daily-owner-journeys.mjs').read_text()
+    sequence = "await ownerLogin(page,base,{navigate:false});await ready('capture/expense');await page.goto(base+'/r3/connected.html#capture/expense');"
+    assert source.count(sequence) == 2
+    # Preserve the strict browser error gate and intentional interrupted reads.
+    assert "page.on('pageerror',error=>result.errors.push" in source
+    assert "&&!result.errors.length" in source
+    assert "await bounded(entered,'Held matrix edit read never started')" in source
+    assert "await bounded(entered,'Bootstrap read was not intercepted')" in source
