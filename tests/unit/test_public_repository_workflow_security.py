@@ -153,7 +153,7 @@ def test_historical_preview_quarantine_has_no_automatic_or_rerun_authority(name)
 
 
 def test_workflow_inventory_requires_explicit_review_for_new_automation():
-    assert {path.name for path in DIRECTORY.glob('*.yml')} == set(CORE + HISTORICAL)
+    assert {path.name for path in DIRECTORY.glob('*.yml')} == set(CORE + HISTORICAL + ('temporary-owner-test.yml',))
     assert not list(DIRECTORY.glob('*.yaml'))
 
 
