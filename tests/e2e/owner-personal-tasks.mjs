@@ -1,3 +1,4 @@
+import {recoverTaskFixture} from './task-review-fixture.mjs';
 // AUD-003: real UI state actions and reads against the authenticated API and
 // disposable PostgreSQL. Fixtures are explicitly synthetic API-confirmed tasks.
 // Only transport outage/response-loss timing is injected, never domain results.
@@ -11,7 +12,7 @@ const artifacts=process.env.E2E_ARTIFACTS||'artifacts';
 await fs.mkdir(artifacts,{recursive:true});
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{})});
 const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();
-const errors=[],report={browser:browser.version(),fixture_method:'Real API capture/revise/explicit confirm; synthetic tasks only',widths:[320,390,768,1280],journeys:[],stateRequests:[]};
+const errors=[],report={browser:browser.version(),fixture_method:'Real API capture/explicit audience recovery/revise/explicit confirm; synthetic tasks only',widths:[320,390,768,1280],journeys:[],stateRequests:[]};
 page.on('pageerror',event=>errors.push(event.message));
 const bounded=async(promise,label)=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Timed out: '+label)),15000);})]);}finally{clearTimeout(timer);}};
 const waitReady=()=>page.waitForFunction(()=>document.querySelector('#app').getAttribute('aria-busy')==='false');
@@ -67,7 +68,8 @@ try{
     const saved=await post(root+'/captures',{client_capture_id:crypto.randomUUID(),captured_at:'2026-10-10T12:00:00+03:00',timezone:'Europe/Istanbul',mode:'text',text:raw});
     let source;const deadline=Date.now()+15000;
     do{source=await read(root+'/captures/'+saved.id);if(source.proposals.length)break;await page.waitForTimeout(50);}while(Date.now()<deadline);
-    assert.equal(source.proposals.length,1);let proposal=await read(root+'/confirmations/'+source.proposals[0].id+'/preview');assert.equal(proposal.action_type,'PERSONAL_TASK');
+    assert.equal(source.proposals.length,1);let proposal=await read(root+'/confirmations/'+source.proposals[0].id+'/preview');
+    proposal=await recoverTaskFixture((path,body)=>body===undefined?read(path):post(path,body),root,proposal,'personal');assert.equal(proposal.action_type,'PERSONAL_TASK');
     proposal=await post(root+'/confirmations/'+proposal.id+'/revise',{expected_version:proposal.version,payload:{title:`TEST личная задача ${n+1}`,original_instruction:raw,greenhouse_id:greenhouse.id,planned_date:n<3?'2026-10-10':null,note:`TEST неизменная заметка ${n+1}`,category:'irrigation',relative_time_context:n<3?'сегодня':'следующая неделя'}});
     assert.equal(proposal.state,'READY');
     const confirmed=await post(root+'/confirmations/'+proposal.id+'/confirm',{expected_version:proposal.version,preview_digest:proposal.revision.preview_digest,confirmed:true});return confirmed.effect;

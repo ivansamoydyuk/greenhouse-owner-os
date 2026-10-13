@@ -217,7 +217,8 @@ def test_lowercase_unknown_addressee_is_candidate_not_invented_identity(prefix,r
     p=prepare(prefix+'рустам завтра убрать Озвади',references)[0]
     assert p[0]=='WORKER_TASK' and p[1]['worker_id'] is None
     p=prepare(prefix+'насос завтра починить в Озвади',references)[0]
-    assert p[0]=='PERSONAL_TASK'
+    # Latest owner rule: no recipient evidence means a task audience question.
+    assert p[0]=='UNRESOLVED' and p[1]['task_candidates']['worker_id'] is None
 
 
 def test_credit_purchase_future_payment_is_due_not_event_date(references):
@@ -323,7 +324,7 @@ def test_preparation_version_is_additive_provenance_not_job_identity(references)
     for raw in ['Неизвестный текст','Должен Серкану не 5000, а 5400 TRY','Умар завтра полить Имамлы']:
         for _,payload,prov in prepare(raw,references):
             assert set(prov)==set(payload)
-            assert all(v['interpretation_version']=='owner-language-preparation-r2-v4' for v in prov.values())
+            assert all(v['interpretation_version']=='owner-language-preparation-r2-v5' for v in prov.values())
 
 
 def test_iso_date_hyphens_are_not_an_amount_range(references):
@@ -426,7 +427,7 @@ def test_explicit_personal_audience_overrides_negated_worker_mention(references)
     assert p[0]=='WORKER_TASK' and p[1]['worker_id']==references['workers'][0]['id']
     # A numbered task is not itself evidence of a hidden chat recipient.
     p=prepare('Задача номер 7: проверить насос',references)[0]
-    assert p[0]=='PERSONAL_TASK' and p[1]['worker_id'] is None
+    assert p[0]=='UNRESOLVED' and p[1]['task_candidates']['worker_id'] is None
 
 
 def test_passive_settlement_and_explicit_unpaid_balance_are_distinct(references):
@@ -580,10 +581,12 @@ def test_dative_recipient_and_explicit_from_me_are_outgoing(references):
         assert p[0]=='PAYMENT' and p[1]['amount']=='2300'
 
 
-def test_explicit_future_personal_task_has_no_financial_actual(references):
+def test_future_task_without_audience_has_no_financial_actual(references):
     p=prepare('Завтра перевести деньги Серкану',references)
-    assert len(p)==1 and p[0][0]=='PERSONAL_TASK'
-    assert p[0][1]['planned_date']=='2026-10-10'
+    assert len(p)==1 and p[0][0]=='UNRESOLVED'
+    assert p[0][1]['task_candidates']['planned_date']=='2026-10-10'
+    personal=prepare('Для меня завтра перевести деньги Серкану',references)
+    assert len(personal)==1 and personal[0][0]=='PERSONAL_TASK'
 
 @pytest.mark.parametrize('source',[
     'Kemal Bey вчера заплатил 2600 TRY за ремонт',

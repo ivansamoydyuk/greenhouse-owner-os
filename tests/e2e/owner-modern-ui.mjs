@@ -1,3 +1,4 @@
+import {chooseTaskAudience, intendedTaskCandidate} from './task-review-fixture.mjs';
 // Visual + behavioral regression gate for the source-first owner shell.
 // Run only through the disposable preview runner. No business posting or live
 // integration is performed. Image/PDF pixels use the existing TEST OCR corpus.
@@ -252,8 +253,22 @@ try {
   // must move focus into the new content. No edit is saved or confirmed here.
   await page.setViewportSize({width: 390, height: 844});
   await navigateOwner(page, 'review');
-  const fixtureProposal = fixtures.proposals[0];
+  const fixtureOrigin = intendedTaskCandidate(proposals,capture.id,sourceText);assert.ok(fixtureOrigin);
+  assert.equal(fixtureOrigin.revision.payload.task_candidates.original_instruction,sourceText,'Select the full immutable source instruction, never only its first clause');
+  const knownTask=fixtureOrigin.revision.payload.task_candidates;
+  assert.ok(knownTask.planned_date&&knownTask.greenhouse_id,'This exact source has a known date and greenhouse');
+  const knownPlace=fixtureOrigin.revision.basis['core.work_areas:'+knownTask.greenhouse_id]||before.finance.work_areas.find(area=>area.id===knownTask.greenhouse_id);
+  assert.ok(knownPlace?.original_name||knownPlace?.name,'Known greenhouse must resolve from the reviewed basis or current reference');
+  const expectedDate=await page.evaluate(value=>new Intl.DateTimeFormat('ru-RU',{timeZone:'UTC',day:'numeric',month:'short',year:'numeric'}).format(new Date(value+'T12:00:00Z')),knownTask.planned_date);
+  const knownContext=await sheet().locator(`[data-proposal="${fixtureOrigin.id}"] .queue-card-context`).innerText();
+  assert.ok(knownContext.includes(expectedDate),'Visible queue context retains the known calendar date');
+  assert.ok(knownContext.includes(knownPlace.original_name||knownPlace.name),'Visible queue context retains the known greenhouse');
+  assert.doesNotMatch(knownContext,/Дата не выбрана/);
+  let fixtureProposal = fixtureOrigin.id;
   await sheet().locator(`[data-proposal="${fixtureProposal}"] [data-r2-open]`).click();
+  const selectedTask = await chooseTaskAudience(page,checkedApi,owner,fixtureOrigin,'personal');
+  assert.equal(selectedTask.action_type,'PERSONAL_TASK');
+  fixtureProposal=selectedTask.id;fixtures.proposals.push(selectedTask.id);proposals.push(selectedTask);
   await sheet().getByRole('heading', {name: 'Проверить действие', exact: true}).waitFor();
   await dialogLayout('queue-to-fresh-review-focus');
   await sheet().locator('#r2-edit').click();
@@ -268,6 +283,10 @@ try {
   await page.keyboard.press('Shift+Tab');
   assert.equal(await sheet().evaluate(dialog => dialog.contains(document.activeElement)), true, 'Reverse Tab remains inside the replacement editor');
   await page.keyboard.press('Escape'); await sheet().waitFor({state: 'hidden'});
+  // Native dialog visibility can change before its queued close handler restores
+  // focus. Wait for that exact existing outcome; never set focus from the test.
+  await page.waitForFunction(() => document.querySelector('#app').contains(document.activeElement)
+    || document.activeElement === document.querySelector('#nav [aria-current=page]'), undefined, {timeout: 5000});
   assert.equal(await page.evaluate(() => document.querySelector('#app').contains(document.activeElement)
     || document.activeElement === document.querySelector('#nav [aria-current=page]')), true, 'Dismissed editor restores focus to its Review surface');
   const untouchedProposal = await checkedApi(owner + `/confirmations/${fixtureProposal}/preview`);
@@ -378,7 +397,13 @@ try {
   for (const id of fixtures.proposals) {
     const proposal = await checkedApi(owner + `/confirmations/${id}/preview`);
     assert.notEqual(proposal.state, 'POSTED');
-    await checkedApi(owner + `/confirmations/${id}/reject`, {expected_version: proposal.version});
+    if(proposal.recovery?.recovery_proposal_id && proposal.recovery.recovery_proposal_id!==proposal.id){
+      assert.ok(fixtures.proposals.includes(proposal.recovery.recovery_proposal_id),'Tracked source lineage includes its successor');
+      const blocked=await context.request.post(base+owner+`/confirmations/${id}/reject`,{data:{expected_version:proposal.version},headers:{'Idempotency-Key':crypto.randomUUID()}});
+      assert.equal(blocked.status(),409,'Linked source origin cannot be independently rejected');
+      const retained=await checkedApi(owner+`/confirmations/${id}/preview`);
+      assert.deepEqual(retained.revision,proposal.revision);assert.equal(retained.state,proposal.state);assert.equal(retained.version,proposal.version);
+    }else await checkedApi(owner + `/confirmations/${id}/reject`, {expected_version: proposal.version});
   }
   assert.deepEqual((await checkedApi(owner + '/home')).finance.balances, before.finance.balances, 'Presentation and capture must not move Finance');
   assert.deepEqual((await checkedApi(prefix + '/inventory')).stock, initialStock, 'Draft receipt must not move stock');

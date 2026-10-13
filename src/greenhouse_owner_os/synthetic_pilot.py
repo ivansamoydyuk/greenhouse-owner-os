@@ -90,14 +90,23 @@ def setup_synthetic_profile(client, factory, actor_id):
         captured = post(root + '/owner/captures', dict(client_capture_id=str(uuid5(NAMESPACE_URL, f'{SOURCE}/{eid}/{key}')),
             captured_at='2026-10-10T09:00:00+03:00', timezone='Europe/Istanbul', mode='text', text=original), key + '-source')
         saved = get(root + '/owner/captures/' + captured['id'])
-        if len(saved['proposals']) != 1:
-            raise RuntimeError('TEST task requires one prepared proposal')
-        path = root + '/owner/confirmations/' + saved['proposals'][0]['id']
+        # A source-linked audience choice retains its original proposal. Replay
+        # follows the one active successor without rewriting the bare TEST text.
+        active = [p for p in saved['proposals'] if not p.get('recovery_proposal_id')]
+        if len(active) != 1:
+            raise RuntimeError('TEST task requires one active prepared proposal')
+        path = root + '/owner/confirmations/' + active[0]['id']
         proposal = get(path + '/preview')
+        if proposal['action_type'] == 'UNRESOLVED' and proposal['revision']['payload'].get('task_candidates'):
+            proposal = post(root + '/owner/captures/' + captured['id'] + '/task-recovery',
+                dict(origin_proposal_id=proposal['id'], expected_version=proposal['version'],
+                    audience={'PERSONAL_TASK':'personal','WORKER_TASK':'worker'}[action_type],
+                    reason='TEST synthetic authored audience choice; original wording retained'), key + '-audience')
+            path = root + '/owner/confirmations/' + proposal['id']
         if proposal['action_type'] != action_type:
             raise RuntimeError('TEST task preparation kind mismatch: ' + proposal['action_type'])
         terminal_state = 'CONFIRMED_NONPOSTING' if action_type == 'WORKER_TASK' else 'POSTED'
-        if proposal['state'] != terminal_state:
+        if proposal['state'] != terminal_state and any(proposal['revision']['payload'].get(k) != v for k,v in reviewed.items()):
             proposal = post(path + '/revise', dict(expected_version=proposal['version'], payload={**proposal['revision']['payload'], **reviewed},
                 reason='TEST synthetic authored fixture, explicitly reviewed for this pilot'), key + '-review')
         confirmed = post(path + '/confirm', dict(expected_version=proposal['version'], preview_digest=proposal['revision']['preview_digest'],

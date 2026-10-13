@@ -42,10 +42,10 @@ def test_relative_irrigation_text_voice_source_parity_and_no_effect(inv, raw):
     for mode in ('text', 'voice_transcript'):
         saved = source(inv, raw, mode=mode)
         p = get_proposal(inv, saved)
-        assert p['action_type'] == 'PERSONAL_TASK'
-        assert p['state'] == ('READY' if mode == 'text' else 'NEEDS_INPUT')
-        assert p['revision']['missing'] == ([] if mode == 'text' else ['Возможный повтор источника: проверьте оригинал'])
-        f = p['revision']['payload']
+        assert p['action_type'] == 'UNRESOLVED'
+        assert p['state'] == 'NEEDS_INPUT'
+        assert p['revision']['missing'] == ['Для себя или работнику?'] + ([] if mode == 'text' else ['Возможный повтор источника: проверьте оригинал'])
+        f = p['revision']['payload'].get('task_candidates', p['revision']['payload'])
         assert f['category'] == 'irrigation'
         assert f['relative_time_context'] == 'следующая неделя'
         assert f['greenhouse_id'] == area
@@ -53,10 +53,10 @@ def test_relative_irrigation_text_voice_source_parity_and_no_effect(inv, raw):
         assert f['original_instruction'] == raw
         assert p['source']['text'] == raw
         assert svc.original(UUID(inv['e']), actor, UUID(saved['id']))[0] == raw.encode('utf-8')
-        assert p['revision']['provenance']['category']['category'] == 'INFERENCE'
-        assert p['revision']['provenance']['planned_date']['category'] == 'UNKNOWN'
-        assert p['revision']['provenance']['worker_id']['category'] == 'UNKNOWN'
-        assert p['revision']['provenance']['relative_time_context']['source_text'] == raw
+        assert p['revision']['provenance']['task_candidates']['fields']['category']['category'] == 'INFERENCE'
+        assert p['revision']['provenance']['task_candidates']['fields']['planned_date']['category'] == 'UNKNOWN'
+        assert p['revision']['provenance']['task_candidates']['fields']['worker_id']['category'] == 'UNKNOWN'
+        assert p['revision']['provenance']['task_candidates']['fields']['relative_time_context']['source_text'] == raw
         assert p['revision']['extraction_run_id']
         payloads.append(f)
         svc.process(UUID(saved['id']))
@@ -71,7 +71,9 @@ def test_relative_irrigation_revision_confirmation_home_and_retry_preserve_conte
     area = prepare_area(inv)
     saved = source(inv, OWNER_PHRASE)
     p = get_proposal(inv, saved)
+    origin = p
     original_revision = p['revision']
+    p = send(inv['c'], f"/entities/{inv['e']}/owner/captures/{saved['id']}/task-recovery", dict(origin_proposal_id=origin['id'], expected_version=origin['version'], audience='personal'), expected=200)
     p = revise(inv, p, dict(p['revision']['payload'], note='TEST owner note remains separate'))
     assert p['revision']['payload']['relative_time_context'] == 'следующая неделя'
     result = confirm(inv, p, key='physical-owner-confirm')
@@ -88,7 +90,7 @@ def test_relative_irrigation_revision_confirmation_home_and_retry_preserve_conte
     assert task['planned_date'] is None and task['greenhouse_id'] == area
     sf, actor, *_ = inv['preview']
     with sf() as db:
-        stored = db.execute(text('SELECT payload,preview_digest FROM core.proposal_revisions WHERE proposal_id=:p AND version=:v'), dict(p=p['id'], v=original_revision['version'])).mappings().one()
+        stored = db.execute(text('SELECT payload,preview_digest FROM core.proposal_revisions WHERE proposal_id=:p AND version=:v'), dict(p=origin['id'], v=original_revision['version'])).mappings().one()
         assert stored['payload'] == original_revision['payload']
         assert stored['preview_digest'] == original_revision['preview_digest']
         assert db.scalar(text('SELECT count(*) FROM core.confirmation_effects WHERE proposal_id=:p'), dict(p=p['id'])) == 1
@@ -97,7 +99,7 @@ def test_relative_irrigation_revision_confirmation_home_and_retry_preserve_conte
 
 
 def test_legacy_task_revision_without_additive_keys_preview_confirm_and_replay(inv):
-    saved = source(inv, 'Сегодня проверить давление в Имамлы')
+    saved = source(inv, 'Для меня сегодня проверить давление в Имамлы')
     p = get_proposal(inv, saved)
     legacy = {k: v for k, v in p['revision']['payload'].items() if k not in ('category', 'relative_time_context')}
     p = revise(inv, p, legacy)
@@ -148,13 +150,13 @@ def test_relative_irrigation_unknown_coordinated_greenhouse_scope_is_not_narrowe
     for mode in ('text', 'voice_transcript'):
         saved = source(inv, raw, mode=mode)
         p = get_proposal(inv, saved)
-        f = p['revision']['payload']
-        assert p['action_type'] == 'PERSONAL_TASK'
+        f = p['revision']['payload'].get('task_candidates', p['revision']['payload'])
+        assert p['action_type'] == 'UNRESOLVED'
         assert f['greenhouse_id'] is None and f['worker_id'] is None
         assert f['planned_date'] is None
         assert f['category'] == 'irrigation' and f['relative_time_context'] == 'следующая неделя'
         assert f['original_instruction'] == raw and p['source']['text'] == raw
-        assert p['revision']['provenance']['greenhouse_id']['category'] == 'UNKNOWN'
+        assert p['revision']['provenance']['task_candidates']['fields']['greenhouse_id']['category'] == 'UNKNOWN'
 
 
 def test_relative_irrigation_explicitly_replaced_unknown_place_keeps_corrected_known_place(inv):
@@ -162,8 +164,8 @@ def test_relative_irrigation_explicitly_replaced_unknown_place_keeps_corrected_k
     raw = 'Нужно переделать полив не на Озвдаи, а на Имамлы на следующей неделе'
     saved = source(inv, raw)
     p = get_proposal(inv, saved)
-    assert p['revision']['payload']['greenhouse_id'] == inv['g']
-    assert p['revision']['payload']['original_instruction'] == raw
+    assert p['revision']['payload']['task_candidates']['greenhouse_id'] == inv['g']
+    assert p['revision']['payload'].get('task_candidates', p['revision']['payload'])['original_instruction'] == raw
 
 
 def test_relative_irrigation_negated_coordinated_locations_do_not_leak_second_place(inv):
@@ -171,8 +173,8 @@ def test_relative_irrigation_negated_coordinated_locations_do_not_leak_second_pl
     raw = 'Нужно переделать полив не на Озвдаи и Имамлы на следующей неделе'
     saved = source(inv, raw)
     p = get_proposal(inv, saved)
-    f = p['revision']['payload']
-    assert p['action_type'] == 'PERSONAL_TASK'
+    f = p['revision']['payload'].get('task_candidates', p['revision']['payload'])
+    assert p['action_type'] == 'UNRESOLVED'
     assert f['greenhouse_id'] is None and f['worker_id'] is None and f['planned_date'] is None
     assert f['category'] == 'irrigation' and f['relative_time_context'] == 'следующая неделя'
     assert f['original_instruction'] == raw

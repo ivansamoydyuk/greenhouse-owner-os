@@ -99,3 +99,48 @@ migration, original or historical instruction. Clean installation and populated
 This is a technical extension of accepted owner authority and recovery, not a
 new valuation, cost-classification or period policy. D01–D06 remain open;
 physical iPhone acceptance and production deployment are separate decisions.
+
+### Explicit task audience and source-linked recovery (owner decision 2026-10-12)
+
+The owner instruction `Sentinel_23ec5a187ea481919e0b1ac30a8ad153` clarifies
+ADR-030/031/038/039: detecting an action does not establish its recipient.
+An explicit worker instruction prepares a worker task; a missing executor stays
+missing and is requested in review. Explicit personal intent prepares a personal
+task. Ambiguous audience retains meaningful task candidates in UNRESOLVED with a
+short owner/worker question. Task numbering and an agricultural subject alone
+are not audience evidence. A negative instruction is not inverted into a
+positive task. No preparation, audience selection or reference suggestion
+assigns or dispatches work.
+
+A greenhouse access grant is not a task assignment. A fertilizer-specific default
+is not an ordinary-task assignment. A default recipient may be shown only where
+an applicable, current, same-entity confirmed reference contract supports it;
+its provenance must identify the contextual basis rather than claim source fact.
+Ambiguous, inactive, foreign or multiple possible recipients are not silently
+resolved. Existing confirmed personal tasks and their originals are unchanged.
+
+The additive `task_candidates` envelope retains the original instruction and
+prepared known fields with field provenance. The owner selects an audience via
+`POST /entities/{entity_id}/owner/captures/{item_id}/task-recovery`, supplying
+origin proposal, expected version, audience `personal` or `worker` and an
+optional reason. This creates a source-linked ordinary review, not a task effect.
+Existing owner review/confirmation and worker assignment/translation gates still
+apply. Old unconfirmed task proposals may be corrected explicitly; no automatic
+reclassification or historical reparse is performed. Confirmed effects cannot
+be reclassified by this endpoint.
+
+Migration `20261012_0035` extends the existing recovery-family guards to typed
+task targets. Prior migrations, sources and instructions remain immutable.
+Source/origin locks, expected versions, recovery-family uniqueness and atomic
+confirmation prevent different HTTP keys or concurrent choices from producing
+independently postable duplicate tasks. Original classifications and owner
+choice remain separate audit evidence. Clean install, populated upgrade and
+cached replay are required gates; this paragraph is a contract, not a PASS claim.
+
+The frozen v1 benchmark and reports remain historical evidence. Its unconditional
+WORKER_TASK labels for isolated GOLD-0235/0236/0237 are not business authority:
+those excerpts do not identify an audience. Their original text must remain in
+a separately versioned, independently reviewed oracle that requires useful
+retained task meaning plus clarification. Generic UNRESOLVED output cannot count
+as correct preparation. Every changed expectation needs its source/owner-rule
+basis, and unrelated financial, stock or harvest failures remain failures.

@@ -29,6 +29,8 @@ const sourceNames={obligation:'Документ',payment:'Платёж',direct_e
 export function financeSourceLinks(source,backRoute='money') {
  if(!source)return '';
  const links=[];
+ if(source.day_actual_id)links.push(link('Фактический рабочий день','day-actual-detail/'+source.day_actual_id+'/'+encodeURIComponent(backRoute),'btn secondary'));
+ if(source.day_request_id)links.push(link('Исходная заявка на работников','day-request/'+source.day_request_id+'/'+encodeURIComponent(backRoute),'btn secondary'));
  if(source.kind==='payment')links.push(link('Платёж','payment/'+source.id,'btn secondary'));
  if(source.kind==='obligation')links.push(link('Документ','money-document/'+source.id+'/'+encodeURIComponent(backRoute),'btn secondary'));
  if(source.harvest_settlement_id)links.push(link('Документ депо','depot/'+source.harvest_settlement_id,'btn secondary'));
@@ -90,6 +92,6 @@ export function financeDocumentView(d,backRoute) {
 }
 
 export function financeBackRoute(encoded,fallback='money'){
- try{const candidate=decodeURIComponent(encoded||'');if(candidate.length<=1500&&(/^(money\/|purchase\/[0-9a-f-]{36}(?:\/|$)|invoice-source\/[0-9a-f-]{36}\/[0-9a-f-]{36}(?:\/|$))/.test(candidate)))return candidate;}catch{}
+ try{const candidate=decodeURIComponent(encoded||'');if(candidate.length<=1500&&(/^(money\/|greenhouses\/(?:all|[0-9a-f-]{36})\/(?:overview|harvest|finance|work)\/|day-actual-detail\/[0-9a-f-]{36}(?:\/|$)|day-request\/[0-9a-f-]{36}(?:\/|$)|purchase\/[0-9a-f-]{36}(?:\/|$)|invoice-source\/[0-9a-f-]{36}\/[0-9a-f-]{36}(?:\/|$))/.test(candidate)))return candidate;}catch{}
  return fallback;
 }

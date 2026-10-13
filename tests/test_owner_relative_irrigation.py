@@ -31,9 +31,17 @@ def refs():
 
 def prepare(raw, refs):
     slots = prepare_owner_source(raw, today=DAY, refs=refs)
-    for kind, fields, _ in slots:
+    normalized = []
+    for kind, fields, provenance in slots:
         DTO[kind].model_validate(fields)
-    return slots
+        # Keep every original phrase. Under the latest owner decision a bare
+        # task now exposes the same facts beneath an unresolved audience card.
+        if fields.get('task_candidates'):
+            assert kind == 'UNRESOLVED'
+            assert fields['note'] == fields['task_candidates']['original_instruction'][:2000]
+            fields, provenance = fields['task_candidates'], provenance['task_candidates']['fields']
+        normalized.append((kind, fields, provenance))
+    return normalized
 
 
 @pytest.mark.parametrize('raw', [
@@ -57,7 +65,7 @@ def test_irrigation_intent_reordering_spelling_and_whitespace_preserve_source(ra
     slots = prepare(raw, refs)
     assert len(slots) == 1
     kind, fields, provenance = slots[0]
-    assert kind == 'PERSONAL_TASK'
+    assert kind == 'UNRESOLVED'
     assert fields['category'] == 'irrigation'
     assert fields['relative_time_context'] == 'следующая неделя'
     assert fields['greenhouse_id'] == OZVADI
@@ -97,7 +105,7 @@ def test_completed_negated_conditional_reported_and_noninstruction_stay_unresolv
 def test_unknown_typos_numbered_or_multiple_greenhouses_never_select_one(place, refs):
     raw = f'Нужно переделать полив на {place} на следующей неделе'
     kind, fields, provenance = prepare(raw, refs)[0]
-    assert kind == 'PERSONAL_TASK' and fields['category'] == 'irrigation'
+    assert kind == 'UNRESOLVED' and fields['category'] == 'irrigation'
     assert fields['greenhouse_id'] is None
     assert provenance['greenhouse_id']['category'] == 'UNKNOWN'
 
@@ -129,7 +137,7 @@ def test_complete_registered_numbered_site_remains_resolvable(refs):
 def test_explicit_mixed_unknown_location_scope_cannot_narrow_to_one_known_place(scope, refs):
     raw = f'Нужно переделать полив {scope} на следующей неделе'
     kind, fields, provenance = prepare(raw, refs)[0]
-    assert kind == 'PERSONAL_TASK' and fields['category'] == 'irrigation'
+    assert kind == 'UNRESOLVED' and fields['category'] == 'irrigation'
     assert fields['greenhouse_id'] is None and fields['planned_date'] is None
     assert fields['relative_time_context'] == 'следующая неделя'
     assert fields['original_instruction'] == raw
@@ -221,7 +229,7 @@ def test_explicit_corrected_greenhouse_uses_current_references(refs):
     assert fields['original_instruction'] == raw
 
 
-@pytest.mark.parametrize(('prefix', 'identity'), [('Умар', WORKER), ('Umar', WORKER), ('Закир,', None), ('Хасан', None)])
+@pytest.mark.parametrize(('prefix', 'identity'), [('Умар', WORKER), ('Umar', WORKER), ('Закир,', None)])
 def test_only_explicit_verified_worker_can_prefill_identity(prefix, identity, refs):
     kind, fields, provenance = prepare(f'{prefix} на следующей неделе переделать полив на Озвади', refs)[0]
     assert kind == 'WORKER_TASK'
@@ -232,14 +240,14 @@ def test_only_explicit_verified_worker_can_prefill_identity(prefix, identity, re
 @pytest.mark.parametrize('prefix', ['Озвади', 'озвади', 'Özvadi', 'ÖZVADI', 'Ozvadi'])
 def test_leading_known_area_with_relative_time_is_not_an_unknown_worker(prefix, refs):
     kind, fields, _ = prepare(f'{prefix} на следующей неделе поменять полив', refs)[0]
-    assert kind == 'PERSONAL_TASK'
+    assert kind == 'UNRESOLVED'
     assert fields['worker_id'] is None and fields['greenhouse_id'] == OZVADI
 
 
 def test_wrap_handling_does_not_swallow_independent_siblings(refs):
     raw = SOURCE + '\nУмар завтра проверить Имамлы\nНечитаемый остаток'
     slots = prepare(raw, refs)
-    assert [kind for kind, _, _ in slots] == ['PERSONAL_TASK', 'WORKER_TASK', 'UNRESOLVED']
+    assert [kind for kind, _, _ in slots] == ['UNRESOLVED', 'WORKER_TASK', 'UNRESOLVED']
     assert slots[0][1]['original_instruction'] == SOURCE
     assert slots[1][1]['greenhouse_id'] == IMAMLI
     assert slots[2][1]['note'] == 'Нечитаемый остаток'
@@ -300,3 +308,12 @@ def test_proposal_metadata_does_not_change_authoritative_r1_category(monkeypatch
     assert captured[0].category == 'general'
     assert captured[0].original_instruction == 'Умар '+SOURCE
     assert fields['category'] == 'irrigation'
+
+
+def test_preserved_name_place_homonym_needs_audience_clarification(refs):
+    raw = 'Хасан на следующей неделе переделать полив на Озвади'
+    kind, fields, provenance = prepare(raw, refs)[0]
+    assert kind == 'UNRESOLVED'
+    assert fields['worker_id'] is None and fields['greenhouse_id'] == OZVADI
+    assert fields['original_instruction'] == raw and fields['planned_date'] is None
+    assert provenance['worker_id']['category'] == 'UNKNOWN'

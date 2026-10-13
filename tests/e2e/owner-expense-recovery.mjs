@@ -6,6 +6,7 @@ import {execFileSync} from 'node:child_process';
 import fs from 'node:fs/promises';
 import {chromium} from 'playwright';
 import {navigateOwner} from './navigation.mjs';
+import {chooseTaskAudience} from './task-review-fixture.mjs';
 
 const base=process.env.PREVIEW_URL||'http://127.0.0.1:4173',artifacts=process.env.E2E_ARTIFACTS||'artifacts';
 const browser=await chromium.launch({headless:true,args:['--no-sandbox'],...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{})});
@@ -30,8 +31,14 @@ try{
   await page.locator('[data-r2-mode=text]').click();await sheet().locator('textarea[name=text]').fill(sourceText);await click('Сохранить источник');await sheet().waitFor({state:'hidden'});
   await poll(async()=> (await get('/captures')).items.some(s=>s.text===sourceText&&s.proposals.length===3));
   const source=(await get('/captures')).items.find(s=>s.text===sourceText),prepared=(await get('/confirmations')).items.filter(p=>p.inbox_id===source.id);
-  assert.deepEqual(prepared.map(p=>p.action_type).sort(),['DIRECT_EXPENSE','PERSONAL_TASK','UNRESOLVED']);
-  let origin=prepared.find(p=>p.action_type==='UNRESOLVED');const siblings=prepared.filter(p=>p.id!==origin.id);
+  assert.deepEqual(prepared.map(p=>p.action_type).sort(),['DIRECT_EXPENSE','UNRESOLVED','UNRESOLVED']);
+  const taskOrigin=prepared.find(p=>p.action_type==='UNRESOLVED'&&p.revision.payload.task_candidates);assert.ok(taskOrigin);
+  let origin=prepared.find(p=>p.action_type==='UNRESOLVED'&&!p.revision.payload.task_candidates);assert.ok(origin);assert.notEqual(origin.id,taskOrigin.id);
+  await navigateOwner(page,'review');await sheet().locator(`[data-proposal="${taskOrigin.id}"] [data-r2-open]`).click();
+  const personal=await chooseTaskAudience(page,(path,body)=>body===undefined?get(path.slice(root.length)):post(path.slice(root.length),body),root,taskOrigin,'personal');await close();
+  assert.equal(personal.action_type,'PERSONAL_TASK');
+  const siblings=await Promise.all([...prepared.filter(p=>p.id!==origin.id).map(p=>p.id),personal.id].map(id=>get(`/confirmations/${id}/preview`)));
+  assert.equal((await get(`/captures/${source.id}`)).proposals.length,4,'Three original slots plus one personal successor');
   const correctedNote='TEST G уточнение владельца: отдельная поездка за топливом, сумму уточню';
   origin=await post(`/confirmations/${origin.id}/revise`,{expected_version:origin.version,payload:{note:correctedNote}});
   const before=evidence('read',source.id);
@@ -45,8 +52,10 @@ try{
   const handoffPattern='**/owner/captures/*/direct-expense-recovery';
   await page.route(handoffPattern,async route=>{handoffRequests.push({body:route.request().postDataJSON(),key:route.request().headers()['idempotency-key']});if(lostHandoff)return route.continue();lostHandoff=true;await route.fetch();await route.abort('failed');});
   await openProposal(origin.id);await click('Исправить');await click('Прямой расход по этому источнику');await sheet().locator('#r2-recovery-retry:not([hidden])').waitFor();
-  const reserved=evidence('read',source.id);assert.equal(reserved.links.length,1);assert.equal(reserved.effects.length,0);assert.equal(reserved.proposals.length,4);
-  const target=reserved.links[0].recovery_proposal_id;assert.equal(reserved.links[0].origin_proposal_id,origin.id);
+  const reserved=evidence('read',source.id);assert.equal(reserved.links.length,2);assert.equal(reserved.effects.length,0);assert.equal(reserved.proposals.length,5);
+  assert.ok(reserved.links.some(link=>link.origin_proposal_id===taskOrigin.id&&link.recovery_proposal_id===personal.id));
+  const expenseLink=reserved.links.find(link=>link.origin_proposal_id===origin.id);assert.ok(expenseLink);
+  const target=expenseLink.recovery_proposal_id;assert.equal(expenseLink.origin_proposal_id,origin.id);
   await click('Повторить переход');await sheet().getByRole('heading',{name:'Исправить карточку',exact:true}).waitFor();await page.unroute(handoffPattern);
   assert.equal(handoffRequests.length,2);assert.deepEqual(handoffRequests[0],handoffRequests[1]);
   assert.deepEqual(handoffRequests[0].body,{origin_proposal_id:origin.id,expected_version:origin.version});
@@ -93,7 +102,7 @@ try{
   assert.equal(typedReady.id,typed.id);assert.deepEqual(typedReady.revision.provenance.amount,typed.revision.provenance.amount);assert.deepEqual(typedReady.revision.provenance.currency,typed.revision.provenance.currency);
   await click('Подтвердить');await sheet().getByText(/Расход подтверждён\. Деньги списаны/).waitFor();assert.equal(await sheet().getByText('Расход · Подтверждено',{exact:true}).isVisible(),true);const typedPosted=await get(`/confirmations/${typed.id}/preview`);
   await post(`/direct-expenses/${typedPosted.current_effect.id}/reverse`,{expected_version:typedPosted.current_effect.version,event_date:typedPosted.current_effect.event_date,reason:'TEST G typed sibling cleanup'});
-  const final=evidence('read',source.id);assert.equal(final.links.length,1);assert.equal(final.expenses.length,2);assert.ok(final.expenses.every(d=>d.status==='reversed'));
+  const final=evidence('read',source.id);assert.equal(final.links.length,2);assert.equal(final.proposals.length,5);assert.equal(final.expenses.length,2);assert.ok(final.expenses.every(d=>d.status==='reversed'));
   await fs.writeFile(`${artifacts}/g-lineage-evidence.json`,JSON.stringify({before,reserved,posted:postedEvidence,final},null,2));
   // Separate synthetic exhausted-job fixture, not a claim of OCR failure.
   const failed=evidence('failed',initial.owner_id);await openSources();await sheet().locator(`[data-source-manual="${failed.id}"]`).click();

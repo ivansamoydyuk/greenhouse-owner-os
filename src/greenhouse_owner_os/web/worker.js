@@ -1,3 +1,5 @@
+import {daySource,dayDraft,dayStored,dayText,dayWorkChoices} from './day-workers-core.js';
+import {workerDayList,workerDayChoose,workerDayForm,workerDayDetail} from './worker-day-workers.js';
 import {EncryptedWorkerDraftStore} from './pilot-storage.js';
 import {WorkerDraftStore,workerDraftScope,workerDraftIdentity,r1DraftKey,stableWorkerIntent} from './worker-drafts.js';
 import {fertilizerWorkerView,fertilizerReportKey,fertilizerPending,fertilizerReportSnapshot,fertilizerReportStored} from './worker-fertilizer.js';
@@ -21,7 +23,8 @@ async function list(){
  const stamp=generation,r=await api('/v1/worker/tasks');if(stamp!==generation)return;identity=workerDraftIdentity(r.worker,pilot?participant:null);language=identity.language;const scope=workerDraftScope(identity,participant?.participant_id);if(!workerStore||workerStore.scope!==scope)workerStore=pilot?await EncryptedWorkerDraftStore.create(localStorage,scope,participant.draft_key,draftStatus):new WorkerDraftStore(sessionStorage,scope,draftStatus);document.documentElement.dir=language==='fa'?'rtl':'ltr';document.documentElement.lang=language==='fa'?'fa':'ru';
  let fertilizer={items:[]},fertilizerError='';try{fertilizer=await api('/v1/worker/fertilizer');}catch(err){if(stamp!==generation)return;fertilizerError=err.message;}
  if(stamp!==generation)return;
- app.innerHTML=`<h1>${e(l(0))}</h1><p>${e(r.worker.display_name)}</p>${r.tasks.map(t=>`<button class="item" data-worker-task="${e(t.id)}"><strong>${e(t.title)}</strong><small>${e(status(t.status))} · ${e(t.planned_date||'')}</small></button>`).join('')||'<p>Нет назначенных задач</p>'}<h2>${language==='fa'?'کوددهی':'Внесения'}</h2>${fertilizerError?`<p class="bad">${e(fertilizerError)}</p><button id="worker-fertilizer-retry">${language==='fa'?'تازه کردن':'Обновить внесения'}</button>`:(fertilizer.items||[]).map(p=>`<button class="item" data-worker-fertilizer="${e(p.plan_id||p.id)}"><strong>${e(p.greenhouse?.name||p.greenhouse_name||'Внесение')}</strong><small>${e(p.event_date)} · ${e(p.cards?.length||0)}</small></button>`).join('')||'<p>Нет проверенных поручений на внесение</p>'}`;
+ app.innerHTML=`<h1>${e(l(0))}</h1><p>${e(r.worker.display_name)}</p><button class=primary id=worker-day-open>${e(dayText(language).title)}</button>${r.tasks.map(t=>`<button class="item" data-worker-task="${e(t.id)}"><strong>${e(t.title)}</strong><small>${e(status(t.status))} · ${e(t.planned_date||'')}</small></button>`).join('')||'<p>Нет назначенных задач</p>'}<h2>${language==='fa'?'کوددهی':'Внесения'}</h2>${fertilizerError?`<p class="bad">${e(fertilizerError)}</p><button id="worker-fertilizer-retry">${language==='fa'?'تازه کردن':'Обновить внесения'}</button>`:(fertilizer.items||[]).map(p=>`<button class="item" data-worker-fertilizer="${e(p.plan_id||p.id)}"><strong>${e(p.greenhouse?.name||p.greenhouse_name||'Внесение')}</strong><small>${e(p.event_date)} · ${e(p.cards?.length||0)}</small></button>`).join('')||'<p>Нет проверенных поручений на внесение</p>'}`;
+ document.querySelector('#worker-day-open').onclick=safe(dayList);
  document.querySelectorAll('[data-worker-task]').forEach(b=>b.onclick=safe(()=>read(b.dataset.workerTask)));
  document.querySelectorAll('[data-worker-fertilizer]').forEach(b=>b.onclick=safe(()=>readFertilizer(b.dataset.workerFertilizer)));
  const retry=document.querySelector('#worker-fertilizer-retry');if(retry)retry.onclick=safe(list);
@@ -33,7 +36,7 @@ let loggingOut=false;
 document.querySelector('#worker-logout').onclick=async()=>{
  if(loggingOut)return;loggingOut=true;generation++;busy=false;app.inert=true;
  const store=workerStore;
- try{await store?.flush();if(pilot)await api('/pilot/logout',{});identity=null;workerStore=null;participant=null;try{sessionStorage.removeItem('worker-preview-token');}catch{}token=null;if(pilot)pilotChannel?.postMessage({changed:true});login();}
+ try{await store?.flush();if(pilot)await api('/pilot/logout',{});identity=null;workerStore=null;participant=null;dayResult=null;dayCurrent=null;dayMode=null;try{sessionStorage.removeItem('worker-preview-token');}catch{}token=null;if(pilot)pilotChannel?.postMessage({changed:true});login();}
  catch(err){error.textContent=err.message;}
  finally{loggingOut=false;app.inert=false;}
 };
@@ -83,3 +86,57 @@ function renderFertilizer(plan){
 async function verifyWorkerParticipant(){if(!pilot||!participant)return;app.style.visibility='hidden';try{const response=await fetch('/pilot/session',{credentials:'same-origin',cache:'no-store'}),session=response.ok?await response.json():null;if(!session||session.role!=='worker'||session.participant_id!==participant.participant_id){generation++;await workerStore?.flush();workerStore=null;identity=null;participant=null;location.replace('/pilot/');return;}app.style.visibility='visible';}catch{expiredWorkerNotice('Не удалось проверить вход. Данные скрыты, черновик остался в открытом окне.');}}
 window.addEventListener('pagehide',()=>{if(pilot)app.style.visibility='hidden';});window.addEventListener('pageshow',event=>{if(event.persisted)verifyWorkerParticipant();});
 const pilotChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('greenhouse-pilot-session'):null;pilotChannel?.addEventListener('message',()=>verifyWorkerParticipant());
+
+// DayWorkers never borrows owner caches or identities. Every entry re-reads worker-scoped records.
+let dayResult=null,dayCurrent=null,dayMode=null;
+async function dayList(){const stamp=generation;const result=await api('/v1/worker/day-workers');if(stamp!==generation)return;dayResult=result;dayCurrent=null;dayMode=null;app.innerHTML=workerDayList(result,language);bindDay();}
+function bindDay(){
+ app.querySelectorAll('[data-day-request]').forEach(button=>button.onclick=safe(()=>dayRead(button.dataset.dayRequest)));
+ app.querySelectorAll('[data-day-action]').forEach(button=>button.onclick=safe(async()=>{
+   const action=button.dataset.dayAction;
+   if(action==='tasks')return list();if(action==='list')return dayList();
+   if(action==='new'||action==='actual'){const request=action==='actual'?dayCurrent:null;return dayChoose(action==='new'?'request':'actual',request);}
+   if(action==='clarify'&&dayCurrent)return dayOpenForm('clarification',dayCurrent,dayCurrent);
+ }));
+}
+async function dayRead(id){const stamp=generation,result=await api('/v1/worker/day-workers/requests/'+encodeURIComponent(id));if(stamp!==generation)return;dayCurrent=result;app.innerHTML=workerDayDetail(result,language);bindDay();}
+async function dayChoose(kind,request=null){
+ const stamp=generation,result=await api('/v1/worker/day-workers');if(stamp!==generation)return;dayResult=result;
+ if(request){const g=result.greenhouses.find(g=>g.id===request.greenhouse_id);if(!g)throw Error(dayText(language).noScope);return dayOpenForm(kind,{...g,greenhouse_id:g.id,greenhouse_name:g.name},request);}
+ if(result.greenhouses.length===1){const g=result.greenhouses[0];return dayOpenForm(kind,{...g,greenhouse_id:g.id,greenhouse_name:g.name});}
+ if(!result.greenhouses.length){app.innerHTML=workerDayList(result,language);bindDay();return;}
+ app.innerHTML=workerDayChoose(result,language);bindDay();
+ app.querySelector('#worker-day-form').onsubmit=event=>{event.preventDefault();const id=event.target.elements.greenhouse_id.value;safe(()=>{const g=result.greenhouses.find(g=>g.id===id);if(!g)throw Error(dayText(language).choose);return dayOpenForm(kind,{...g,greenhouse_id:g.id,greenhouse_name:g.name});})();};
+}
+function dayOpenForm(kind,context,request=null){
+ const operationStore=workerStore,stamp=generation;
+ const key=['day-workers',kind,context.greenhouse_id||context.id,request?.id||'standalone'].join(':');
+ let saved=JSON.parse(operationStore.getItem(key)||'null');
+ if(!saved){saved=dayDraft(crypto.randomUUID(),new Date().toISOString(),{work:kind==='actual'?request?.current_plan?.work||'':'',expected_version:request?.version});operationStore.setItem(key,JSON.stringify(saved));}
+ let pending=JSON.parse(operationStore.getItem(key+':pending')||'null');
+ if(kind==='clarification'&&request&&dayStored(request,saved.id)){operationStore.removeItem(key);operationStore.removeItem(key+':pending');return dayRead(request.id);}
+ if(!pending&&kind==='clarification'&&saved.expected_version!==request.version){saved.version_conflict=true;operationStore.setItem(key,JSON.stringify(saved));}
+ dayMode=kind;activeDraftKey=key;app.innerHTML=workerDayForm(kind,{...context,work_choices:dayWorkChoices(dayResult?.requests||[],context.greenhouse_id||context.id)},saved,language,!!pending);bindDay();
+ const form=app.querySelector('#worker-day-form');
+ const fields=()=>Object.fromEntries([...form.querySelectorAll('[name]')].map(node=>[node.name,node.type==='checkbox'?(node.checked?'on':''):node.value]));
+ const persist=()=>{Object.assign(saved,fields());operationStore.setItem(key,JSON.stringify(saved));};
+ form.oninput=()=>{if(pending)return;try{persist();}catch(err){storageError(err);}};
+ form.onsubmit=event=>{event.preventDefault();const submitted=fields();safe(async()=>{
+   if(stamp!==generation||operationStore!==workerStore)throw Error('Сессия изменилась.');
+   if(kind==='clarification'&&saved.version_conflict){if(submitted.reviewed_current!=='on')throw Error(language==='fa'?'پاسخ تازه را بررسی کنید.':'Проверьте текущий ответ владельца.');saved.id=crypto.randomUUID();saved.captured_at=new Date().toISOString();saved.expected_version=request.version;delete saved.version_conflict;}
+   if(!pending){Object.assign(saved,submitted);operationStore.setItem(key,JSON.stringify(saved));}
+   let path,body;
+   if(kind==='request'){path='/v1/worker/day-workers/requests';body={greenhouse_id:context.greenhouse_id,source:daySource('day_request',saved,submitted)};}
+   if(kind==='actual'){
+     if(!pending&&!['same','unknown'].includes(submitted.allocation_mode))throw Error(language==='fa'?'محل کار را مشخص کنید.':'Укажите распределение фактической работы.');
+     const allocations=/^0{1,6}$/.test(String(submitted.people))?[]:submitted.allocation_mode==='same'?[{greenhouse_id:context.greenhouse_id,work_area_id:null,people:Number(submitted.people)}]:[];
+     path='/v1/worker/day-workers/actuals';body={greenhouse_id:context.greenhouse_id,request_id:request?.id||null,replaces_id:null,source:daySource('day_actual',saved,{...submitted,allocations:JSON.stringify(allocations)})};
+   }
+   if(kind==='clarification'){path='/v1/worker/day-workers/requests/'+request.id+'/clarifications';body={expected_version:saved.expected_version,source:daySource('day_clarification',saved,submitted)};}
+   const operation=stableWorkerIntent(operationStore,key+':pending',{path,body});await operationStore.flush();
+   let result;try{result=await api(operation.path,operation.body);}catch(err){if(stamp!==generation||operationStore!==workerStore)throw err;if([400,422].includes(err.status)){operationStore.removeItem(key+':pending');}else if(err.status===409&&kind==='clarification'){const latest=await api('/v1/worker/day-workers/requests/'+request.id);if(stamp!==generation||operationStore!==workerStore)throw err;if(dayStored(latest,saved.id)){operationStore.removeItem(key+':pending');operationStore.removeItem(key);return dayRead(request.id);}operationStore.setItem(key+':conflicted',JSON.stringify(operation));operationStore.removeItem(key+':pending');saved.version_conflict=true;operationStore.setItem(key,JSON.stringify(saved));if(latest.state==='CLARIFICATION_REQUIRED')dayOpenForm(kind,latest,latest);else await dayRead(request.id);}else{dayOpenForm(kind,context,request);}throw err;}
+   if(stamp!==generation||operationStore!==workerStore)throw Error('Сессия изменилась.');
+   operationStore.removeItem(key+':pending');operationStore.removeItem(key);await operationStore.flush();if(stamp!==generation||operationStore!==workerStore)return;draftStatus('server');
+   if(kind==='request')return dayRead(result.id);if(kind==='clarification')return dayRead(request.id);return request?dayRead(request.id):dayList();
+ })();};
+}

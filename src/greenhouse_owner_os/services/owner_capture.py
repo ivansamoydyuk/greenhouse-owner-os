@@ -379,7 +379,7 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
         elif kind in ('PERSONAL_TASK','WORKER_TASK'):
             required('title','Задача');scoped('core.work_areas',fields.get('greenhouse_id'))
             if kind=='WORKER_TASK':
-                required('worker_id','Работник');required('planned_date','На какой день следующей недели поставить?' if fields.get('relative_time_context')=='следующая неделя' else 'Дата');required('greenhouse_id','Теплица')
+                required('original_instruction','Поручение');required('worker_id','Работник');required('planned_date','На какой день следующей недели поставить?' if fields.get('relative_time_context')=='следующая неделя' else 'Дата');required('greenhouse_id','Теплица')
                 worker=scoped('workers.people',fields.get('worker_id'))
                 if worker and fields.get('language')!=worker['language']:missing.append('Проверьте язык выбранного работника')
                 if worker and worker['language']!='ru' and not fields.get('rendered_text'):missing.append('Проверенный перевод: задача пока не отправляется')
@@ -429,6 +429,8 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
                 required('finance_obligation_id','Подтверждённый долг, с которым связать счёт')
             if receipt and obligation and receipt['payload'].get('supplier_id') and receipt['payload']['supplier_id']!=obligation['counterparty_id']:
                 raise ValidationError('Поставщик физического прихода не совпадает с кредитором выбранного долга')
+        elif kind=='UNRESOLVED' and fields.get('task_candidates'):
+            missing.append('Для себя или работнику?')
         else:missing.append('Выберите точный ручной режим по сохранённому оригиналу')
         return fields,list(dict.fromkeys(missing)),basis
 
@@ -482,13 +484,26 @@ class OwnerCaptureService(ExpenseRecoveryMixin):
                     if payload.get('document_reviewed') is not True or not b.reason.strip():
                         raise ValidationError('Подтвердите сверку нечитаемых строк с оригиналом и укажите основание исправления')
                 provenance={k:{'category':'OWNER INPUT'} for k in payload}
-                if p['action_type'] in ('DEPOT_RECEIPT','PAYABLE','PAYMENT','INVOICE_MATCH'):
+                if p['action_type'] in ('DEPOT_RECEIPT','PAYABLE','PAYMENT','INVOICE_MATCH','PERSONAL_TASK','WORKER_TASK'):
                     from pydantic import ValidationError as InputError
                     try:payload=DTO[p['action_type']].model_validate(payload).model_dump(mode='json')
                     except InputError as ex:raise ValidationError('Проверьте значения карточки') from ex
                     provenance={k:previous['provenance'].get(k,{'category':'UNKNOWN' if value is None else 'INFERENCE'})
                                 if same_review_fact(previous['payload'].get(k),value,k) else {'category':'OWNER INPUT'}
                                 for k,value in payload.items()}
+                if p['action_type']=='UNRESOLVED' and previous['payload'].get('task_candidates') and payload.get('task_candidates'):
+                    from pydantic import ValidationError as InputError
+                    try:payload=DTO['UNRESOLVED'].model_validate(payload).model_dump(mode='json')
+                    except InputError as ex:raise ValidationError('Проверьте значения карточки') from ex
+                    old=previous['payload']['task_candidates']
+                    evidence=previous['provenance'].get('task_candidates',{})
+                    provenance={k:previous['provenance'].get(k,{'category':'UNKNOWN' if value is None else 'INFERENCE'})
+                                if same_review_fact(previous['payload'].get(k),value,k) else {'category':'OWNER INPUT'}
+                                for k,value in payload.items()}
+                    provenance['task_candidates']={**evidence,'fields':{
+                        k:evidence.get('fields',{}).get(k,{'category':'UNKNOWN' if value is None else 'INFERENCE'})
+                        if same_review_fact(old.get(k),value,k) else {'category':'OWNER INPUT'}
+                        for k,value in payload['task_candidates'].items()}}
                 if p['action_type']=='DIRECT_EXPENSE':
                     previous=self._view(u,p)['revision']
                     original=u.session.get(InboxRow,UUID(str(p['inbox_id'])))

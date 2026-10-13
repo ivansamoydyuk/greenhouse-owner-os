@@ -11,7 +11,7 @@ from greenhouse_owner_os.services.owner_capture import OwnerCaptureService
 from greenhouse_owner_os.repositories.sqlalchemy import SqlAlchemyUnitOfWork
 from greenhouse_owner_os.domain.owner_capture import CaptureSource,ConfirmAction,ReviseAction
 
-def source(i,phrase='Сегодня полить İmamlı.',**kw):
+def source(i,phrase='Для меня сегодня полить İmamlı.',**kw):
     return send(i['c'],f"/entities/{i['e']}/owner/captures",dict(client_capture_id=str(uuid4()),captured_at='2026-10-08T12:00:00+03:00',text=phrase,**kw))
 def queue(i):return i['c'].get(f"/v1/entities/{i['e']}/owner/confirmations").json()['items']
 def revise(i,p,payload):return send(i['c'],f"/entities/{i['e']}/owner/confirmations/{p['id']}/revise",dict(expected_version=p['version'],payload=payload),expected=200)
@@ -142,9 +142,33 @@ def test_anonymous_direct_expense_exact_journal_and_reversal(inv):
 
 def test_neutral_and_worker_future_route_do_not_become_finance(inv):
     source(inv,'Непонятное сообщение');p=queue(inv)[0];assert p['action_type']=='UNRESOLVED'
-    source(inv,'Завтра Асыф Газипаша починит плёнку в Özvadi.');ps=queue(inv)
-    assert any(p['action_type']=='WORKER_TASK' for p in ps)
+    # This fixture has no worker references (and only İmamlı as a known site).
+    # Preserve its exact old phrase; an unverified OOV person is not an ID or
+    # capitalization-based audience guess. The full-reference future contrast
+    # is exercised unchanged in test_postgres_owner_worker_identity.
+    raw='Завтра Асыф Газипаша починит плёнку в Özvadi.'
+    saved=source(inv,raw);origin=next(p for p in queue(inv) if p['inbox_id']==saved['id'])
+    assert origin['action_type']=='UNRESOLVED' and origin['state']=='NEEDS_INPUT'
+    assert origin['revision']['missing']==['Для себя или работнику?']
+    candidate=origin['revision']['payload']['task_candidates']
+    assert candidate['original_instruction']==raw and candidate['category']=='repair'
+    assert candidate['worker_id'] is None and candidate['greenhouse_id'] is None
+    assert candidate['planned_date']=='2026-10-09'
+    chosen=send(inv['c'],f"/entities/{inv['e']}/owner/captures/{saved['id']}/task-recovery",
+                dict(origin_proposal_id=origin['id'],expected_version=origin['version'],audience='worker'),expected=200)
+    assert chosen['action_type']=='WORKER_TASK' and chosen['state']=='NEEDS_INPUT'
+    assert chosen['revision']['payload']['original_instruction']==raw
+    assert chosen['revision']['payload']['worker_id'] is None
+    assert chosen['revision']['payload']['planned_date']==candidate['planned_date']
+    sf,actor,*_=inv['preview'];svc=OwnerCaptureService(lambda:SqlAlchemyUnitOfWork(sf))
+    assert svc.preview(UUID(inv['e']),actor,UUID(origin['id']))['revision']==origin['revision']
+    assert svc.original(UUID(inv['e']),actor,UUID(saved['id']))[0].decode()==raw
+    ps=queue(inv)
+    assert any(p['id']==chosen['id'] and p['action_type']=='WORKER_TASK' for p in ps)
     assert not any(p['action_type'] in ('PAYMENT','PAYABLE') for p in ps)
+    with sf() as db:
+        for table in ('core.confirmation_effects','core.owner_tasks','workers.tasks','workers.assignments','finance.postings'):
+            assert db.scalar(text('SELECT count(*) FROM '+table+' WHERE entity_id=:e'),dict(e=inv['e']))==0
 
 def test_personal_task_single_effect_response_loss_and_two_keys(inv):
     source(inv);p=queue(inv)[0];assert p['action_type']=='PERSONAL_TASK'

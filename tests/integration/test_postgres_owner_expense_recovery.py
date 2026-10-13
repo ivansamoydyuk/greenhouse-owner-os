@@ -94,7 +94,8 @@ def test_existing_expense_retains_known_fields_and_only_corrected_fact_changes(i
 @pytest.mark.parametrize('phrase',['Заплатил Серкану 5000','Должен Серкану 7000 за ремонт','Завтра полить İmamlı'])
 def test_needs_input_never_authorizes_other_economic_type(inv,phrase):
     s=source(inv,phrase);p=queue(inv)[0]
-    assert p['action_type'] not in ('DIRECT_EXPENSE','UNRESOLVED')
+    assert p['action_type'] != 'DIRECT_EXPENSE'
+    if p['action_type']=='UNRESOLVED':assert p['revision']['payload'].get('task_candidates')
     recover(inv,s,p,expected=409)
     assert counts(inv)['core.owner_recovery_links']==0
 
@@ -155,7 +156,7 @@ def test_cancel_reload_reject_resume_and_reversal_keep_original_and_target(inv):
 
 
 def test_independent_same_source_siblings_remain_independent(inv):
-    s=source(inv,'TEST неопределённое событие.\nКупил бензин за 321 TRY.\nЗавтра полить İmamlı.')
+    s=source(inv,'TEST неопределённое событие.\nКупил бензин за 321 TRY.\nДля меня завтра полить İmamlı.')
     ps=queue(inv);origin=next(p for p in ps if p['action_type']=='UNRESOLVED');siblings={p['id']:deepcopy(p) for p in ps if p['id']!=origin['id']}
     recovered=fill(inv,recover(inv,s,origin));confirm(inv,recovered)
     for pid,prior in siblings.items():

@@ -8,6 +8,7 @@ import {createHash} from 'node:crypto';
 import {chromium,webkit} from 'playwright';
 import {syntheticPixelPng} from '../fixtures/owner-r3-media.mjs';
 import {exactDecimalString} from '../../prototype/owner-r3/connected-adapter.js';
+import {money,displayDate} from '../../src/greenhouse_owner_os/web/core.js';
 const canonicalQuantity=value=>{const s=exactDecimalString(value);assert.ok(s!==null);return s.includes('.')?s.replace(/0+$/,'').replace(/\.$/,''):s;};
 const base=process.env.PREVIEW_URL||'http://127.0.0.1:4173',out=process.env.E2E_ARTIFACTS||'artifacts/overnight-purchases';await fs.mkdir(out,{recursive:true});
 const result={sha:process.env.OWNER_PREVIEW_FEATURE_SHA,mode:pilotMode?'PRIVATE_DAILY_TEST':'CONNECTED_TEST',status:'RUNNING',records:[],layouts:[],screenshots:[],errors:[]};let active;
@@ -69,7 +70,35 @@ try{for(const [engine,type] of [['chromium',chromium],['webkit',webkit]]){
  const record={engine,entity_id:config.entity_id,receipt_id:receiptId,product_id:productId,origin_id:origin.id,destination_id:destination.id,account_id:account.id,supplier_id:supplier.id,receipt_sha256:createHash('sha256').update(receiptBytes).digest('hex')};
  await page.getByRole('link',{name:'История поставки',exact:true}).click();await ready('purchase/');await page.getByText('Оригинал и происхождение',{exact:true}).click();const receiptDownloadPromise=page.waitForEvent('download');await page.getByRole('link',{name:'TEST-B-arrival-'+engine+'.png',exact:true}).click();const receiptDownload=await receiptDownloadPromise;assert.deepEqual(await fs.readFile(await receiptDownload.path()),receiptBytes);await page.getByRole('link',{name:'Добавить счёт к приходу',exact:true}).click();await ready('invoice-new/');assert.equal(await page.locator('[name=intent]').count(),0);record.source_text='TEST счёт на операционный расход '+engine;await fill('text',record.source_text);
  const invoiceBytes=Buffer.concat([syntheticPixelPng(),Buffer.from('B invoice '+engine)]);await upload(invoiceBytes,'TEST-B-invoice-'+engine+'.png','invoice-source');await click('Сохранить счёт и подготовить');await ready('invoice-source/');record.source_id=page.url().split('/').slice(-1)[0];await chooseInvoiceIntent(receiptId,'operating_expense');await page.getByRole('button',{name:'Сумма',exact:true}).waitFor();
- const edit=async(label,value,select=false)=>{await click(label);const x=page.locator('#sheet-root [name=value]');if(select)await x.selectOption(value);else await x.fill(value);await click('Сохранить факт');await page.locator('#sheet-root [role=dialog]').waitFor({state:'hidden'});await ready('invoice-source/');};
+ const edit=async(label,value,select=false)=>{
+  await click(label);
+  const x=page.locator('#sheet-root [name=value]');
+  if(select)await x.selectOption(value);else await x.fill(value);
+  const selectedLabel=select?await x.locator('option:checked').innerText():null;
+  const key={'Сумма':'amount','Валюта':'currency','Дата':'event_date','Контрагент':'counterparty_id','За что':'description'}[label];
+  assert.ok(key,'Known invoice fact '+label);
+  // A closed sheet and unchanged hash can still refer to the old invoice DOM.
+  // Capture its identity before saving, then wait for its actual replacement.
+  const previousMain=await page.locator('#main').elementHandle();assert.ok(previousMain);
+  const revisedResponse=page.waitForResponse(response=>response.request().method()==='POST'&&new URL(response.url()).pathname.startsWith(root+'/owner/confirmations/')&&new URL(response.url()).pathname.endsWith('/revise'));
+  try {
+   await click('Сохранить факт');
+   const response=await revisedResponse;assert.equal(response.status(),200,await response.text());
+   const revised=await response.json(),command=response.request().postDataJSON();
+   assert.equal(revised.version,command.expected_version+1);
+   const saved=revised.revision.payload[key];
+   assert.equal(key==='amount'?canonicalQuantity(saved):saved,key==='amount'?canonicalQuantity(value):value,'Server retained edited '+key);
+   await page.locator('#sheet-root [role=dialog]').waitFor({state:'hidden'});
+   await page.waitForFunction(element=>!element.isConnected,previousMain);
+   await ready('invoice-source/');
+   const factLabel=key==='currency'?'Сумма':key==='counterparty_id'?'Поставщик':label;
+   const renderedValue=page.locator('.fact-row').filter({has:page.locator('dt').filter({hasText:new RegExp('^'+factLabel+'$')})}).locator('dd');
+   await renderedValue.waitFor({state:'visible'});
+   const expected=key==='amount'||key==='currency'?money(revised.revision.payload.amount,revised.revision.payload.currency):key==='event_date'?displayDate(saved):key==='counterparty_id'?selectedLabel:saved;
+   assert.equal(await renderedValue.innerText(),expected,'Fresh invoice displays edited '+key);
+   (record.invoice_fact_edits??=[]).push({field:key,status:response.status(),version:revised.version,previous_main_detached:true,rendered_value:expected});
+  } finally {await previousMain.dispose();}
+ };
  await edit('Сумма','500');await edit('Валюта','TRY',true);await edit('Дата','2026-10-10');await edit('Контрагент',supplier.id,true);await edit('За что','TEST подтверждённый операционный расход '+engine);
  let source=await read(root+'/owner/captures/'+record.source_id);assert.equal(source.invoice_receipt_id,receiptId);assert.equal(source.proposals.filter(x=>x.action_type==='PAYABLE').length,1);assert.equal(source.proposals.filter(x=>x.action_type==='INVOICE_MATCH').length,1);record.payable_proposal_id=source.proposals.find(x=>x.action_type==='PAYABLE').id;record.match_proposal_id=source.proposals.find(x=>x.action_type==='INVOICE_MATCH').id;assert.equal(source.invoice_intent,null);assert.equal(source.text,record.source_text);await reviewInvoiceOriginal(record.payable_proposal_id);const reviewedPayable=await read(root+'/owner/confirmations/'+record.payable_proposal_id+'/preview');assert.equal(reviewedPayable.revision.payload.invoice_intent,'operating_expense');assert.deepEqual(reviewedPayable.revision.missing,[]);await readyAction('Подтвердить расход и долг в TEST');await layouts('invoice-review');
  let lostPayable=false;await page.route('**/owner/confirmations/'+record.payable_proposal_id+'/confirm',async route=>{if(!lostPayable){lostPayable=true;const r=await route.fetch();assert.equal(r.status(),200);await route.abort('failed');}else await route.continue();});await click('Подтвердить расход и долг в TEST');await page.locator('#action-error').filter({hasText:'Ответ сервера не получен'}).waitFor();await page.reload();await ready('invoice-source/');await page.unroute('**/owner/confirmations/'+record.payable_proposal_id+'/confirm');await page.getByText('Расход и долг подтверждены сервером. Повтор не создаёт новый документ.',{exact:true}).waitFor();

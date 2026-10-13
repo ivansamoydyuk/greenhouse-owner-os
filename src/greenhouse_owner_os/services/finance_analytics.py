@@ -90,10 +90,19 @@ def allocate_cost(total, event_date, direct, general, areas, policy):
 
 
 class FinanceAnalyticsService:
-    def __init__(self, factory):
+    def __init__(self, factory, *, snapshot_owned=False):
+        # Internal composition only: the caller must already own a read-only snapshot.
+        self.snapshot_owned = snapshot_owned
         self.factory = factory
         self.owner = OwnerCaptureService(factory)
         self.harvest = HarvestJourneyService(factory)
+
+    def _snapshot(self, u):
+        if not self.snapshot_owned:
+            u.session.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'))
+        elif (u.session.scalar(text('SHOW transaction_isolation')) != 'repeatable read'
+              or u.session.scalar(text('SHOW transaction_read_only')) != 'on'):
+            raise ValidationError('The composed read requires an owned repeatable-read read-only snapshot')
 
     def _sources(self, u, e):
         parties = {r['id']: r['name'] for r in rows(u, 'SELECT id,name FROM core.counterparties WHERE entity_id=:e', e=e)}
@@ -106,6 +115,12 @@ class FinanceAnalyticsService:
                 sources[key] = dict(kind=kind, id=r['id'], status=r['status'], description=r.get('description') or r.get('reason'),
                                     counterparty_id=r.get('counterparty_id'), counterparty_name=parties.get(r.get('counterparty_id')),source_reference=r.get('source'),
                                     replacement_of_id=r.get('replacement_of_id'))
+        for r in rows(u, '''SELECT c.actual_id,c.obligation_id,d.request_id
+                FROM workers.day_accruals c JOIN workers.day_actuals d ON d.id=c.actual_id AND d.entity_id=c.entity_id
+                WHERE c.entity_id=:e''', e=e):
+            key = ('obligation', r['obligation_id'])
+            if key in sources:
+                sources[key].update(day_actual_id=r['actual_id'], day_request_id=r['request_id'])
         reviews = {}
         for r in rows(u, '''SELECT c.obligation_id,c.payment_id,c.direct_expense_id,c.proposal_id,c.version,
                 p.inbox_id,r.payload,r.provenance,r.missing
@@ -174,7 +189,7 @@ class FinanceAnalyticsService:
 
     def document(self, e, a, oid):
         with self.factory() as u:
-            u.session.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'))
+            self._snapshot(u)
             self.owner.owner(u,e,a)
             sources, _, _, parties = self._sources(u,e)
             areas = {r['id']:r for r in rows(u,'SELECT * FROM core.work_areas WHERE entity_id=:e',e=e)}
@@ -251,7 +266,7 @@ class FinanceAnalyticsService:
         if len(currency)!=3 or not currency.isascii() or not currency.isalpha() or date_from>date_to:
             raise ValidationError('Укажите корректный период и одну валюту')
         with self.factory() as u:
-            u.session.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'))
+            self._snapshot(u)
             self.owner.owner(u,e,a)
             entity=u.session.get(EntityRow,e)
             if not entity: raise NotFoundError('Компания не найдена')
