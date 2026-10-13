@@ -97,9 +97,14 @@ test('P01 uses shared readiness and preserves exact OCR/inertness assertions and
   assert.doesNotMatch(snippet,/force\s*:|waitForTimeout|setTimeout|\.catch\(|\.evaluate\(/);
 });
 
-test('correction branch runs this regression and both existing browser/SQL engines',()=>{
+test('every default-target PR runs this regression and both existing browser/SQL engines',()=>{
   const workflow=readFileSync(new URL('../../.github/workflows/capture-daily-checkpoint.yml',import.meta.url),'utf8');
-  assert.match(workflow,/branches: \[[^\n]*16-day-workers-postmerge-capture-stability\]/);
+  const pullRequest=workflow.match(/^  pull_request:\n((?:    [^\n]*\n)+)/m)?.[1];
+  assert.ok(pullRequest,'Default-target PR coverage must be explicit');
+  assert.match(pullRequest,/branches: \[01-architecture-database\]/);
+  assert.match(pullRequest,/types: \[opened, synchronize, reopened, edited\]/);
+  assert.doesNotMatch(pullRequest,/paths(?:-ignore)?:|branches-ignore:/);
+  assert.match(workflow,/  push:\n    branches: \[01-architecture-database\]/);
   assert.match(workflow,/engine: \[chromium, webkit\]/);
   assert.match(workflow,/run: node --test tests\/frontend\/capture-prepared-source-readiness\.test\.mjs/);
   assert.match(workflow,/node tests\/e2e\/capture-daily-owner-journeys\.mjs\n\s+python scripts\/capture_daily_owner_sql_evidence\.py --verify/);
