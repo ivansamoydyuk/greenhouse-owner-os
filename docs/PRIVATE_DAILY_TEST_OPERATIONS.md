@@ -6,7 +6,7 @@ This is an engineer-operated synthetic TEST package. The owner and worker receiv
 
 Use an existing explicitly approved private HTTPS gateway and persistent PostgreSQL/storage on that host. The application listener remains loopback-only behind that gateway. If no such host is available, remote activation is BLOCKED; the CI demo is not represented as persistent daily access.
 
-Deploy the exact reviewed commit into an immutable checkout. PostgreSQL must already be the isolated `greenhouse_owner_os_test` database, marked `r3-connected-pilot:synthetic-only:v1`, migrated to `20261012_0033` through the reviewed additive migrations, with a restricted runtime role. Keep PGDATA/original BYTEA storage on a persistent private volume. Never reuse a production/shared database. Bootstrap migrations and synthetic provisioning are a separate one-time engineer operation; the launcher does not migrate, recreate, truncate, seed an empty database, or reset credentials.
+Deploy the exact reviewed commit into an immutable checkout. PostgreSQL must already be the isolated `greenhouse_owner_os_test` database, marked `r3-connected-pilot:synthetic-only:v1`, migrated to `20261012_0035` through the reviewed additive migrations, with a restricted runtime role. Keep PGDATA/original BYTEA storage on a persistent private volume. Never reuse a production/shared database. Bootstrap migrations and synthetic provisioning are a separate one-time engineer operation; the launcher does not migrate, recreate, truncate, seed an empty database, or reset credentials.
 
 Provision the existing synthetic profile and participant identities offline through `PilotAuth.provision`. Fix one timezone-aware `PILOT_EXPIRES_AT` before activation, within seven days. Store it with deployment configuration, unchanged on every restart. Persisted deployment expiry, participant identity and draft keys cannot be replaced by initialization. Deliver temporary TEST credentials only through the owner's authorized private channel; never put them in commits, logs or evidence artifacts.
 
@@ -23,3 +23,24 @@ Restart the same process with the same checkout, database volume and environment
 The dedicated private CI job runs owner/worker authentication plus selected connected domains, compares all persisted-table aggregate hashes before and after an owned PostgreSQL/application restart, and restores private browser storage state for source/report/draft readback. Participant/password/session/draft-key values and browser storage state stay outside artifacts. Artifact guards run before upload. Test rate-limit buckets may be cleared offline only between independent synthetic fixture phases; they are never cleared to pass a mid-journey or restart assertion. Production rate-limit/authorization rules are unchanged.
 
 Physical iPhone acceptance remains pending. Workers R1/R2 internal TEST activity is not Telegram delivery. Unsupported capabilities retain their visible status. Remote hosting availability and owner acceptance must be reported separately from code/CI readiness.
+
+## PUBLIC repository handling
+
+Repository visibility is PUBLIC; the word "private" in this package describes
+application authorization, not GitHub artifact permissions. The CI job name is
+not an access control. Never use Actions artifacts as credential delivery.
+Keep participant inventories and browser storage outside upload roots. Uploads
+must depend on a successful artifact guard even when earlier verification fails;
+missing or malformed required inventories must fail closed. Archive contents
+need bounded inspection, not merely scanning compressed bytes.
+
+The guard is accidental-disclosure defense in depth, not a sandbox against a
+malicious PR that edits its own scanner. Read-only tokens, trusted review,
+isolated synthetic runtimes and repository rules remain separate requirements.
+Do not submit discovered credentials to a login endpoint to test their validity.
+Retain masked incident evidence privately and obtain authorization for rotation,
+revocation or deletion of published materials.
+
+Historical preview recipes may exist in other refs and old runs. A default-branch
+patch does not neutralize their reruns. Verify repository-wide Actions controls
+and historical run containment separately before declaring that boundary closed.

@@ -8,7 +8,10 @@ def test_day_workers_browser_checkpoint_is_real_scoped_and_guarded():
     raw = path.read_text()
     workflow = yaml.safe_load(raw)
     triggers = workflow.get('on', workflow.get(True))
-    assert {'16-greenhouse-daily-day-workers', '01-architecture-database'} <= set(triggers['push']['branches'])
+    assert triggers['push']['branches'] == ['01-architecture-database']
+    assert triggers['pull_request']['branches'] == ['01-architecture-database']
+    assert set(triggers['pull_request']) == {'branches', 'types'}
+    assert 'workflow_dispatch' in triggers
     assert workflow['permissions'] == {'contents': 'read'}
     job = workflow['jobs']['day-workers-browser-sql']
     assert job['env']['PILOT_LOCAL_TEST'] == '1'
@@ -24,9 +27,9 @@ def test_day_workers_browser_checkpoint_is_real_scoped_and_guarded():
     assert 'PILOT_E2E_CREDENTIALS=$RUNNER_TEMP/' in raw
     assert 'timedelta(hours=4)' in raw
     steps = job['steps']
-    names = [s.get('name', s.get('uses')) for s in steps]
-    assert names.index('Guard private evidence') < names.index('actions/upload-artifact@v4')
-    upload = steps[names.index('actions/upload-artifact@v4')]
+    names = [s.get('name', s.get('uses', '').split('@')[0]) for s in steps]
+    assert names.index('Guard private evidence') < names.index('actions/upload-artifact')
+    upload = steps[names.index('actions/upload-artifact')]
     assert "steps.guard.outcome == 'success'" in upload['if']
     assert upload['with']['if-no-files-found'] == 'error'
     assert all(term not in raw for term in ('cloudflared', 'trycloudflare', 'id-token: write', 'contents: write', 'environment: production'))
