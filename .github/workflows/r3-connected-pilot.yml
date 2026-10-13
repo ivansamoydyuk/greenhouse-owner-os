@@ -1,13 +1,17 @@
 name: R3 connected TEST pilot
 on:
+  pull_request:
+    branches: [01-architecture-database]
+    # edited covers retargeting an existing PR into the protected default.
+    types: [opened, synchronize, reopened, edited]
   push:
-    branches: [06-owner-r3-connected-test-pilot, 06-owner-r3-capture-friction, 03-harvest-owner-journey-monthly, 09-owner-overnight-connected-program, 10-consolidated-owner-integration, 11-fertilizer-execution-completion, 12-private-daily-test-pilot, 14-capture-daily-completion, 15-capture-recovery-diagnostics, 01-architecture-database, 16-greenhouse-daily-day-workers]
+    branches: [01-architecture-database]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: r3-connected-pilot-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 env:
   PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
   OWNER_PREVIEW_FEATURE_SHA: ${{ github.sha }}
@@ -16,17 +20,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13.15'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-          cache: npm
       - name: Install existing dependencies and local OCR
         run: |
           pip install -e '.[dev]'
@@ -72,7 +76,6 @@ jobs:
       - name: Prove SQL effects and reconciliation
         run: python scripts/r3_connected_sql_evidence.py artifacts/r3-connected/browser-results.json artifacts/r3-connected/sql-evidence.json
       - name: Overnight Stage C worker received and report journey
-        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '14-capture-daily-completion' || github.ref_name == '15-capture-recovery-diagnostics' || github.ref_name == '01-architecture-database' || github.ref_name == '16-greenhouse-daily-day-workers'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/overnight-workers
@@ -81,7 +84,6 @@ jobs:
           node tests/e2e/overnight-workers.mjs
           python scripts/overnight_workers_sql_evidence.py artifacts/overnight-workers/workers-results.json artifacts/overnight-workers/sql-evidence.json artifacts/overnight-workers/before-snapshot.json
       - name: Three owner capture cases on the candidate
-        if: github.ref_name == '06-owner-r3-capture-friction' || github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '14-capture-daily-completion' || github.ref_name == '15-capture-recovery-diagnostics' || github.ref_name == '01-architecture-database' || github.ref_name == '16-greenhouse-daily-day-workers'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/friction-after
@@ -89,7 +91,6 @@ jobs:
           node tests/e2e/r3-capture-friction.mjs
           python scripts/r3_capture_sql_evidence.py artifacts/friction-after/capture-friction-results.json artifacts/friction-after/sql-evidence.json
       - name: Overnight Stage D fertilizer plan to actual
-        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '14-capture-daily-completion' || github.ref_name == '15-capture-recovery-diagnostics' || github.ref_name == '01-architecture-database' || github.ref_name == '16-greenhouse-daily-day-workers'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/overnight-fertilizer
@@ -98,7 +99,6 @@ jobs:
           node tests/e2e/overnight-fertilizer.mjs
           python scripts/overnight_fertilizer_sql_evidence.py artifacts/overnight-fertilizer/fertilizer-results.json artifacts/overnight-fertilizer/sql-evidence.json artifacts/overnight-fertilizer/before.json
       - name: Complete Harvest owner journey and source accounting proof
-        if: github.ref_name == '03-harvest-owner-journey-monthly' || github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '14-capture-daily-completion' || github.ref_name == '15-capture-recovery-diagnostics' || github.ref_name == '01-architecture-database' || github.ref_name == '16-greenhouse-daily-day-workers'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/harvest-journey
@@ -107,7 +107,6 @@ jobs:
           node tests/e2e/harvest-owner-journey.mjs
           python scripts/harvest_journey_sql_evidence.py artifacts/harvest-journey/harvest-journey-results.json artifacts/harvest-journey/sql-evidence.json artifacts/harvest-journey/before-snapshot.json
       - name: Overnight Stage A money and financial analytics
-        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '14-capture-daily-completion' || github.ref_name == '15-capture-recovery-diagnostics' || github.ref_name == '01-architecture-database' || github.ref_name == '16-greenhouse-daily-day-workers'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/overnight-finance
@@ -115,7 +114,6 @@ jobs:
           node tests/e2e/overnight-finance.mjs
           python scripts/overnight_finance_sql_evidence.py artifacts/overnight-finance/finance-results.json artifacts/overnight-finance/sql-evidence.json
       - name: Overnight Stage B purchase and inventory history
-        if: github.ref_name == '09-owner-overnight-connected-program' || github.ref_name == '10-consolidated-owner-integration' || github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '14-capture-daily-completion' || github.ref_name == '15-capture-recovery-diagnostics' || github.ref_name == '01-architecture-database' || github.ref_name == '16-greenhouse-daily-day-workers'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/overnight-purchases
@@ -123,7 +121,6 @@ jobs:
           node tests/e2e/overnight-purchases.mjs
           python scripts/overnight_purchases_sql_evidence.py artifacts/overnight-purchases/purchases-results.json artifacts/overnight-purchases/sql-evidence.json
       - name: Fertilizer completion partial remainder and distinct applications
-        if: github.ref_name == '11-fertilizer-execution-completion' || github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '14-capture-daily-completion' || github.ref_name == '15-capture-recovery-diagnostics' || github.ref_name == '01-architecture-database' || github.ref_name == '16-greenhouse-daily-day-workers'
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           E2E_ARTIFACTS: artifacts/fertilizer-completion
@@ -137,8 +134,12 @@ jobs:
           mkdir -p artifacts/r3-connected
           if [ -f "$RUNNER_TEMP/r3-connected-server.log" ]; then cp "$RUNNER_TEMP/r3-connected-server.log" artifacts/r3-connected/server.log; fi
           if [ -n "${R3_PILOT_CONTAINER:-}" ]; then docker logs "$R3_PILOT_CONTAINER" > artifacts/r3-connected/postgres.log 2>&1 || true; fi
-      - uses: actions/upload-artifact@v4
+      - name: Guard public evidence before upload
+        id: public_evidence_guard
         if: always()
+        run: python scripts/private_daily_pilot_artifact_guard.py artifacts --generic
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always() && steps.public_evidence_guard.outcome == 'success'
         with:
           name: r3-connected-browser-${{ github.sha }}
           path: |
@@ -164,7 +165,6 @@ jobs:
             docker rm -v "$R3_PILOT_CONTAINER" || true
           fi
   private-daily-browser:
-    if: github.ref_name == '12-private-daily-test-pilot' || github.ref_name == '14-capture-daily-completion' || github.ref_name == '15-capture-recovery-diagnostics' || github.ref_name == '01-architecture-database' || github.ref_name == '16-greenhouse-daily-day-workers'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -176,16 +176,16 @@ jobs:
       PREVIEW_PORT: '4173'
       PREVIEW_URL: http://127.0.0.1:4173
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           ref: ${{ github.sha }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13.15'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-          cache: npm
       - name: Install existing TEST dependencies
         run: |
           pip install -e '.[dev]'
@@ -241,8 +241,8 @@ jobs:
         id: private_evidence_guard
         if: always()
         run: |
-          python scripts/private_daily_pilot_artifact_guard.py artifacts
-      - uses: actions/upload-artifact@v4
+          python scripts/private_daily_pilot_artifact_guard.py artifacts --require-inventory "$PILOT_E2E_CREDENTIALS"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always() && steps.private_evidence_guard.outcome == 'success'
         with:
           name: private-daily-pilot-${{ github.sha }}

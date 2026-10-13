@@ -1,34 +1,38 @@
-"""Intermediate UI pushes cannot open owner review; exact-SHA rerun can."""
+"""Historical owner review can never open a public-repository access window."""
 from pathlib import Path
-import os
-import subprocess
 
-WORKFLOW=Path(__file__).resolve().parents[1]/'.github/workflows/owner-finance-preview.yml'
+import yaml
 
-def test_ui_preview_launch_gate_allows_only_explicit_final_start(tmp_path):
-    workflow=WORKFLOW.read_text()
-    script=workflow.split('        run: |\n',1)[1].split('      - ',1)[0]
-    script='\n'.join(line[10:] for line in script.splitlines())
-    for branch,event,attempt,expected in [
-        ('06-owner-ui-r2-modern-dashboard','push','1','false'),
-        ('06-owner-ui-r2-modern-dashboard','pull_request','1','false'),
-        ('06-owner-ui-r2-modern-dashboard','push','2','true'),
-        ('06-owner-ui-r2-modern-dashboard','workflow_dispatch','1','true'),
-        ('06-owner-ux-r2-capture-confirmation','push','1','true'),
-    ]:
-        output=tmp_path/f'{branch}-{event}-{attempt}'
-        subprocess.run(['bash','-eu','-c',script],env={**os.environ,'GITHUB_OUTPUT':str(output),
-            'REVIEW_BRANCH':branch,'REVIEW_EVENT':event,'REVIEW_ATTEMPT':attempt},check=True)
-        assert output.read_text().strip()=='enabled='+expected
+WORKFLOW = Path(__file__).resolve().parents[1] / '.github/workflows/owner-finance-preview.yml'
 
 
-def test_all_preview_setup_tunnel_access_artifact_and_window_steps_are_gated():
-    steps=WORKFLOW.read_text().split('    steps:\n',1)[1].split('      - ')[1:]
-    assert steps[0].startswith('name: Gate owner review launch')
-    for step in steps[1:]:
-        if step.startswith('name: Stop preview'):
-            assert 'if: always()' in step and 'if [ -f "$process_file" ]' in step
-        else:
-            assert "if: steps.review.outputs.enabled == 'true'" in step,step
-    assert 'OWNER_PREVIEW_FEATURE_SHA' in WORKFLOW.read_text()
-    assert "assert config['feature_sha']==os.environ['OWNER_PREVIEW_FEATURE_SHA']" in WORKFLOW.read_text()
+def test_ui_preview_launch_requires_explicit_private_repository_manual_start():
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    triggers = workflow.get('on', workflow.get(True))
+    assert set(triggers) == {'workflow_dispatch'}
+    request = triggers['workflow_dispatch']['inputs']['launch_private_test']
+    assert request['type'] == 'boolean' and request['default'] is False
+    guard = workflow['jobs']['preview']['if']
+    for boundary in (
+        "github.repository == 'ivansamoydyuk/greenhouse-owner-os'",
+        'github.event.repository.private == true',
+        "github.event_name == 'workflow_dispatch'",
+        "github.ref == 'refs/heads/01-architecture-database'",
+        'inputs.launch_private_test == true',
+    ):
+        assert boundary in guard.split(' && ')
+    assert '||' not in guard and 'run_attempt' not in guard and 'head_ref' not in guard
+
+
+def test_historical_preview_has_no_access_key_artifact_and_keeps_exact_identity():
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    raw = WORKFLOW.read_text()
+    job = workflow['jobs']['preview']
+    assert job['env']['OWNER_PREVIEW_FEATURE_SHA'] == '${{ github.sha }}'
+    assert "assert config['feature_sha']==os.environ['OWNER_PREVIEW_FEATURE_SHA']" in raw
+    assert 'preview-access.txt' not in raw
+    assert 'owner-workers-review-access' not in raw
+    assert all(not step.get('uses', '').startswith('actions/upload-artifact@') for step in job['steps'])
+    stop = job['steps'][-1]
+    assert stop['name'] == 'Stop preview' and stop['if'] == 'always()'
+    assert 'if [ -f "$process_file" ]' in stop['run']

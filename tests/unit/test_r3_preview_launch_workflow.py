@@ -15,7 +15,7 @@ def test_program_workflow_has_no_public_preview_or_access_artifact():
         assert 'needs' not in job
         assert not job.get('continue-on-error', False)
         assert all(not step.get('continue-on-error', False) for step in job['steps'])
-        checkout=next(step for step in job['steps'] if step.get('uses')=='actions/checkout@v4')
+        checkout=next(step for step in job['steps'] if step.get('uses', '').startswith('actions/checkout@'))
         assert checkout['with']['ref']=='${{ github.sha }}'
         commands='\n'.join(step.get('run','') for step in job['steps'])
         assert 'bash scripts/start_r3_connected_ci.sh' in commands
@@ -23,7 +23,7 @@ def test_program_workflow_has_no_public_preview_or_access_artifact():
     assert daily['env']['PILOT_LOCAL_TEST']=='1' and daily['env']['PREVIEW_BIND']=='127.0.0.1'
     guard=next(x for x in daily['steps'] if x.get('id')=='private_evidence_guard')
     assert guard['if']=='always()'
-    upload=next(x for x in daily['steps'] if x.get('uses')=='actions/upload-artifact@v4')
+    upload=next(x for x in daily['steps'] if x.get('uses', '').startswith('actions/upload-artifact@'))
     assert upload['if']=="always() && steps.private_evidence_guard.outcome == 'success'"
     assert 'RUNNER_TEMP' in '\n'.join(x.get('run','') for x in daily['steps'])
     for forbidden in ('cloudflared', 'trycloudflare', 'connected-preview:', 'private-access.txt', 'r3_connected_preview_access.py open'):

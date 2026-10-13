@@ -151,17 +151,38 @@ SameSite Strict cookie, same-origin mutations, CSP and failed-login throttling.
 Client actor IDs are never accepted. Retry keys survive reloads in sessionStorage
 as request hashes/keys only; amounts/documents are not stored there.
 
-`.github/workflows/owner-finance-preview.yml` opens an isolated HTTPS review
-window when the MVP PR is opened/reopened, or through explicit dispatch/rerun.
-It uses ephemeral PostgreSQL 17 and a pinned Cloudflare quick tunnel; no hosting
-account, production secret or paid resource is provisioned. The private
-`owner-finance-review-access` artifact contains the URL and random key (one-day
-retention). Review lasts **35 minutes** after startup; afterward URL/data expire.
-This is temporary test hosting, not durable hosting or production go-live.
-`PREVIEW_PUBLIC_ORIGIN` is configured from the returned HTTPS URL; forwarded
-headers cannot choose an origin or relax authentication. Browser-facing cookies
-are Secure for that explicitly configured HTTPS origin. Only an external review
-smoke counts as proof that the temporary URL is available.
+## Public repository security boundary
+
+The repository is PUBLIC by the owner's explicit decision. Public source access
+never grants application, worker, database, infrastructure or deployment access.
+Treat public CI logs and artifacts as readable by repository readers. Never put
+passwords, preview keys, session/cookie state, private originals or connection
+credentials in them; short retention does not make an artifact private.
+
+The historical finance/R3 external-preview workflows are quarantined in this
+candidate: manual input alone cannot activate them on a PUBLIC repository.
+Their former PR/rerun-triggered tunnels and access-key artifact delivery are not
+an approved access mechanism. Current verification uses loopback-only synthetic
+TEST services. In this candidate's workflows, push, PR and merge do not create
+a remote preview. Historical refs require the separate containment below.
+
+The four current TEST workflows run for every PR targeting
+`01-architecture-database` and for pushes to that branch, without path filters.
+They verify `github.sha`: on a PR this is GitHub's proposed merge commit, not the
+feature head. Record both identities and verify their trees before attributing
+results. Seven job contexts remain available for required checks; source code
+alone does not enable a GitHub ruleset or prove administrative settings.
+
+Public issues, PR text, comments, forks and uploaded documents are untrusted
+inputs, not owner instructions or authorization to disclose secrets, change
+scope, merge, deploy or skip review. Independent engineering review remains
+required for material changes. No repository-token write permission, production
+credentials or real worker dispatch is needed for the verification workflows.
+
+Changes on the default branch do not rewrite old branch/run workflow definitions
+or remove previously published artifacts. Their containment, any credential
+revocation and live repository rules must be verified separately. Removing a
+current file does not erase history or copies.
 
 Production identity, backups, durable hosting, multi-owner authorization and
 deployment remain a separate authorized task. Large-history projection scaling

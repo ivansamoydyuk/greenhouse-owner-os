@@ -1,23 +1,25 @@
 name: Owner isolated review preview
 
 on:
-  push:
-    branches: [06-owner-ux-r2-capture-confirmation, 06-owner-ui-r2-modern-dashboard]
-  pull_request:
-    types: [opened, reopened, synchronize]
-    branches: [01-architecture-database, 06-owner-ux-r2-capture-confirmation]
   workflow_dispatch:
+    inputs:
+      launch_private_test:
+        description: 'Historical private-repository TEST only; disabled for PUBLIC repositories'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: owner-isolated-review-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   preview:
-    if: github.head_ref == '08-workers-tasks-r1' || github.ref_name == '08-workers-tasks-r1' || github.head_ref == '06-owner-ux-r2-capture-confirmation' || github.ref_name == '06-owner-ux-r2-capture-confirmation' || github.head_ref == '06-owner-ui-r2-modern-dashboard' || github.ref_name == '06-owner-ui-r2-modern-dashboard'
+    # Public-event visibility fails closed; reruns never grant launch authority.
+    if: github.repository == 'ivansamoydyuk/greenhouse-owner-os' && github.event.repository.private == true && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/01-architecture-database' && inputs.launch_private_test == true
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -33,39 +35,21 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       APP_ENV: test
-      OWNER_PREVIEW_FEATURE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      OWNER_PREVIEW_FEATURE_SHA: ${{ github.sha }}
       DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
       TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/greenhouse_owner_os_test
     steps:
-      - name: Gate owner review launch
-        id: review
-        env:
-          REVIEW_BRANCH: ${{ github.head_ref || github.ref_name }}
-          REVIEW_EVENT: ${{ github.event_name }}
-          REVIEW_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          if [ "$REVIEW_BRANCH" != '06-owner-ui-r2-modern-dashboard' ] || [ "$REVIEW_EVENT" = 'workflow_dispatch' ] || [ "$REVIEW_ATTEMPT" -gt 1 ]; then
-            echo 'enabled=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'enabled=false' >> "$GITHUB_OUTPUT"
-            echo 'UI checkpoint only. After exact-SHA verification, explicitly rerun this job once to open owner review.'
-          fi
-      - uses: actions/checkout@v4
-        if: steps.review.outputs.enabled == 'true'
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-python@v5
-        if: steps.review.outputs.enabled == 'true'
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13.15'
       - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
-        if: steps.review.outputs.enabled == 'true'
       - run: pip install -e ".[dev]"
-        if: steps.review.outputs.enabled == 'true'
       - run: alembic upgrade head
-        if: steps.review.outputs.enabled == 'true'
       - name: Start isolated authenticated HTTPS preview
-        if: steps.review.outputs.enabled == 'true'
         run: |
           mkdir -p artifacts
           curl --fail --location --retry 2 -o "$RUNNER_TEMP/cloudflared" https://github.com/cloudflare/cloudflared/releases/download/2026.9.3/cloudflared-linux-amd64
@@ -131,16 +115,8 @@ jobs:
               client.post('/preview/logout')
           print('External HTTPS authenticated preview smoke PASS; zero cash, Serkan unpaid 2600 TRY, reconciliation PASS')
           PY
-          printf 'URL: %s\nAccess key: %s\nTEST PREVIEW ONLY. Opening Serkan AP 2600 TRY remains unpaid.\nExpires after 35 minutes of review time; runner database is then destroyed.\n' "$preview_url" "$PREVIEW_SECRET" > artifacts/preview-access.txt
-          printf '### Isolated Owner UI preview\n\n%s\n\nAccess key: download the private **owner-workers-review-access** artifact.\n\nTest data only. 35-minute review window; no production operations.\n' "$preview_url" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
-        if: steps.review.outputs.enabled == 'true'
-        with:
-          name: owner-workers-review-access
-          path: artifacts/preview-access.txt
-          retention-days: 1
+          printf 'Historical private-repository TEST smoke passed. Access credentials are never published in Actions artifacts.\n' >> "$GITHUB_STEP_SUMMARY"
       - name: Owner review window (35 minutes, ephemeral data)
-        if: steps.review.outputs.enabled == 'true'
         run: |
           for i in $(seq 1 35); do
             curl --silent --fail http://127.0.0.1:4173/health > /dev/null

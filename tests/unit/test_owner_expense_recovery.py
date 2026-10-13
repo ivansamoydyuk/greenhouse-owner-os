@@ -62,8 +62,8 @@ def test_recovery_ci_gate_keeps_prior_gates_and_requires_own_native_and_pg_proof
     from pathlib import Path
     import yaml
     workflow=yaml.load(Path('.github/workflows/postgresql-verification.yml').read_text(),Loader=yaml.BaseLoader)
-    branches=workflow['on']['push']['branches']
-    assert all(branch in branches for branch in ('06-owner-direct-expense-recovery','06-owner-personal-task-access','06-owner-source-queue-errors'))
+    assert workflow['on']['push']['branches'] == ['01-architecture-database']
+    assert workflow['on']['pull_request'] == {'branches': ['01-architecture-database'], 'types': ['opened', 'synchronize', 'reopened', 'edited']}
     browser=[step.get('run') for step in workflow['jobs']['owner-r2-browser']['steps']]
     assert all(command in browser for command in ('python scripts/run_owner_e2e.py','python scripts/run_source_queue_e2e.py','python scripts/run_personal_tasks_e2e.py','python scripts/run_expense_recovery_e2e.py'))
     checks='\n'.join(step.get('run','') for step in workflow['jobs']['verify']['steps'])

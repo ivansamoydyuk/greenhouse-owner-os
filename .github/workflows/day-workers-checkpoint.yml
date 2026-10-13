@@ -1,13 +1,17 @@
 name: Day workers authenticated browser and SQL
 on:
+  pull_request:
+    branches: [01-architecture-database]
+    # edited covers retargeting an existing PR into the protected default.
+    types: [opened, synchronize, reopened, edited]
   push:
-    branches: [16-greenhouse-daily-day-workers, 01-architecture-database]
+    branches: [01-architecture-database]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: day-workers-checkpoint-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   day-workers-browser-sql:
     runs-on: ubuntu-latest
@@ -22,24 +26,24 @@ jobs:
       PREVIEW_URL: http://127.0.0.1:4173
       DAY_WORKERS_PHASE: full
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           ref: ${{ github.sha }}
       - name: Record exact clean checkout
         run: |
-          test "$(git rev-parse HEAD)" = '${{ github.sha }}'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain)"
           echo "OWNER_PREVIEW_FEATURE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "PYTHONPATH=$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
           mkdir -p artifacts/r3-connected artifacts/day-workers
           git rev-parse HEAD > artifacts/day-workers/checkout-sha.txt
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13.15'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-          cache: npm
       - name: Install existing TEST dependencies
         run: |
           pip install -e '.[dev]'
@@ -91,8 +95,8 @@ jobs:
       - name: Guard private evidence
         id: guard
         if: always()
-        run: python scripts/private_daily_pilot_artifact_guard.py artifacts
-      - uses: actions/upload-artifact@v4
+        run: python scripts/private_daily_pilot_artifact_guard.py artifacts --require-inventory "$PILOT_E2E_CREDENTIALS"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always() && steps.guard.outcome == 'success'
         with:
           name: day-workers-${{ github.sha }}

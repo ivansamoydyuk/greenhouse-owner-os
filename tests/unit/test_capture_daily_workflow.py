@@ -38,10 +38,10 @@ def test_baseline_only_copies_measurement_files():
 def test_owned_diagnostics_are_guarded_before_private_artifact_upload():
     workflow = yaml.safe_load(WORKFLOW.read_text())
     steps = workflow['jobs']['corpus-browser-sql']['steps']
-    names = [step.get('name', step.get('uses')) for step in steps]
+    names = [step.get('name', step.get('uses', '').split('@')[0]) for step in steps]
     diagnostic = names.index('Preserve owned bootstrap diagnostics')
     guard = names.index('Guard private evidence')
-    upload = names.index('actions/upload-artifact@v4')
+    upload = names.index('actions/upload-artifact')
     assert diagnostic < guard < upload
     assert steps[diagnostic]['if'] == 'always()'
     assert '$RUNNER_TEMP/r3-connected-server.log' in steps[diagnostic]['run']
@@ -54,20 +54,17 @@ def test_capture_final_gates_cover_feature_and_merged_default():
     for path in (WORKFLOW, Path('.github/workflows/postgresql-verification.yml'), Path('.github/workflows/r3-connected-pilot.yml')):
         workflow = yaml.safe_load(path.read_text())
         triggers = workflow.get('on', workflow.get(True))
-        assert '14-capture-daily-completion' in triggers['push']['branches']
-        assert '15-capture-recovery-diagnostics' in triggers['push']['branches']
-        assert '01-architecture-database' in triggers['push']['branches']
+        assert triggers['push']['branches'] == ['01-architecture-database']
+        assert triggers['pull_request']['branches'] == ['01-architecture-database']
+        assert set(triggers['pull_request']) == {'branches', 'types'}
+        assert 'workflow_dispatch' in triggers
         assert workflow['permissions'] == {'contents': 'read'}
     connected = yaml.safe_load(Path('.github/workflows/r3-connected-pilot.yml').read_text())
     for job in connected['jobs'].values():
-        if 'if' in job:
-            assert "github.ref_name == '14-capture-daily-completion'" in job['if']
-            assert "github.ref_name == '15-capture-recovery-diagnostics'" in job['if']
+        assert 'if' not in job
         for step in job['steps']:
-            condition = step.get('if', '')
-            if "github.ref_name == '01-architecture-database'" in condition:
-                assert "github.ref_name == '14-capture-daily-completion'" in condition
-                assert "github.ref_name == '15-capture-recovery-diagnostics'" in condition
+            if step.get('name') != 'Before evidence on immutable delivered baseline':
+                assert 'github.ref_name' not in step.get('if', '')
     pg = Path('.github/workflows/postgresql-verification.yml').read_text()
     assert 'python tests/helpers/capture_daily_upgrade_0033.py | tee artifacts/capture-populated-upgrade-0033.log' in pg
     capture = yaml.safe_load(WORKFLOW.read_text())
