@@ -73,10 +73,16 @@ credentials or legacy shared-key access are created. OCR tools remain installed.
 Cloudflare supplies an ephemeral HTTPS URL; the application listener remains
 loopback, and application authentication protects data and assets.
 
-After local and external unauthenticated-denial checks pass, the summary contains
-only the URL, username `owner`, build SHA, and fixed expiry. The owner signs in
-using their secret. No artifacts, screenshots, credential files, session headers,
-response bodies, or runtime logs are published. The session expires 35 minutes
+After local and external unauthenticated-denial checks pass, one strictly validated
+readiness JSON contains only the URL, username `owner`, build SHA, and fixed expiry.
+The background runtime retains its own fixed lifetime; the startup step returns,
+and pinned upload-artifact v4 publishes only this exact JSON (one-day retention).
+Its documented immediate REST availability lets the operator retrieve and deliver
+the live URL while a separate step holds the runtime. The job summary is a later
+record, not the live delivery channel. No directory or wildcard is uploaded. The owner signs in
+using their secret. No credential artifacts, screenshots, credential files, session headers,
+response bodies, or runtime logs are published; only the nonsecret readiness JSON
+is uploaded. Process ownership metadata remains private to the runner. The session expires 35 minutes
 after application initialization; persisted authorization rejects expiry even
 before process teardown. Cancellation, failure, and expiry stop the owned tunnel,
 application, and labelled database; the hosted runner provides final teardown on

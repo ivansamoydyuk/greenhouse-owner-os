@@ -32,10 +32,27 @@ jobs:
           pip install -e '.[dev]'
           sudo apt-get update
           sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
-      - name: Run bounded owner-only synthetic session
+      - name: Start bounded owner-only synthetic session
+        id: ready
         env:
           TEST_PREVIEW_OWNER_PASSWORD: ${{ secrets.TEST_PREVIEW_OWNER_PASSWORD }}
-        run: python scripts/temporary_owner_preview.py
+        run: python scripts/temporary_owner_preview.py --start
+      - name: Validate only nonsecret readiness metadata
+        id: metadata
+        run: python scripts/temporary_owner_preview.py --check-ready
+      - name: Publish only live URL and expiry
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4, independently verified
+        if: steps.metadata.outcome == 'success'
+        with:
+          name: temporary-owner-readiness-${{ github.run_id }}
+          path: ${{ runner.temp }}/owner-preview-ready.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Hold only until fixed TEST expiry
+        run: python scripts/temporary_owner_preview.py --hold
+      - name: Stop only the owned TEST process group
+        if: always()
+        run: python scripts/temporary_owner_preview.py --cleanup
       - name: Remove only this run's labelled ephemeral database
         if: always()
         run: |

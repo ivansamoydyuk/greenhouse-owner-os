@@ -6,11 +6,13 @@ are published. The repository secret is NOT isolated from repository writers.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
 import secrets
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -59,6 +61,133 @@ def validate_password(password):
 def validate_origin(origin):
     require(bool(re.fullmatch(r'https://[a-z0-9]+(?:-[a-z0-9]+)*\.trycloudflare\.com', origin)))
     return origin
+
+
+def runtime_path(name):
+    root = Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
+    require(root.is_dir())
+    return root / name
+
+
+def atomic_json(path, value):
+    require(not path.is_symlink() and not path.exists(), 'Refuse existing readiness file')
+    temporary = path.with_name(path.name + '.pending')
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, 'w') as handle:
+            json.dump(value, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        # Hard-link publication is atomic and cannot replace an existing symlink.
+        os.link(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def read_json(path):
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, 'Duplicate readiness field')
+            value[key] = item
+        return value
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd) as handle:
+        info = os.fstat(handle.fileno())
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_size <= 1024)
+        return json.load(handle, object_pairs_hook=unique)
+
+
+def validate_metadata(value, sha, now=None):
+    require(type(value) is dict and set(value) == {'url', 'username', 'sha', 'expires_at'}, 'Invalid readiness schema')
+    require(all(type(v) is str for v in value.values()))
+    validate_origin(value['url'])
+    require(value['username'] == 'owner')
+    require(bool(re.fullmatch('[0-9a-f]{40}', sha)) and value['sha'] == sha)
+    from greenhouse_owner_os.daily_pilot import parse_expiry
+    expires = parse_expiry(value['expires_at'])
+    require(value['expires_at'] == expires.isoformat(), 'Noncanonical expiry')
+    remaining = (expires - (now or datetime.now(timezone.utc))).total_seconds()
+    require(0 < remaining <= DURATION, 'Readiness expired or extended')
+    return expires
+
+
+def process_identity(pid):
+    require(type(pid) is int and pid > 1)
+    try:
+        fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+        if fields[0] == 'Z':
+            return None
+        return fields[19] if os.getpgid(pid) == pid else None
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+
+
+def owned_process():
+    value = read_json(runtime_path('owner-preview-process.json'))
+    require(type(value) is dict and set(value) == {'pid', 'started'})
+    require(type(value['started']) is str and value['started'].isdigit())
+    return value if process_identity(value['pid']) == value['started'] else None
+
+
+def start():
+    # The child alone retains the secret; no process state or readiness file does.
+    validate_password(os.environ.get('TEST_PREVIEW_OWNER_PASSWORD'))
+    require(not runtime_path('owner-preview-ready.json').exists())
+    require(not runtime_path('owner-preview-process.json').exists())
+    child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--serve'],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=True)
+    os.environ.pop('TEST_PREVIEW_OWNER_PASSWORD', None)
+    try:
+        identity = process_identity(child.pid)
+        require(identity is not None, 'TEST process failed to start')
+        atomic_json(runtime_path('owner-preview-process.json'), dict(pid=child.pid, started=identity))
+        deadline = time.monotonic() + 360
+        while time.monotonic() < deadline:
+            require(child.poll() is None, 'TEST startup failed')
+            if runtime_path('owner-preview-ready.json').exists():
+                check_ready()
+                return
+            time.sleep(1)
+        raise RuntimeError('TEST readiness deadline reached')
+    except BaseException:
+        child.terminate()
+        raise
+
+
+def check_ready():
+    metadata = read_json(runtime_path('owner-preview-ready.json'))
+    expires = validate_metadata(metadata, os.environ['EXPECTED_SHA'])
+    require(owned_process() is not None, 'TEST process is unavailable')
+    require((expires - datetime.now(timezone.utc)).total_seconds() > 60, 'Insufficient live review time')
+    return metadata
+
+
+def hold():
+    metadata = check_ready()
+    expires = validate_metadata(metadata, os.environ['EXPECTED_SHA'])
+    while datetime.now(timezone.utc) < expires:
+        if owned_process() is None:
+            # The child can finish normally between the clock and identity reads.
+            require(datetime.now(timezone.utc) >= expires, 'TEST process ended early')
+            return
+        time.sleep(1)
+
+
+def cleanup():
+    path = runtime_path('owner-preview-process.json')
+    if path.exists() or path.is_symlink():
+        process = owned_process()
+        if process:
+            os.killpg(process['pid'], signal.SIGTERM)
+            for _ in range(15):
+                if process_identity(process['pid']) != process['started']:
+                    break
+                time.sleep(1)
+            else:
+                os.killpg(process['pid'], signal.SIGKILL)
+    # Workflow's independent always-step also removes only the labelled database.
 
 
 def provision_owner(app, password):
@@ -176,7 +305,9 @@ def main():
                 summary = f'Temporary synthetic TEST\n\nURL: {origin}/pilot/\nUsername: owner\nBuild: {sha}\nExpires: {expires.isoformat()}\n'
                 with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as handle:
                     handle.write(summary)
-                print(summary, flush=True)
+                metadata = dict(url=origin, username='owner', sha=sha, expires_at=expires.isoformat())
+                validate_metadata(metadata, sha)
+                atomic_json(runtime_path('owner-preview-ready.json'), metadata)
                 while datetime.now(timezone.utc) < expires and not stop.wait(1):
                     require(server_thread.is_alive() and tunnel.poll() is None, 'TEST runtime stopped')
         finally:
@@ -197,7 +328,8 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+        require(len(sys.argv) == 2 and sys.argv[1] in ('--serve', '--start', '--check-ready', '--hold', '--cleanup'))
+        {'--serve': main, '--start': start, '--check-ready': check_ready, '--hold': hold, '--cleanup': cleanup}[sys.argv[1]]()
     except Exception:
         # Exception strings can carry SQL parameters, HTTP headers or credentials.
         # Fail closed with a fixed diagnostic instead of exposing runtime internals.
