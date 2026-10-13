@@ -1,7 +1,7 @@
 name: Capture daily real OCR checkpoint
 on:
   push:
-    branches: [14-capture-daily-completion, 15-capture-recovery-diagnostics, 01-architecture-database, 16-greenhouse-daily-day-workers]
+    branches: [14-capture-daily-completion, 15-capture-recovery-diagnostics, 01-architecture-database, 16-greenhouse-daily-day-workers, 16-day-workers-postmerge-capture-stability]
   workflow_dispatch:
 permissions:
   contents: read
@@ -61,6 +61,8 @@ jobs:
           npm ci
           sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-tur poppler-utils
           npx playwright install --with-deps "$CAPTURE_DAILY_ENGINE"
+      - name: Prepared source terminal-render regression
+        run: node --test tests/frontend/capture-prepared-source-readiness.test.mjs
       - name: Fixed expiry and credentials outside evidence
         run: |
           echo "PILOT_EXPIRES_AT=$(python -c 'from datetime import datetime,timedelta,timezone;print((datetime.now(timezone.utc)+timedelta(hours=4)).isoformat())')" >> "$GITHUB_ENV"
